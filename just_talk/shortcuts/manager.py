@@ -32,15 +32,28 @@ class ShortcutManager:
     def start(self) -> bool:
         self.stop()
 
-        if sys.platform == "darwin" and self.shortcut.lower() in ("fn", "globe"):
+        if sys.platform == "darwin" and self.shortcut.lower() in (
+            "fn",
+            "globe",
+            "right_alt",
+            "alt_r",
+            "right_option",
+            "right_cmd",
+            "cmd_r",
+            "right_command",
+            "alt",
+            "option",
+        ):
             self._mac_monitor = MacFnKeyMonitor(
                 on_start_recording=self.on_start_recording,
                 on_stop_recording=self.on_stop_recording,
+                trigger_key=self.shortcut,
+                push_to_talk=self.push_to_talk,
             )
             ok = self._mac_monitor.start()
             if ok:
                 return True
-            print("[ShortcutManager] MacFnKeyMonitor failed; falling back to pynput.", file=sys.stderr)
+            print("[ShortcutManager] MacHotkeyMonitor failed; falling back to pynput.", file=sys.stderr)
 
         # Cross-platform fallback listener
         self._pynput_monitor = PynputHotkeyMonitor(

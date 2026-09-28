@@ -2,6 +2,7 @@
 
 from .actions import ActionIntent, ActionRouter
 from .gemini import GeminiFormatter
+from .nvidia_fallback import NvidiaFallbackFormatter
 from .prompts import (
     SYSTEM_PROMPT_CONCISE,
     SYSTEM_PROMPT_FORMAL,
@@ -11,6 +12,7 @@ from .prompts import (
 
 __all__ = [
     "GeminiFormatter",
+    "NvidiaFallbackFormatter",
     "ActionRouter",
     "ActionIntent",
     "SYSTEM_PROMPT_SUBTLE",

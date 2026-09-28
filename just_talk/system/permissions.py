@@ -30,6 +30,53 @@ class PermissionsManager:
             return True
 
     @staticmethod
+    def request_accessibility() -> bool:
+        """Trigger native macOS Accessibility prompt dialog."""
+        return PermissionsManager.check_accessibility(prompt_if_needed=True)
+
+    @staticmethod
+    def open_accessibility_settings() -> None:
+        """Open macOS System Settings directly to Privacy & Security > Accessibility."""
+        if sys.platform == "darwin":
+            import subprocess
+
+            PermissionsManager.request_accessibility()
+            subprocess.run(
+                ["open", "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"],
+                check=False,
+            )
+
+    @staticmethod
+    def open_keyboard_settings() -> None:
+        """Open macOS System Settings to Keyboard (for configuring Globe/Fn key)."""
+        if sys.platform == "darwin":
+            import subprocess
+
+            subprocess.run(
+                ["open", "x-apple.systempreferences:com.apple.preference.keyboard"],
+                check=False,
+            )
+
+    @staticmethod
+    def request_microphone() -> None:
+        """Request microphone access or open Privacy & Security > Microphone if blocked."""
+        if sys.platform == "darwin":
+            import subprocess
+
+            try:
+                from AVFoundation import AVCaptureDevice, AVMediaTypeAudio
+
+                AVCaptureDevice.requestAccessForMediaType_completionHandler_(
+                    AVMediaTypeAudio, lambda granted: None
+                )
+            except Exception:
+                pass
+            subprocess.run(
+                ["open", "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"],
+                check=False,
+            )
+
+    @staticmethod
     def check_microphone() -> Tuple[bool, str]:
         """
         Verify microphone access.

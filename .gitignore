@@ -1,12 +1,133 @@
-# Python-generated files
+# ==============================================================================
+# Just Talk — Comprehensive Git Ignore
+# ==============================================================================
+
+# --- Byte-compiled / optimized / DLL files ---
 __pycache__/
-*.py[oc]
+*.py[cod]
+*$py.class
+*.pyd
+*.pyo
+
+# --- C extensions & build artifacts ---
+*.so
+*.dylib
+*.dll
 build/
 dist/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
 wheels/
-*.egg-info
-.pytest_cache/
-*.db
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
-# Virtual environments
-.venv
+# --- PyInstaller / Executable Builds ---
+*.manifest
+*.spec.bak
+
+# --- Virtual Environments ---
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# --- Testing & Code Coverage ---
+.pytest_cache/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+htmlcov/
+.hypothesis/
+.ruff_cache/
+.mypy_cache/
+
+# --- STT Models & Weights (Downloaded at runtime) ---
+models/
+whisper_models/
+*.bin
+*.safetensors
+*.pt
+*.onnx
+.huggingface/
+
+# --- Audio Recordings & Temporary Media ---
+*.wav
+*.mp3
+*.m4a
+*.ogg
+*.flac
+*.aac
+
+# --- Local Databases & Runtime Storage ---
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# --- Logs & Crash Dumps ---
+*.log
+logs/
+*.dump
+crash.log
+
+# --- Secrets, API Keys & Environment Variables ---
+.env
+.env.*
+!.env.example
+*.local
+secrets.json
+
+# --- Operating System Artifacts ---
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+
+# --- IDEs & Editors ---
+.vscode/
+!.vscode/settings.json.example
+.idea/
+*.sublime-workspace
+*.sublime-project
+*.swp
+*.swo
+.project
+.settings/
+
+# --- Antigravity / Workspace runtime caches ---
+.gemini/

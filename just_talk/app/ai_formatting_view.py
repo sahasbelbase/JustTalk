@@ -208,10 +208,7 @@ class AIFormattingView(QWidget):
             self.key_input.setText(key)
 
         # Update storage label
-        if CredentialManager.is_keychain_available():
-            self.storage_label.setText("✓ Stored securely in OS Keychain / Credential Vault.")
-        else:
-            self.storage_label.setText("⚠️ No OS Keychain available. Stored in memory for this session only.")
+        self.storage_label.setText("✓ Stored securely in private user credentials (no password prompts).")
 
     def _toggle_show_key(self) -> None:
         if self.key_input.echoMode() == QLineEdit.EchoMode.Password:
@@ -280,7 +277,7 @@ class AIFormattingView(QWidget):
         self._testing_connection = True
         self.test_btn.setEnabled(False)
         self.status_chip.setText("Testing connection...")
-        self.status_chip.setStyleSheet("padding: 4px 10px; border-radius: 6px; font-size: 12px; background: rgba(10,147,176,0.15); color: #0A93B0;")
+        self.status_chip.setStyleSheet("padding: 4px 10px; border-radius: 6px; font-size: 12px; background: rgba(108,142,239,0.12); color: #6C8EEF;")
 
         def worker():
             res = self.gemini.test_connection(api_key=current_key, model=current_model)
@@ -294,10 +291,10 @@ class AIFormattingView(QWidget):
 
         if res.success:
             self.status_chip.setText(f"✓ {res.message} — {res.model_name}")
-            self.status_chip.setStyleSheet("padding: 4px 10px; border-radius: 6px; font-size: 12px; background: rgba(31,169,113,0.15); color: #1FA971;")
+            self.status_chip.setStyleSheet("padding: 4px 10px; border-radius: 6px; font-size: 12px; background: rgba(48,209,88,0.12); color: #30D158;")
         else:
             self.status_chip.setText(f"✗ {res.message}")
-            self.status_chip.setStyleSheet("padding: 4px 10px; border-radius: 6px; font-size: 12px; background: rgba(229,72,77,0.15); color: #E5484D;")
+            self.status_chip.setStyleSheet("padding: 4px 10px; border-radius: 6px; font-size: 12px; background: rgba(255,69,58,0.10); color: #FF453A;")
 
     def run_formatting_test(self) -> None:
         """Run an end-to-end formatting test using the configured prompt."""

@@ -11,6 +11,7 @@ from typing import Callable, List, Optional, Tuple
 import httpx
 
 from ..security import CredentialManager
+from .nvidia_fallback import NvidiaFallbackFormatter
 from .prompts import (
     SYSTEM_PROMPT_CONCISE,
     SYSTEM_PROMPT_FORMAL,
@@ -126,6 +127,7 @@ class GeminiFormatter:
         self.timeout = timeout
         self.circuit_breaker = circuit_breaker or CircuitBreaker(time_func=time_func)
         self.time_func = time_func
+        self._nvidia_fallback = NvidiaFallbackFormatter(time_func=time_func)
 
     def set_api_key(self, api_key: Optional[str]) -> None:
         self.api_key = api_key
@@ -146,8 +148,13 @@ class GeminiFormatter:
         if not text:
             return ""
 
-        # Remove obvious leading filler words
-        text = re.sub(r"^(?:um|uh|er|ah|like)[,\s]+", "", text, flags=re.IGNORECASE)
+        # Remove obvious leading filler words (including repeated like "um uh")
+        while True:
+            new_text = re.sub(r"^(?:um|uh|er|ah|like)[,\s]+", "", text, flags=re.IGNORECASE)
+            if new_text == text:
+                break
+            text = new_text
+
         # Remove mid-sentence stutter fillers
         text = re.sub(r"\b(?:um|uh)\b[,\s]*", "", text, flags=re.IGNORECASE)
 
@@ -342,13 +349,21 @@ class GeminiFormatter:
 
         key = self.api_key or CredentialManager.get_api_key()
 
-        # Fallback 1: Missing key
+        # Fallback 1: Missing Gemini key — try NVIDIA silently
         if not key:
+            if self._nvidia_fallback.is_available:
+                text, ok, msg = self._nvidia_fallback.format_text(raw_text, style, custom_system_instruction)
+                if ok:
+                    return text, True, msg
             fallback = self.light_local_cleanup(raw_text)
             return fallback, False, "API key missing. Cleaned locally."
 
-        # Fallback 2: Circuit Breaker active
+        # Fallback 2: Circuit Breaker active — try NVIDIA silently
         if self.circuit_breaker.is_paused:
+            if self._nvidia_fallback.is_available:
+                text, ok, msg = self._nvidia_fallback.format_text(raw_text, style, custom_system_instruction)
+                if ok:
+                    return text, True, msg
             fallback = self.light_local_cleanup(raw_text)
             remaining = self.circuit_breaker.remaining_cooldown_sec
             return fallback, False, f"AI formatting paused ({remaining}s remaining). Cleaned locally."
@@ -407,9 +422,13 @@ class GeminiFormatter:
                                     elapsed = int((self.time_func() - start_time) * 1000)
                                     return sanitized, True, f"Formatted in {elapsed}ms"
 
-                        # Malformed or empty candidate
-                        fallback = self.light_local_cleanup(raw_text)
+                        # Malformed or empty candidate — try NVIDIA
                         self.circuit_breaker.record_failure()
+                        if self._nvidia_fallback.is_available:
+                            text, ok, msg = self._nvidia_fallback.format_text(raw_text, style, custom_system_instruction)
+                            if ok:
+                                return text, True, msg
+                        fallback = self.light_local_cleanup(raw_text)
                         return fallback, False, "Empty response from Gemini. Cleaned locally."
 
                     elif resp.status_code in (429, 500, 502, 503, 504) and attempt == 0:
@@ -418,6 +437,11 @@ class GeminiFormatter:
                         continue
                     else:
                         tripped = self.circuit_breaker.record_failure()
+                        # Try NVIDIA before local fallback
+                        if self._nvidia_fallback.is_available:
+                            text, ok, msg = self._nvidia_fallback.format_text(raw_text, style, custom_system_instruction)
+                            if ok:
+                                return text, True, msg
                         fallback = self.light_local_cleanup(raw_text)
                         err_msg = f"HTTP {resp.status_code}"
                         if tripped:
@@ -430,6 +454,11 @@ class GeminiFormatter:
                     continue
 
                 tripped = self.circuit_breaker.record_failure()
+                # Try NVIDIA before local fallback
+                if self._nvidia_fallback.is_available:
+                    text, ok, msg = self._nvidia_fallback.format_text(raw_text, style, custom_system_instruction)
+                    if ok:
+                        return text, True, msg
                 fallback = self.light_local_cleanup(raw_text)
                 err_msg = "Timeout" if isinstance(e, httpx.TimeoutException) else "Network error"
                 if tripped:
@@ -437,10 +466,20 @@ class GeminiFormatter:
                 return fallback, False, f"{err_msg}. Cleaned locally."
             except Exception as e:
                 self.circuit_breaker.record_failure()
+                # Try NVIDIA before local fallback
+                if self._nvidia_fallback.is_available:
+                    text, ok, msg = self._nvidia_fallback.format_text(raw_text, style, custom_system_instruction)
+                    if ok:
+                        return text, True, msg
                 fallback = self.light_local_cleanup(raw_text)
                 return fallback, False, f"Error: {CredentialManager.redact(str(e))}. Cleaned locally."
 
         # If loop exited without return, timeout budget expired
         self.circuit_breaker.record_failure()
+        # Last chance: try NVIDIA
+        if self._nvidia_fallback.is_available:
+            text, ok, msg = self._nvidia_fallback.format_text(raw_text, style, custom_system_instruction)
+            if ok:
+                return text, True, msg
         fallback = self.light_local_cleanup(raw_text)
         return fallback, False, "Timeout budget exceeded. Cleaned locally."

@@ -53,6 +53,11 @@ class PynputHotkeyMonitor:
                          keyboard.Key.shift_r in self._current_keys)
             has_space = keyboard.Key.space in self._current_keys
             return has_ctrl and has_shift and has_space
+        elif self.trigger_key in ("fn", "globe"):
+            return any(
+                getattr(k, "vk", None) in (63, 0xFF) or getattr(k, "char", "") == "fn"
+                for k in self._current_keys
+            )
         return False
 
     def _matches_action(self) -> bool:

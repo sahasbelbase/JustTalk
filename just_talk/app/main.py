@@ -148,6 +148,8 @@ class JustTalkApp:
         self.bridge.state_inserted_offline.connect(self.overlay.show_inserted_offline)
         self.bridge.state_copied.connect(self.overlay.show_copied)
         self.bridge.state_error.connect(self.overlay.show_error)
+        self.overlay.cancel_requested.connect(self._on_cancel_recording)
+        self.overlay.confirm_requested.connect(self.on_stop_recording)
 
         # 3. Initialize Main Application Window
         self.main_window = MainWindow(
@@ -171,8 +173,11 @@ class JustTalkApp:
         )
         self.tray.show()
 
-        # 5. Check permissions quietly
-        PermissionsManager.check_accessibility(prompt_if_needed=False)
+        # 5. Check permissions (prompt for Accessibility on macOS if needed)
+        if sys.platform == "darwin":
+            is_trusted = PermissionsManager.check_accessibility(prompt_if_needed=True)
+            if not is_trusted:
+                print("[Main] Accessibility permission requested from user.", file=sys.stderr)
         PermissionsManager.check_microphone()
 
         # 6. Warm up Whisper model in background
@@ -224,7 +229,14 @@ class JustTalkApp:
         self._is_action_mode = is_action_mode
         self._record_start_time = time.time()
         self.bridge.state_listening.emit(is_action_mode)
-        self.recorder.start()
+        started = self.recorder.start()
+        if not started:
+            self.bridge.state_error.emit("Microphone error")
+
+    def _on_cancel_recording(self) -> None:
+        """User cancelled recording via the overlay [ ✕ ] button."""
+        self.recorder.stop()
+        self.bridge.state_error.emit("Cancelled")
 
     def on_stop_recording(self) -> None:
         """Triggered when push-to-talk shortcut is released."""
@@ -307,12 +319,13 @@ class JustTalkApp:
             self.bridge.state_copied.emit()
 
         # 6. Save to local history database (always preserving raw transcription)
+        status_to_save = "inserted (offline)" if (status == "inserted" and is_offline_fallback) else status
         self.db.add(
             raw_transcription=raw_text,
             processed_text=final_text,
             action=action_name,
             application=active_app,
-            status=status,
+            status=status_to_save,
             duration_ms=total_latency_ms,
         )
 

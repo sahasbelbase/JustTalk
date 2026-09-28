@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import datetime
 import sys
+from pathlib import Path
 from typing import Callable, Optional
 
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QCloseEvent, QFont, QIcon
+from PySide6.QtGui import QCloseEvent, QFont, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -41,6 +42,7 @@ from ..database.history import HistoryDatabase, HistoryItem
 from ..security import CredentialManager
 from ..stt.model_manager import TIERS, ModelManager
 from ..system.clipboard import ClipboardManager
+from ..system.permissions import PermissionsManager
 from .ai_formatting_view import AIFormattingView
 from .theme import ThemeManager
 
@@ -171,34 +173,48 @@ class MainWindow(QMainWindow):
 
     def _create_sidebar(self) -> QWidget:
         sidebar = QWidget()
-        sidebar.setFixedWidth(210)
+        sidebar.setFixedWidth(130)
         sidebar.setObjectName("sidebar")
 
         layout = QVBoxLayout(sidebar)
-        layout.setContentsMargins(14, 20, 14, 18)
-        layout.setSpacing(12)
+        layout.setContentsMargins(10, 18, 10, 12)
+        layout.setSpacing(2)
 
-        # App Brand Header
-        brand_layout = QVBoxLayout()
-        brand_layout.setSpacing(2)
+        # App Brand
+        brand_layout = QHBoxLayout()
+        brand_layout.setContentsMargins(0, 0, 0, 0)
+        brand_layout.setSpacing(8)
 
+        icon_label = QLabel()
+        asset_icon = Path(__file__).resolve().parent.parent / "assets" / "icon.png"
+        if asset_icon.exists():
+            pix = QPixmap(str(asset_icon)).scaled(
+                26, 26, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+            )
+            icon_label.setPixmap(pix)
+            brand_layout.addWidget(icon_label)
+
+        title_vbox = QVBoxLayout()
+        title_vbox.setContentsMargins(0, 0, 0, 0)
+        title_vbox.setSpacing(0)
         title = QLabel("Just Talk")
-        title.setFont(ThemeManager.get_display_font(26, weight=QFont.Weight.Bold))
-        brand_layout.addWidget(title)
-
-        subtitle = QLabel("Voice Keyboard · v1.0")
+        title.setFont(ThemeManager.get_ui_font(13, weight=QFont.Weight.Bold))
+        subtitle = QLabel("v1.0")
         subtitle.setObjectName("mutedLabel")
-        subtitle.setFont(ThemeManager.get_ui_font(11))
-        brand_layout.addWidget(subtitle)
+        subtitle.setFont(ThemeManager.get_ui_font(10))
+        title_vbox.addWidget(title)
+        title_vbox.addWidget(subtitle)
+        brand_layout.addLayout(title_vbox)
+        brand_layout.addStretch()
 
         layout.addLayout(brand_layout)
-        layout.addSpacing(16)
+        layout.addSpacing(18)
 
         # Navigation Buttons
         self.nav_group = QButtonGroup(self)
         self.nav_group.setExclusive(True)
 
-        self.nav_home = QPushButton("  Home")
+        self.nav_home = QPushButton("⌂  Home")
         self.nav_home.setObjectName("navBtn")
         self.nav_home.setCheckable(True)
         self.nav_home.setChecked(True)
@@ -206,14 +222,14 @@ class MainWindow(QMainWindow):
         self.nav_group.addButton(self.nav_home, 0)
         layout.addWidget(self.nav_home)
 
-        self.nav_history = QPushButton("  History")
+        self.nav_history = QPushButton("⏱  History")
         self.nav_history.setObjectName("navBtn")
         self.nav_history.setCheckable(True)
         self.nav_history.clicked.connect(lambda: self.switch_screen("history"))
         self.nav_group.addButton(self.nav_history, 1)
         layout.addWidget(self.nav_history)
 
-        self.nav_settings = QPushButton("  Settings")
+        self.nav_settings = QPushButton("⚙  Settings")
         self.nav_settings.setObjectName("navBtn")
         self.nav_settings.setCheckable(True)
         self.nav_settings.clicked.connect(lambda: self.switch_screen("settings"))
@@ -222,32 +238,28 @@ class MainWindow(QMainWindow):
 
         layout.addStretch()
 
-        # Sidebar Bottom Status Indicator Card
-        status_card = QFrame()
-        status_card.setObjectName("surfaceCard")
-        sc_layout = QVBoxLayout(status_card)
-        sc_layout.setContentsMargins(10, 10, 10, 10)
-        sc_layout.setSpacing(6)
-
+        # Bottom Status
         status_row = QHBoxLayout()
-        status_row.setSpacing(8)
+        status_row.setSpacing(5)
+        status_row.setContentsMargins(2, 0, 2, 0)
+
         self.sidebar_dot = QLabel("●")
-        self.sidebar_dot.setFont(ThemeManager.get_ui_font(11))
-        self.sidebar_dot.setStyleSheet("color: #3DD68C;")  # green default
+        self.sidebar_dot.setFont(ThemeManager.get_ui_font(7))
+        self.sidebar_dot.setStyleSheet("color: #30D158;")
         status_row.addWidget(self.sidebar_dot)
 
         self.sidebar_status_text = QLabel("Ready")
-        self.sidebar_status_text.setFont(ThemeManager.get_ui_font(12, weight=QFont.Weight.Medium))
+        self.sidebar_status_text.setFont(ThemeManager.get_ui_font(11))
         status_row.addWidget(self.sidebar_status_text)
         status_row.addStretch()
-        sc_layout.addLayout(status_row)
+        layout.addLayout(status_row)
 
         self.sidebar_key_label = QLabel(self._get_shortcut_display())
-        self.sidebar_key_label.setObjectName("shortcutBadge")
+        self.sidebar_key_label.setObjectName("mutedLabel")
         self.sidebar_key_label.setFont(ThemeManager.get_mono_font(10))
-        sc_layout.addWidget(self.sidebar_key_label)
+        self.sidebar_key_label.setContentsMargins(2, 2, 0, 4)
+        layout.addWidget(self.sidebar_key_label)
 
-        layout.addWidget(status_card)
         return sidebar
 
     def switch_screen(self, screen_name: str) -> None:
@@ -276,26 +288,27 @@ class MainWindow(QMainWindow):
 
         container = QWidget()
         layout = QVBoxLayout(container)
-        layout.setContentsMargins(36, 32, 36, 32)
-        layout.setSpacing(20)
+        layout.setContentsMargins(36, 30, 36, 30)
+        layout.setSpacing(16)
 
-        # Greeting in Instrument Serif
+        # Large greeting heading — Typeless style
         greeting_text = self._get_time_greeting()
         self.greeting_label = QLabel(greeting_text)
-        self.greeting_label.setFont(ThemeManager.get_display_font(30, weight=QFont.Weight.Normal))
+        self.greeting_label.setFont(ThemeManager.get_display_font(32, weight=QFont.Weight.Bold))
         layout.addWidget(self.greeting_label)
 
         subtitle = QLabel("Just Talk is warm in RAM and ready to transcribe.")
         subtitle.setObjectName("mutedLabel")
-        subtitle.setFont(ThemeManager.get_ui_font(14))
+        subtitle.setFont(ThemeManager.get_ui_font(13))
         layout.addWidget(subtitle)
+        layout.addSpacing(6)
 
         # Push-to-Talk Hero Keycap Card
         hero_card = QFrame()
         hero_card.setObjectName("card")
         hero_layout = QVBoxLayout(hero_card)
-        hero_layout.setContentsMargins(20, 20, 20, 20)
-        hero_layout.setSpacing(12)
+        hero_layout.setContentsMargins(18, 16, 18, 16)
+        hero_layout.setSpacing(10)
 
         hero_header = QHBoxLayout()
         hero_title = QLabel("Push-to-Talk Shortcut")
@@ -305,17 +318,17 @@ class MainWindow(QMainWindow):
         hero_layout.addLayout(hero_header)
 
         keycap_row = QHBoxLayout()
-        keycap_row.setSpacing(14)
+        keycap_row.setSpacing(12)
 
         self.hero_keycap = QLabel(self._get_shortcut_display())
         self.hero_keycap.setObjectName("keycap")
-        self.hero_keycap.setFont(ThemeManager.get_ui_font(16, weight=QFont.Weight.Bold))
+        self.hero_keycap.setFont(ThemeManager.get_mono_font(14, weight=QFont.Weight.Bold))
         keycap_row.addWidget(self.hero_keycap)
 
         hero_desc_layout = QVBoxLayout()
-        hero_desc_layout.setSpacing(4)
+        hero_desc_layout.setSpacing(2)
         hero_desc = QLabel("Hold to talk · Release to insert")
-        hero_desc.setFont(ThemeManager.get_ui_font(14, weight=QFont.Weight.Medium))
+        hero_desc.setFont(ThemeManager.get_ui_font(13, weight=QFont.Weight.Medium))
         hero_desc_sub = QLabel("Speaks into Slack, VS Code, Chrome, or any focused application.")
         hero_desc_sub.setObjectName("mutedLabel")
         hero_desc_sub.setFont(ThemeManager.get_ui_font(12))
@@ -330,7 +343,7 @@ class MainWindow(QMainWindow):
 
         # Status Cards Row (Speech Engine, AI Formatter, Audio Input)
         status_row = QHBoxLayout()
-        status_row.setSpacing(12)
+        status_row.setSpacing(10)
 
         self.model_card = self._create_mini_status_card("SPEECH ENGINE", "Whisper", "Ready")
         self.gemini_card = self._create_mini_status_card("AI FORMATTING", "Gemini", "Active")
@@ -345,12 +358,12 @@ class MainWindow(QMainWindow):
         practice_card = QFrame()
         practice_card.setObjectName("card")
         practice_layout = QVBoxLayout(practice_card)
-        practice_layout.setContentsMargins(18, 18, 18, 18)
-        practice_layout.setSpacing(10)
+        practice_layout.setContentsMargins(16, 14, 16, 14)
+        practice_layout.setSpacing(8)
 
         practice_header = QHBoxLayout()
         p_title = QLabel("Try It Here")
-        p_title.setFont(ThemeManager.get_ui_font(14, weight=QFont.Weight.DemiBold))
+        p_title.setFont(ThemeManager.get_ui_font(13, weight=QFont.Weight.DemiBold))
         practice_header.addWidget(p_title)
 
         practice_header.addStretch()
@@ -363,11 +376,12 @@ class MainWindow(QMainWindow):
         practice_sub = QLabel("Focus the box below, hold your voice shortcut, and speak. Watch text format and appear instantly.")
         practice_sub.setObjectName("mutedLabel")
         practice_sub.setFont(ThemeManager.get_ui_font(12))
+        practice_sub.setWordWrap(True)
         practice_layout.addWidget(practice_sub)
 
         self.practice_text = QTextEdit()
         self.practice_text.setPlaceholderText("Click here and hold your voice key to practice...")
-        self.practice_text.setFixedHeight(85)
+        self.practice_text.setFixedHeight(80)
         practice_layout.addWidget(self.practice_text)
 
         layout.addWidget(practice_card)
@@ -376,12 +390,12 @@ class MainWindow(QMainWindow):
         recent_card = QFrame()
         recent_card.setObjectName("card")
         recent_layout = QVBoxLayout(recent_card)
-        recent_layout.setContentsMargins(18, 18, 18, 18)
-        recent_layout.setSpacing(12)
+        recent_layout.setContentsMargins(16, 14, 16, 14)
+        recent_layout.setSpacing(10)
 
         recent_header = QHBoxLayout()
         recent_title = QLabel("Recent Dictations")
-        recent_title.setFont(ThemeManager.get_ui_font(14, weight=QFont.Weight.DemiBold))
+        recent_title.setFont(ThemeManager.get_ui_font(13, weight=QFont.Weight.DemiBold))
         recent_header.addWidget(recent_title)
 
         recent_header.addStretch()
@@ -392,7 +406,7 @@ class MainWindow(QMainWindow):
         recent_layout.addLayout(recent_header)
 
         self.recent_items_layout = QVBoxLayout()
-        self.recent_items_layout.setSpacing(8)
+        self.recent_items_layout.setSpacing(6)
         recent_layout.addLayout(self.recent_items_layout)
 
         layout.addWidget(recent_card)
@@ -405,12 +419,12 @@ class MainWindow(QMainWindow):
         card = QFrame()
         card.setObjectName("surfaceCard")
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(14, 12, 14, 12)
-        layout.setSpacing(4)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(3)
 
         tag_lbl = QLabel(tag)
         tag_lbl.setObjectName("mutedLabel")
-        tag_lbl.setFont(ThemeManager.get_mono_font(10))
+        tag_lbl.setFont(ThemeManager.get_ui_font(10, weight=QFont.Weight.Medium))
         layout.addWidget(tag_lbl)
 
         title_lbl = QLabel(title)
@@ -420,7 +434,7 @@ class MainWindow(QMainWindow):
 
         status_lbl = QLabel(status)
         status_lbl.setObjectName("cardStatus")
-        status_lbl.setFont(ThemeManager.get_ui_font(12))
+        status_lbl.setFont(ThemeManager.get_ui_font(11))
         layout.addWidget(status_lbl)
 
         card.status_label = status_lbl
@@ -439,23 +453,23 @@ class MainWindow(QMainWindow):
         if self.config.offline_mode:
             self.gemini_card.title_label.setText("Pure Offline")
             self.gemini_card.status_label.setText("Speech never sent out")
-            self.sidebar_dot.setStyleSheet("color: #9497A1;")
+            self.sidebar_dot.setStyleSheet("color: #8E8E93;")
             self.sidebar_status_text.setText("Offline")
         elif not self.config.gemini_enabled:
             self.gemini_card.title_label.setText("Raw STT Only")
             self.gemini_card.status_label.setText("Gemini formatting disabled")
-            self.sidebar_dot.setStyleSheet("color: #9497A1;")
+            self.sidebar_dot.setStyleSheet("color: #8E8E93;")
             self.sidebar_status_text.setText("Ready (Raw)")
         elif self.gemini.circuit_breaker.is_paused:
             rem = self.gemini.circuit_breaker.remaining_cooldown_sec
             self.gemini_card.title_label.setText("Circuit Breaker")
             self.gemini_card.status_label.setText(f"Paused ({rem}s remaining)")
-            self.sidebar_dot.setStyleSheet("color: #F5B942;")  # amber
+            self.sidebar_dot.setStyleSheet("color: #FF9F0A;")  # macOS amber
             self.sidebar_status_text.setText("AI Paused")
         else:
             self.gemini_card.title_label.setText("Gemini Active")
             self.gemini_card.status_label.setText(self.config.gemini_model)
-            self.sidebar_dot.setStyleSheet("color: #3DD68C;")  # green
+            self.sidebar_dot.setStyleSheet("color: #30D158;")  # macOS green
             self.sidebar_status_text.setText("Ready")
 
         # 3. Audio input
@@ -527,17 +541,17 @@ class MainWindow(QMainWindow):
     def _create_history_view(self) -> QWidget:
         container = QWidget()
         layout = QVBoxLayout(container)
-        layout.setContentsMargins(28, 28, 28, 28)
+        layout.setContentsMargins(36, 30, 36, 28)
         layout.setSpacing(14)
 
         # Header Bar
         header = QHBoxLayout()
-        title = QLabel("Dictation History")
-        title.setFont(ThemeManager.get_ui_font(20, weight=QFont.Weight.Bold))
+        title = QLabel("History")
+        title.setFont(ThemeManager.get_display_font(28, weight=QFont.Weight.Bold))
         header.addWidget(title)
         header.addStretch()
 
-        clear_btn = QPushButton("Clear History...")
+        clear_btn = QPushButton("Clear History…")
         clear_btn.setObjectName("secondaryBtn")
         clear_btn.clicked.connect(self._on_clear_history)
         header.addWidget(clear_btn)
@@ -545,10 +559,10 @@ class MainWindow(QMainWindow):
 
         # Search Bar & Filter Chips
         filter_bar = QHBoxLayout()
-        filter_bar.setSpacing(10)
+        filter_bar.setSpacing(8)
 
         self.history_search = QLineEdit()
-        self.history_search.setPlaceholderText("Search transcription text, app name, or dates...")
+        self.history_search.setPlaceholderText("Search transcription text, app name, or dates…")
         self.history_search.textChanged.connect(self._on_search_history)
         filter_bar.addWidget(self.history_search, 1)
 
@@ -577,6 +591,7 @@ class MainWindow(QMainWindow):
         # Splitter: Table on left, Detail inspector on right
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setObjectName("historySplitter")
+        splitter.setHandleWidth(1)
 
         # Table widget
         self.history_table = QTableWidget(0, 3)
@@ -587,6 +602,9 @@ class MainWindow(QMainWindow):
         self.history_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.history_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.history_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.history_table.verticalHeader().setVisible(False)
+        self.history_table.setShowGrid(False)
+        self.history_table.setAlternatingRowColors(True)
         self.history_table.itemSelectionChanged.connect(self._on_history_selection_changed)
         splitter.addWidget(self.history_table)
 
@@ -594,25 +612,32 @@ class MainWindow(QMainWindow):
         detail_card = QFrame()
         detail_card.setObjectName("card")
         d_layout = QVBoxLayout(detail_card)
-        d_layout.setContentsMargins(16, 16, 16, 16)
-        d_layout.setSpacing(10)
+        d_layout.setContentsMargins(14, 14, 14, 14)
+        d_layout.setSpacing(8)
 
-        self.detail_meta = QLabel("Select an entry to view full details")
+        self.detail_meta = QLabel("Select an entry to view details.")
         self.detail_meta.setObjectName("mutedLabel")
-        self.detail_meta.setFont(ThemeManager.get_ui_font(12))
+        self.detail_meta.setFont(ThemeManager.get_ui_font(11))
+        self.detail_meta.setWordWrap(True)
         d_layout.addWidget(self.detail_meta)
 
-        d_layout.addWidget(QLabel("Formatted Output:"))
+        fmt_label = QLabel("Formatted Output")
+        fmt_label.setFont(ThemeManager.get_ui_font(11, weight=QFont.Weight.DemiBold))
+        fmt_label.setObjectName("mutedLabel")
+        d_layout.addWidget(fmt_label)
         self.detail_formatted = QTextEdit()
         self.detail_formatted.setReadOnly(True)
         self.detail_formatted.setFont(ThemeManager.get_ui_font(13))
         d_layout.addWidget(self.detail_formatted, 2)
 
-        d_layout.addWidget(QLabel("Raw Whisper Transcription:"))
+        raw_label = QLabel("Raw Whisper Transcription")
+        raw_label.setFont(ThemeManager.get_ui_font(11, weight=QFont.Weight.DemiBold))
+        raw_label.setObjectName("mutedLabel")
+        d_layout.addWidget(raw_label)
         self.detail_raw = QTextEdit()
         self.detail_raw.setReadOnly(True)
         self.detail_raw.setFont(ThemeManager.get_mono_font(12))
-        self.detail_raw.setFixedHeight(80)
+        self.detail_raw.setFixedHeight(72)
         d_layout.addWidget(self.detail_raw, 1)
 
         copy_full_btn = QPushButton("Copy Formatted Text")
@@ -621,7 +646,7 @@ class MainWindow(QMainWindow):
         d_layout.addWidget(copy_full_btn)
 
         splitter.addWidget(detail_card)
-        splitter.setSizes([480, 360])
+        splitter.setSizes([460, 340])
         layout.addWidget(splitter, 1)
 
         return container
@@ -651,7 +676,7 @@ class MainWindow(QMainWindow):
                 if it.processed_text == it.raw_transcription:
                     continue
             elif self._history_filter == "offline":
-                if it.processed_text != it.raw_transcription and "inserted" in it.status:
+                if "offline" not in it.status.lower() and it.processed_text != it.raw_transcription:
                     continue
             filtered.append(it)
 
@@ -716,12 +741,12 @@ class MainWindow(QMainWindow):
 
         container = QWidget()
         layout = QVBoxLayout(container)
-        layout.setContentsMargins(36, 32, 36, 32)
-        layout.setSpacing(24)
+        layout.setContentsMargins(36, 30, 36, 30)
+        layout.setSpacing(18)
 
         # Header
         header = QLabel("Settings")
-        header.setFont(ThemeManager.get_ui_font(20, weight=QFont.Weight.Bold))
+        header.setFont(ThemeManager.get_display_font(28, weight=QFont.Weight.Bold))
         layout.addWidget(header)
 
         # Section 1: General & Shortcuts
@@ -740,6 +765,19 @@ class MainWindow(QMainWindow):
             self.shortcut_combo.addItem("Alt + Space", "alt_space")
             self.shortcut_combo.addItem("Control + Shift + Space", "ctrl_shift_space")
         s1_form.addRow("Voice Shortcut:", self.shortcut_combo)
+
+        if sys.platform == "darwin":
+            kb_row = QHBoxLayout()
+            kb_hint = QLabel("Set 'Press Globe key to' to 'Do Nothing' in macOS Keyboard Settings.")
+            kb_hint.setStyleSheet("color: #8E8E93; font-size: 11px;")
+            kb_row.addWidget(kb_hint, 1)
+
+            kb_btn = QPushButton("Keyboard Settings...")
+            kb_btn.setObjectName("secondaryBtn")
+            kb_btn.setStyleSheet("font-size: 11px; padding: 3px 8px;")
+            kb_btn.clicked.connect(PermissionsManager.open_keyboard_settings)
+            kb_row.addWidget(kb_btn)
+            s1_form.addRow("", kb_row)
 
         self.ptt_check = QCheckBox("Push-to-Talk (Hold shortcut to speak, release to format and insert)")
         s1_form.addRow("Trigger Mode:", self.ptt_check)
@@ -846,11 +884,11 @@ class MainWindow(QMainWindow):
         frame = QFrame()
         frame.setObjectName("card")
         layout = QVBoxLayout(frame)
-        layout.setContentsMargins(16, 14, 16, 16)
+        layout.setContentsMargins(16, 14, 16, 14)
         layout.setSpacing(10)
 
         lbl = QLabel(title)
-        lbl.setFont(ThemeManager.get_ui_font(14, weight=QFont.Weight.DemiBold))
+        lbl.setFont(ThemeManager.get_ui_font(13, weight=QFont.Weight.DemiBold))
         layout.addWidget(lbl)
         return frame, layout
 

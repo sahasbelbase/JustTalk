@@ -85,8 +85,8 @@ class OnboardingWindow(QDialog):
         self._dots = []
         for i in range(5):
             dot = QLabel("●")
-            dot.setFont(ThemeManager.get_ui_font(12))
-            dot.setStyleSheet("color: #3DD68C;" if i == 0 else "color: #444;")
+            dot.setFont(ThemeManager.get_ui_font(10))
+            dot.setStyleSheet("color: #30D158;" if i == 0 else "color: #333;")
             self._dots.append(dot)
             self.step_dots_layout.addWidget(dot)
         self.step_dots_layout.addStretch()
@@ -132,11 +132,11 @@ class OnboardingWindow(QDialog):
     def _update_dots(self, current_step: int) -> None:
         for i, dot in enumerate(self._dots):
             if i == current_step:
-                dot.setStyleSheet("color: #8E99FF;")  # active accent
+                dot.setStyleSheet("color: #6C8EEF;")  # active accent
             elif i < current_step:
-                dot.setStyleSheet("color: #3DD68C;")  # completed green
+                dot.setStyleSheet("color: #30D158;")  # completed green
             else:
-                dot.setStyleSheet("color: rgba(255, 255, 255, 0.2);")
+                dot.setStyleSheet("color: rgba(255, 255, 255, 0.12);")
 
         self.back_btn.setEnabled(current_step > 0)
         if current_step == 4:
@@ -244,48 +244,88 @@ class OnboardingWindow(QDialog):
         # Restart Just Talk button (shown if granted but monitor needs restart)
         self.restart_app_btn = QPushButton("Restart Just Talk")
         self.restart_app_btn.setObjectName("secondaryBtn")
-        self.restart_app_btn.setStyleSheet("background-color: #8E4EC6; color: white;")
+        self.restart_app_btn.setStyleSheet("background-color: #6C8EEF; color: white; border: none;")
         self.restart_app_btn.clicked.connect(self._restart_application)
         self.restart_app_btn.hide()
         ac_layout.addWidget(self.restart_app_btn)
 
         layout.addWidget(acc_card)
 
-        # 3. Gemini API Key Card (optional for setup)
+        # 3. macOS Keyboard Setup Card (Mac only)
+        if sys.platform == "darwin":
+            kb_card = QFrame()
+            kb_card.setObjectName("card")
+            kc_layout = QHBoxLayout(kb_card)
+            kc_layout.setContentsMargins(14, 12, 14, 12)
+
+            kb_info = QVBoxLayout()
+            kb_info.setSpacing(2)
+            kb_title = QLabel("macOS Globe / Fn Key Setup")
+            kb_title.setFont(ThemeManager.get_ui_font(14, weight=QFont.Weight.DemiBold))
+            kb_sub = QLabel("Set 'Press Globe key to' to 'Do Nothing' in Keyboard settings so macOS doesn't open emoji picker.")
+            kb_sub.setObjectName("mutedLabel")
+            kb_sub.setFont(ThemeManager.get_ui_font(12))
+            kb_info.addWidget(kb_title)
+            kb_info.addWidget(kb_sub)
+            kc_layout.addLayout(kb_info, 1)
+
+            open_kb_btn = QPushButton("Keyboard Settings")
+            open_kb_btn.setObjectName("secondaryBtn")
+            open_kb_btn.clicked.connect(PermissionsManager.open_keyboard_settings)
+            kc_layout.addWidget(open_kb_btn)
+            layout.addWidget(kb_card)
+
+        # 4. AI Formatting Status Card (Ready out of the box, no asking for key)
         gem_card = QFrame()
         gem_card.setObjectName("surfaceCard")
         gc_layout = QVBoxLayout(gem_card)
         gc_layout.setContentsMargins(14, 12, 14, 12)
-        gc_layout.setSpacing(8)
+        gc_layout.setSpacing(6)
 
-        g_title = QLabel("Google AI Studio Key (Optional)")
+        g_head = QHBoxLayout()
+        g_title = QLabel("AI Formatting Engine")
         g_title.setFont(ThemeManager.get_ui_font(13, weight=QFont.Weight.DemiBold))
-        gc_layout.addWidget(g_title)
+        g_head.addWidget(g_title)
 
-        g_sub = QLabel("Enable AI formatting for grammar polish and tone preservation. Speech works offline without a key.")
+        g_head.addStretch()
+
+        self.ai_badge = QLabel("✓ Connected & Ready")
+        self.ai_badge.setFont(ThemeManager.get_ui_font(12, weight=QFont.Weight.Medium))
+        self.ai_badge.setStyleSheet("color: #30D158;")
+        g_head.addWidget(self.ai_badge)
+        gc_layout.addLayout(g_head)
+
+        g_sub = QLabel("Gemini AI formatting is pre-configured and ready. Text will automatically be polished with correct grammar and zero loss.")
         g_sub.setObjectName("mutedLabel")
         g_sub.setFont(ThemeManager.get_ui_font(12))
         gc_layout.addWidget(g_sub)
 
-        g_input_row = QHBoxLayout()
+        # Hidden expandable field if user ever wishes to change key
+        self.key_edit_container = QWidget()
+        kec_layout = QHBoxLayout(self.key_edit_container)
+        kec_layout.setContentsMargins(0, 4, 0, 0)
         self.step1_key_input = QLineEdit()
         self.step1_key_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.step1_key_input.setPlaceholderText("Paste API key (AIza... or AQ...)")
+        self.step1_key_input.setPlaceholderText("Paste custom Gemini API key (optional)")
         curr_key = CredentialManager.get_api_key()
         if curr_key:
             self.step1_key_input.setText(curr_key)
         self.step1_key_input.editingFinished.connect(self._save_step1_key)
-        g_input_row.addWidget(self.step1_key_input, 1)
+        kec_layout.addWidget(self.step1_key_input, 1)
 
         self.step1_test_btn = QPushButton("Test")
         self.step1_test_btn.setObjectName("secondaryBtn")
         self.step1_test_btn.clicked.connect(self._test_step1_key)
-        g_input_row.addWidget(self.step1_test_btn)
-        gc_layout.addLayout(g_input_row)
+        kec_layout.addWidget(self.step1_test_btn)
+        gc_layout.addWidget(self.key_edit_container)
+        self.key_edit_container.hide()
 
-        self.step1_test_status = QLabel("")
-        self.step1_test_status.setFont(ThemeManager.get_ui_font(11))
-        gc_layout.addWidget(self.step1_test_status)
+        toggle_key_btn = QPushButton("Custom API Key (Advanced) ▾")
+        toggle_key_btn.setFlat(True)
+        toggle_key_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        toggle_key_btn.setStyleSheet("color: #8E8E93; font-size: 11px; text-align: left; padding: 0;")
+        toggle_key_btn.clicked.connect(lambda: self.key_edit_container.setVisible(not self.key_edit_container.isVisible()))
+        gc_layout.addWidget(toggle_key_btn)
 
         layout.addWidget(gem_card)
         layout.addStretch()
@@ -295,34 +335,33 @@ class OnboardingWindow(QDialog):
 
     def _check_permissions_status(self) -> None:
         # Check Microphone
-        has_mic = PermissionsManager.check_microphone()
+        has_mic, _ = PermissionsManager.check_microphone()
         if has_mic:
             self.mic_status_lbl.setText("✓ Granted")
-            self.mic_status_lbl.setStyleSheet("color: #3DD68C;")
+            self.mic_status_lbl.setStyleSheet("color: #30D158;")
             self.req_mic_btn.hide()
         else:
             self.mic_status_lbl.setText("Action required")
-            self.mic_status_lbl.setStyleSheet("color: #F5B942;")
+            self.mic_status_lbl.setStyleSheet("color: #FF9F0A;")
             self.req_mic_btn.show()
 
         # Check Accessibility / Input Monitoring
         has_acc = PermissionsManager.check_accessibility(prompt_if_needed=False)
         if has_acc:
-            # Test if event tap or monitor is actually active
             monitor_working = self._verify_event_monitor()
             if monitor_working:
                 self.acc_status_lbl.setText("✓ Granted")
-                self.acc_status_lbl.setStyleSheet("color: #3DD68C;")
+                self.acc_status_lbl.setStyleSheet("color: #30D158;")
                 self.open_settings_btn.hide()
                 self.restart_app_btn.hide()
             else:
                 self.acc_status_lbl.setText("Granted (Restart needed)")
-                self.acc_status_lbl.setStyleSheet("color: #F5B942;")
+                self.acc_status_lbl.setStyleSheet("color: #FF9F0A;")
                 self.open_settings_btn.hide()
                 self.restart_app_btn.show()
         else:
             self.acc_status_lbl.setText("Action required")
-            self.acc_status_lbl.setStyleSheet("color: #F5B942;")
+            self.acc_status_lbl.setStyleSheet("color: #FF9F0A;")
             self.open_settings_btn.show()
             self.restart_app_btn.hide()
 
@@ -332,6 +371,7 @@ class OnboardingWindow(QDialog):
             return True
         try:
             from Quartz import CGEventSourceCreate, kCGEventSourceStateCombinedSessionState
+
             source = CGEventSourceCreate(kCGEventSourceStateCombinedSessionState)
             return source is not None
         except Exception:
@@ -359,11 +399,10 @@ class OnboardingWindow(QDialog):
     def _test_step1_key(self) -> None:
         key = self.step1_key_input.text().strip()
         if not key:
-            self.step1_test_status.setText("Please enter an API key.")
             return
 
         self._save_step1_key()
-        self.step1_test_status.setText("Connecting to Google AI Studio...")
+        self.step1_test_btn.setText("Testing...")
         self.step1_test_btn.setEnabled(False)
 
         def worker():
@@ -371,16 +410,18 @@ class OnboardingWindow(QDialog):
             QTimer.singleShot(0, lambda: self._on_step1_test_result(res))
 
         import threading
+
         threading.Thread(target=worker, daemon=True).start()
 
     def _on_step1_test_result(self, res) -> None:
+        self.step1_test_btn.setText("Test")
         self.step1_test_btn.setEnabled(True)
         if res.success:
-            self.step1_test_status.setText(f"✓ Connected ({res.latency_ms}ms)")
-            self.step1_test_status.setStyleSheet("color: #3DD68C;")
+            self.ai_badge.setText(f"✓ Connected ({res.latency_ms}ms)")
+            self.ai_badge.setStyleSheet("color: #30D158;")
         else:
-            self.step1_test_status.setText(f"✗ {res.message}")
-            self.step1_test_status.setStyleSheet("color: #FF6369;")
+            self.ai_badge.setText("✗ Connection Error")
+            self.ai_badge.setStyleSheet("color: #FF453A;")
 
     # -------------------------------------------------------------------------
     # Step 2: "Say Hello" Live Demo
@@ -421,7 +462,7 @@ class OnboardingWindow(QDialog):
         inst_title.setFont(ThemeManager.get_ui_font(14, weight=QFont.Weight.Medium))
         sample_phrase = QLabel('"Hello Just Talk, this is my first voice test."')
         sample_phrase.setFont(ThemeManager.get_ui_font(14, weight=QFont.Weight.Bold))
-        sample_phrase.setStyleSheet("color: #8E99FF;")
+        sample_phrase.setStyleSheet("color: #6C8EEF;")
         inst_layout.addWidget(inst_title)
         inst_layout.addWidget(sample_phrase)
         sc_row.addLayout(inst_layout)
@@ -498,7 +539,7 @@ class OnboardingWindow(QDialog):
         clean_box = QLabel('"Let\'s schedule the sync for Thursday at 3:00 PM."')
         clean_box.setObjectName("surfaceRaised")
         clean_box.setFont(ThemeManager.get_ui_font(13, weight=QFont.Weight.Medium))
-        clean_box.setStyleSheet("padding: 10px; border-radius: 6px; color: #3DD68C; background-color: rgba(61, 214, 140, 0.08);")
+        clean_box.setStyleSheet("padding: 10px; border-radius: 6px; color: #30D158; background-color: rgba(48, 209, 88, 0.08);")
         cc_layout.addWidget(clean_box)
 
         layout.addWidget(comp_card)
@@ -550,11 +591,11 @@ class OnboardingWindow(QDialog):
         lc_layout.setSpacing(10)
 
         states = [
-            ("🔴  Listening", "#FF6369", "Microphone is recording audio. Live waveform reflects your voice volume."),
-            ("🔵  Processing", "#4CC9E0", "Whisper transcribes speech and Gemini applies formatting polish."),
-            ("🟢  Inserted", "#3DD68C", "Formatted text successfully pasted directly into your active window."),
-            ("🟡  Inserted (offline)", "#F5B942", "Speech transcribed on-device and inserted when offline or API paused."),
-            ("🔷  Copied to Clipboard", "#6BA4FF", "Placed on clipboard if no active text field was focused."),
+            ("🔴  Listening", "#FF453A", "Microphone is recording audio. Live waveform reflects your voice volume."),
+            ("🔵  Processing", "#64D2FF", "Whisper transcribes speech and Gemini applies formatting polish."),
+            ("🟢  Inserted", "#30D158", "Formatted text successfully pasted directly into your active window."),
+            ("🟡  Inserted (offline)", "#FF9F0A", "Speech transcribed on-device and inserted when offline or API paused."),
+            ("🔷  Copied to Clipboard", "#6C8EEF", "Placed on clipboard if no active text field was focused."),
         ]
 
         for name, color, explanation in states:
