@@ -1,12 +1,13 @@
-"""Main desktop application controller for Just Talk."""
-
-from __future__ import annotations
-
+import multiprocessing
 import sys
 import threading
 import time
 from pathlib import Path
 from typing import Optional
+
+# CRITICAL FOR PYINSTALLER & MULTIPROCESSING:
+# Must call freeze_support immediately to prevent child processes from re-launching the main app!
+multiprocessing.freeze_support()
 
 # CRITICAL FIX FOR WINDOWS TASKBAR PINNING:
 # Must set AppUserModelID before initializing any UI/QApplication,
@@ -124,8 +125,8 @@ class JustTalkApp:
         )
         self.tray.show()
 
-        # Check OS permissions
-        PermissionsManager.check_accessibility(prompt_if_needed=True)
+        # Check OS permissions quietly without intrusive popup dialogs
+        PermissionsManager.check_accessibility(prompt_if_needed=False)
         PermissionsManager.check_microphone()
 
         # Warm up the selected Whisper model in a background thread for instant response
@@ -292,15 +293,27 @@ class JustTalkApp:
 
 def main() -> None:
     """Desktop application entrypoint."""
+    multiprocessing.freeze_support()
+
     app = QApplication(sys.argv)
     app.setApplicationName("Just Talk")
     app.setOrganizationName("JustTalk")
     app.setQuitOnLastWindowClosed(False)  # Stays alive in system tray
 
+    # Enforce strict single-instance lock
+    from .single_instance import SingleInstanceManager
+    single_instance = SingleInstanceManager()
+    if not single_instance.try_lock():
+        print("[JustTalk] Another instance of Just Talk is already running. Focused existing window. Exiting.")
+        sys.exit(0)
+
     controller = JustTalkApp()
+    single_instance.on_activate = controller.open_settings
     controller.initialize_ui(app)
 
-    sys.exit(app.exec())
+    exit_code = app.exec()
+    single_instance.cleanup()
+    sys.exit(exit_code)
 
 
 if __name__ == "__main__":

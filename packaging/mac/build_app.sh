@@ -24,7 +24,11 @@ if [ -d "$APP_PATH" ]; then
     mkdir -p "$APP_PATH/Contents/Resources"
     cp just_talk/assets/icon.icns "$APP_PATH/Contents/Resources/AppIcon.icns"
 
-    echo "--> JustTalk.app successfully built at: $APP_PATH"
+    # Crucial: Re-sign the bundle after copying Info.plist and AppIcon.icns so the signature seal is valid!
+    echo "--> Signing application bundle with stable identifier com.justtalk.desktop..."
+    codesign --force --deep --sign - --identifier "com.justtalk.desktop" "$APP_PATH"
+
+    echo "--> JustTalk.app successfully built and signed at: $APP_PATH"
 
     # 3. Create DMG if hdiutil is present
     DMG_PATH="dist/JustTalk-macOS.dmg"

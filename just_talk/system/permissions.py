@@ -10,7 +10,7 @@ class PermissionsManager:
     """Verifies and prompts for necessary operating system permissions."""
 
     @staticmethod
-    def check_accessibility(prompt_if_needed: bool = True) -> bool:
+    def check_accessibility(prompt_if_needed: bool = False) -> bool:
         """
         Check if application has macOS Accessibility permissions.
         On Windows / Linux, returns True.
@@ -21,6 +21,7 @@ class PermissionsManager:
         try:
             from ApplicationServices import AXIsProcessTrustedWithOptions, kAXTrustedCheckOptionPrompt
 
+            # Only prompt if explicitly requested (e.g. from Settings button)
             options = {kAXTrustedCheckOptionPrompt: prompt_if_needed}
             trusted = AXIsProcessTrustedWithOptions(options)
             return bool(trusted)
