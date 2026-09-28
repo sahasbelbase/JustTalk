@@ -1,0 +1,77 @@
+name: Build Desktop Installers (macOS & Windows)
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-macos:
+    name: Build macOS (.dmg)
+    runs-on: macos-14
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Setup Python
+        run: uv python install 3.11
+
+      - name: Install Dependencies
+        run: uv sync
+
+      - name: Run Test Suite
+        run: uv run pytest
+
+      - name: Build macOS .app and .dmg
+        run: |
+          chmod +x packaging/mac/build_app.sh
+          ./packaging/mac/build_app.sh
+
+      - name: Upload macOS Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: JustTalk-macOS-DMG
+          path: dist/JustTalk-macOS.dmg
+          if-no-files-found: error
+
+  build-windows:
+    name: Build Windows (.exe)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Setup Python
+        run: uv python install 3.11
+
+      - name: Install Dependencies
+        run: uv sync
+
+      - name: Run Test Suite
+        run: uv run pytest
+
+      - name: Build Windows .exe Installer
+        run: powershell -ExecutionPolicy Bypass -File packaging/windows/build_exe.ps1
+
+      - name: Upload Windows Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: JustTalk-Windows-Setup-EXE
+          path: dist/windows_installer/*.exe
+          if-no-files-found: error
