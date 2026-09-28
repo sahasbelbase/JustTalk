@@ -8,7 +8,7 @@ import numpy as np
 class VoiceActivityDetector:
     """Lightweight energy-based VAD to filter out background silence and accidental taps."""
 
-    def __init__(self, energy_threshold: float = 0.005, min_speech_duration_sec: float = 0.25):
+    def __init__(self, energy_threshold: float = 0.0005, min_speech_duration_sec: float = 0.1):
         self.energy_threshold = energy_threshold
         self.min_speech_duration_sec = min_speech_duration_sec
 
@@ -31,8 +31,26 @@ class VoiceActivityDetector:
         if duration < self.min_speech_duration_sec:
             return False
 
+        # Peak absolute amplitude check (reject flatline silence)
+        peak_amp = float(np.max(np.abs(audio)))
+        if peak_amp < 0.002:
+            return False
+
+        # Global RMS check
         rms = self.calculate_rms(audio)
-        return rms >= self.energy_threshold
+        if rms >= self.energy_threshold:
+            return True
+
+        # Sliding window check: detects speech even if diluted by pauses/silence
+        chunk_size = int(sample_rate * 0.1)  # 100ms
+        if len(audio) >= chunk_size:
+            hop = chunk_size // 2
+            for i in range(0, len(audio) - chunk_size + 1, hop):
+                chunk_rms = self.calculate_rms(audio[i : i + chunk_size])
+                if chunk_rms >= self.energy_threshold:
+                    return True
+
+        return peak_amp >= 0.008
 
     @staticmethod
     def trim_silence(audio: np.ndarray, threshold: float = 0.008, pad_samples: int = 1600) -> np.ndarray:

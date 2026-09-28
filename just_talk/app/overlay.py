@@ -87,6 +87,8 @@ class FloatingPillOverlay(QWidget):
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        if sys.platform == "darwin":
+            self.setAttribute(Qt.WidgetAttribute.WA_MacAlwaysShowToolWindow, True)
         self.setMouseTracking(True)
 
         # Timers
@@ -126,7 +128,7 @@ class FloatingPillOverlay(QWidget):
     fadeOpacity = Property(float, _get_fade, _set_fade)
 
     def _apply_native_window_attributes(self) -> None:
-        """Allow overlay to appear over full-screen apps and across all macOS spaces."""
+        """Allow overlay to appear over full-screen apps, VS Code, and across all macOS spaces."""
         if sys.platform == "darwin":
             try:
                 import ctypes
@@ -134,19 +136,42 @@ class FloatingPillOverlay(QWidget):
                 from AppKit import (
                     NSWindowCollectionBehaviorCanJoinAllSpaces,
                     NSWindowCollectionBehaviorFullScreenAuxiliary,
+                    NSWindowCollectionBehaviorMoveToActiveSpace,
+                    NSWindowCollectionBehaviorTransient,
+                    NSWindowCollectionBehaviorIgnoresCycle,
                 )
+                from Quartz import CGWindowLevelForKey, kCGScreenSaverWindowLevelKey
 
                 view_ptr = int(self.winId())
                 c_void_p = ctypes.c_void_p(view_ptr)
                 ns_view = objc.objc_object(c_void_p=c_void_p)
                 ns_window = ns_view.window()
                 if ns_window:
-                    behavior = ns_window.collectionBehavior()
-                    ns_window.setCollectionBehavior_(
-                        behavior
-                        | NSWindowCollectionBehaviorCanJoinAllSpaces
+                    # Level 1000 guarantees floating above VS Code, Chrome, Terminal, and full-screen windows
+                    ns_window.setLevel_(CGWindowLevelForKey(kCGScreenSaverWindowLevelKey))
+                    behavior = (
+                        NSWindowCollectionBehaviorCanJoinAllSpaces
                         | NSWindowCollectionBehaviorFullScreenAuxiliary
+                        | NSWindowCollectionBehaviorMoveToActiveSpace
+                        | NSWindowCollectionBehaviorTransient
+                        | NSWindowCollectionBehaviorIgnoresCycle
                     )
+                    ns_window.setCollectionBehavior_(behavior)
+            except Exception:
+                pass
+
+    def _bring_to_front_mac(self) -> None:
+        """Force window to the very front of all applications without stealing keyboard focus."""
+        if sys.platform == "darwin":
+            try:
+                import ctypes
+                import objc
+
+                c_void_p = ctypes.c_void_p(int(self.winId()))
+                ns_view = objc.objc_object(c_void_p=c_void_p)
+                ns_window = ns_view.window()
+                if ns_window:
+                    ns_window.orderFrontRegardless()
             except Exception:
                 pass
 
@@ -154,12 +179,30 @@ class FloatingPillOverlay(QWidget):
         """Position pill at bottom-center of active display."""
         from PySide6.QtGui import QCursor, QGuiApplication
 
-        cursor_pos = QCursor.pos()
-        screen = QGuiApplication.screenAt(cursor_pos) or QGuiApplication.primaryScreen()
-        if screen:
-            geom = screen.availableGeometry()
-            x = geom.x() + (geom.width() - self.width()) // 2
-            y = geom.y() + geom.height() - self.height() - 44
+        target_geom = None
+        if sys.platform == "darwin":
+            try:
+                from AppKit import NSScreen
+                main_screen = NSScreen.mainScreen()
+                if main_screen:
+                    mf = main_screen.frame()
+                    for qs in QGuiApplication.screens():
+                        qg = qs.geometry()
+                        if abs(qg.width() - mf.size.width) < 5 and abs(qg.height() - mf.size.height) < 5:
+                            target_geom = qs.availableGeometry()
+                            break
+            except Exception:
+                pass
+
+        if target_geom is None:
+            cursor_pos = QCursor.pos()
+            screen = QGuiApplication.screenAt(cursor_pos) or QGuiApplication.primaryScreen()
+            if screen:
+                target_geom = screen.availableGeometry()
+
+        if target_geom:
+            x = target_geom.x() + (target_geom.width() - self.width()) // 2
+            y = target_geom.y() + target_geom.height() - self.height() - 44
             self.move(x, y)
 
     # -------------------------------------------------------------------------
@@ -181,6 +224,8 @@ class FloatingPillOverlay(QWidget):
 
         self._reposition()
         self.show()
+        self._apply_native_window_attributes()
+        self._bring_to_front_mac()
 
         # Pop in animation
         self._anim = QPropertyAnimation(self, b"morphProgress")
@@ -210,6 +255,7 @@ class FloatingPillOverlay(QWidget):
         self._state = self.STATE_PROCESSING
         self._status_text = text
         self._pill_width = 175.0
+        self._bring_to_front_mac()
         self.update()
 
     def show_inserted(self) -> None:
@@ -217,6 +263,7 @@ class FloatingPillOverlay(QWidget):
         self._state = self.STATE_INSERTED
         self._status_text = "Inserted"
         self._pill_width = 150.0
+        self._bring_to_front_mac()
         self.update()
         self._auto_hide_timer.start(1100)
 
@@ -225,6 +272,7 @@ class FloatingPillOverlay(QWidget):
         self._state = self.STATE_INSERTED_OFFLINE
         self._status_text = "Inserted (offline)"
         self._pill_width = 190.0
+        self._bring_to_front_mac()
         self.update()
         self._auto_hide_timer.start(1400)
 
@@ -233,6 +281,7 @@ class FloatingPillOverlay(QWidget):
         self._state = self.STATE_COPIED
         self._status_text = "Copied"
         self._pill_width = 145.0
+        self._bring_to_front_mac()
         self.update()
         self._auto_hide_timer.start(1300)
 
@@ -242,6 +291,7 @@ class FloatingPillOverlay(QWidget):
         self._status_text = message
         self._pill_width = 200.0
         self._shake_start = time.time()
+        self._bring_to_front_mac()
         self.update()
         self._auto_hide_timer.start(1500)
 

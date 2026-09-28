@@ -45,6 +45,9 @@ class MacHotkeyMonitor:
         self._lock = threading.Lock()
         self._is_active = False
         self._is_action_mode = False
+        self._is_toggle_mode = False
+        self._press_start_time = 0.0
+        self._toggle_start_time = 0.0
 
         # Quartz Tap references
         self._tap = None
@@ -56,6 +59,13 @@ class MacHotkeyMonitor:
         self._global_monitor = None
         self._local_monitor = None
         self._running = False
+
+    def reset_state(self) -> None:
+        """Reset internal active and toggle flags to idle."""
+        with self._lock:
+            self._is_active = False
+            self._is_toggle_mode = False
+            self._is_action_mode = False
 
     def start(self) -> bool:
         if sys.platform != "darwin":
@@ -85,31 +95,53 @@ class MacHotkeyMonitor:
         return tap_ok or (self._global_monitor is not None)
 
     def _handle_state_change(self, is_down: bool, is_shift: bool) -> None:
-        """Thread-safe handler for key transitions."""
+        """Thread-safe handler for key transitions with Typeless-style hybrid hold & tap logic."""
+        import time
+
+        now = time.time()
         with self._lock:
-            if self.push_to_talk:
-                if is_down and not self._is_active:
+            if is_down:
+                if not self._is_active:
+                    # Key down: start recording immediately
                     self._is_active = True
+                    self._is_toggle_mode = False
+                    self._press_start_time = now
                     self._is_action_mode = is_shift
                     try:
                         self.on_start_recording(self._is_action_mode)
                     except Exception as e:
                         print(f"[MacHotkeyMonitor] on_start error: {e}", file=sys.stderr)
-                elif not is_down and self._is_active:
-                    self._is_active = False
-                    self._is_action_mode = False
-                    try:
-                        self.on_stop_recording()
-                    except Exception as e:
-                        print(f"[MacHotkeyMonitor] on_stop error: {e}", file=sys.stderr)
+                else:
+                    # Already active in hands-free toggle mode: a new key down stops recording!
+                    if self._is_toggle_mode and (now - self._toggle_start_time > 0.35):
+                        self._is_active = False
+                        self._is_toggle_mode = False
+                        try:
+                            self.on_stop_recording()
+                        except Exception as e:
+                            print(f"[MacHotkeyMonitor] on_stop error: {e}", file=sys.stderr)
             else:
-                # Toggle mode: trigger on key down edge
-                if is_down:
-                    self._is_active = not self._is_active
-                    if self._is_active:
-                        self.on_start_recording(is_shift)
+                # Key up (release)
+                if self._is_active and not self._is_toggle_mode:
+                    duration = now - self._press_start_time
+                    if not self.push_to_talk:
+                        # Explicit toggle mode configured
+                        self._is_toggle_mode = True
+                        self._toggle_start_time = now
+                    elif duration >= 0.35:
+                        # User held the key (Push-to-Talk) -> stop immediately on release!
+                        self._is_active = False
+                        self._is_action_mode = False
+                        try:
+                            self.on_stop_recording()
+                        except Exception as e:
+                            print(f"[MacHotkeyMonitor] on_stop error: {e}", file=sys.stderr)
                     else:
-                        self.on_stop_recording()
+                        # User tapped the key quickly (< 350ms)!
+                        # Keep recording in hands-free mode so user can speak comfortably without holding!
+                        self._is_toggle_mode = True
+                        self._toggle_start_time = now
+                        print("[MacHotkeyMonitor] Switched to hands-free toggle mode (quick tap).")
 
     def _run_tap_thread(self, ready_event: threading.Event, success_container: list[bool]) -> None:
         try:

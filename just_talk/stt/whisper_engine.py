@@ -85,6 +85,19 @@ class WhisperSTTEngine(STTEngine):
 
                 text_pieces = [segment.text.strip() for segment in segments]
                 result = " ".join(t for t in text_pieces if t)
+
+                # Fallback: if VAD was overly aggressive and returned empty on valid audio, retry without vad_filter
+                if not result and len(audio) >= 3200:
+                    segments_raw, _ = self._model.transcribe(
+                        audio,
+                        beam_size=1,
+                        language=language,
+                        vad_filter=False,
+                        condition_on_previous_text=False,
+                    )
+                    fallback_pieces = [s.text.strip() for s in segments_raw]
+                    result = " ".join(t for t in fallback_pieces if t)
+
                 return result
             except Exception as e:
                 print(f"[STT] Transcription error: {e}", file=sys.stderr)

@@ -178,6 +178,7 @@ class JustTalkApp:
             is_trusted = PermissionsManager.check_accessibility(prompt_if_needed=True)
             if not is_trusted:
                 print("[Main] Accessibility permission requested from user.", file=sys.stderr)
+                self._start_accessibility_watcher()
         PermissionsManager.check_microphone()
 
         # 6. Warm up Whisper model in background
@@ -201,6 +202,31 @@ class JustTalkApp:
             self.show_onboarding()
         elif not self.config.start_minimized:
             self.open_main_window("home")
+
+    def _start_accessibility_watcher(self) -> None:
+        """Poll AXIsProcessTrusted periodically until granted, then seamlessly reload shortcuts."""
+        from PySide6.QtCore import QTimer
+
+        if hasattr(self, "_acc_timer") and self._acc_timer.isActive():
+            return
+        self._acc_timer = QTimer(self.bridge)
+        self._acc_timer.setInterval(1500)
+
+        def check_and_reload():
+            if PermissionsManager.check_accessibility(prompt_if_needed=False):
+                self._acc_timer.stop()
+                print("[Main] Accessibility permission granted! Re-hooking shortcuts.", file=sys.stderr)
+                if self.shortcut_manager:
+                    self.shortcut_manager.reload(
+                        shortcut=self.config.shortcut,
+                        action_shortcut=self.config.action_shortcut,
+                        push_to_talk=self.config.push_to_talk,
+                    )
+                if self.main_window:
+                    self.main_window._refresh_home_status()
+
+        self._acc_timer.timeout.connect(check_and_reload)
+        self._acc_timer.start()
 
     def _on_system_color_scheme_changed(self, app: QApplication) -> None:
         """Handle live OS theme change."""
@@ -236,10 +262,14 @@ class JustTalkApp:
     def _on_cancel_recording(self) -> None:
         """User cancelled recording via the overlay [ ✕ ] button."""
         self.recorder.stop()
+        if self.shortcut_manager:
+            self.shortcut_manager.reset_state()
         self.bridge.state_error.emit("Cancelled")
 
     def on_stop_recording(self) -> None:
-        """Triggered when push-to-talk shortcut is released."""
+        """Triggered when push-to-talk shortcut is released or checkmark is clicked."""
+        if self.shortcut_manager:
+            self.shortcut_manager.reset_state()
         audio = self.recorder.stop()
         if audio is None or len(audio) == 0:
             self.bridge.state_error.emit("No audio")
@@ -247,7 +277,10 @@ class JustTalkApp:
 
         # Voice Activity Detection: Filter out accidental taps and pure silence
         if not self.vad.is_speech_present(audio):
-            self.bridge.state_error.emit("No speech detected")
+            if len(audio) / 16000 >= 0.25:
+                self.bridge.state_error.emit("No speech detected")
+            else:
+                self.overlay.hide_overlay()
             return
 
         self.bridge.state_processing.emit("Transcribing...")
