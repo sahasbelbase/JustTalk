@@ -1,0 +1,28 @@
+[project]
+name = "just_talk"
+version = "1.0.0"
+description = "Lightweight Desktop Voice Input with Gemini Formatting"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "faster-whisper>=1.2.1",
+    "google-genai>=2.25.0",
+    "httpx>=0.28.1",
+    "keyring>=25.7.0",
+    "numpy>=2.4.6",
+    "pillow>=12.3.0",
+    "pyinstaller>=6.22.3",
+    "pynput>=1.8.2",
+    "pyperclip>=1.11.0",
+    "pyside6>=6.11.2",
+    "pytest>=9.1.1",
+    "scipy>=1.17.1",
+    "sounddevice>=0.5.6",
+]
+
+[project.scripts]
+justtalk = "just_talk.app.main:main"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

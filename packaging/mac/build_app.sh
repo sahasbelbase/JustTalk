@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Automated build script for JustTalk macOS Application (.app & .dmg)
+set -e
+
+echo "=== Building Just Talk for macOS ==="
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$PROJECT_DIR"
+
+# 1. Generate icon assets if not present
+echo "--> Generating icons..."
+uv run python just_talk/assets/generate_icons.py
+
+# 2. Compile standalone bundle via PyInstaller
+echo "--> Compiling application with PyInstaller..."
+uv run pyinstaller --clean -y packaging/justtalk.spec
+
+APP_PATH="dist/JustTalk.app"
+
+if [ -d "$APP_PATH" ]; then
+    echo "--> Verifying application bundle..."
+    # Ensure Info.plist is in place
+    cp packaging/mac/Info.plist "$APP_PATH/Contents/Info.plist"
+    # Ensure AppIcon.icns is in Resources
+    mkdir -p "$APP_PATH/Contents/Resources"
+    cp just_talk/assets/icon.icns "$APP_PATH/Contents/Resources/AppIcon.icns"
+
+    echo "--> JustTalk.app successfully built at: $APP_PATH"
+
+    # 3. Create DMG if hdiutil is present
+    DMG_PATH="dist/JustTalk-macOS.dmg"
+    rm -f "$DMG_PATH"
+    echo "--> Packaging into $DMG_PATH..."
+    hdiutil create -volname "Just Talk" -srcfolder "$APP_PATH" -ov -format UDZO "$DMG_PATH"
+    echo "=== Build Complete! Installer ready at $DMG_PATH ==="
+else
+    echo "Error: $APP_PATH was not created!"
+    exit 1
+fi
