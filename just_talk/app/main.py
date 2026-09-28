@@ -1,4 +1,9 @@
+"""Desktop application entrypoint and main coordinator."""
+
+from __future__ import annotations
+
 import multiprocessing
+import os
 import sys
 import threading
 import time
@@ -15,11 +20,14 @@ multiprocessing.freeze_support()
 if sys.platform == "win32":
     try:
         import ctypes
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("justtalk.desktop.voiceinput.1.0")
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            "justtalk.desktop.voiceinput.1.0"
+        )
     except Exception as e:
         print(f"[Main] Warning: Could not set AppUserModelID: {e}", file=sys.stderr)
 
-from PySide6.QtCore import QObject, Qt, Signal, Slot
+from PySide6.QtCore import QEvent, QObject, Qt, Signal, Slot
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import QApplication
 
@@ -35,9 +43,10 @@ from ..stt.model_manager import ModelManager
 from ..stt.whisper_engine import WhisperSTTEngine
 from ..system.inserter import TextInserter
 from ..system.permissions import PermissionsManager
-from .history_window import HistoryWindow
+from .main_window import MainWindow
+from .onboarding_window import OnboardingWindow
 from .overlay import FloatingPillOverlay
-from .settings_window import SettingsWindow
+from .theme import ThemeManager
 from .tray import SystemTrayManager
 
 
@@ -48,8 +57,25 @@ class AppBridge(QObject):
     state_listening = Signal(bool)
     state_processing = Signal(str)
     state_inserted = Signal()
+    state_inserted_offline = Signal()
     state_copied = Signal()
     state_error = Signal(str)
+
+
+class JustTalkApplication(QApplication):
+    """
+    Subclassed QApplication to handle macOS Dock icon clicks and reopen events.
+    """
+
+    def __init__(self, argv):
+        super().__init__(argv)
+        self.controller: Optional[JustTalkApp] = None
+
+    def event(self, event: QEvent) -> bool:
+        if event.type() == QEvent.Type.ApplicationActivate:
+            if self.controller and self.controller.main_window:
+                self.controller.open_main_window("home")
+        return super().event(event)
 
 
 class JustTalkApp:
@@ -64,8 +90,8 @@ class JustTalkApp:
         self.bridge = AppBridge()
         self.overlay: Optional[FloatingPillOverlay] = None
         self.tray: Optional[SystemTrayManager] = None
-        self.settings_window: Optional[SettingsWindow] = None
-        self.history_window: Optional[HistoryWindow] = None
+        self.main_window: Optional[MainWindow] = None
+        self.onboarding_window: Optional[OnboardingWindow] = None
 
         # Core subsystems
         self.vad = VoiceActivityDetector()
@@ -100,42 +126,62 @@ class JustTalkApp:
 
     def initialize_ui(self, app: QApplication) -> None:
         """Construct GUI windows, tray icon, and signal connections."""
+        # 1. Load fonts and apply initial theme
+        ThemeManager.load_fonts()
+        ThemeManager.apply_theme(app, self.config.appearance)
+
+        # Listen to system color scheme changes (macOS Light/Dark mode switch)
+        if hasattr(app, "styleHints") and hasattr(app.styleHints(), "colorSchemeChanged"):
+            app.styleHints().colorSchemeChanged.connect(
+                lambda: self._on_system_color_scheme_changed(app)
+            )
+
         app_icon = self.get_app_icon()
         app.setWindowIcon(app_icon)
 
+        # 2. Initialize Floating Pill Overlay
         self.overlay = FloatingPillOverlay()
-
-        # Connect Qt signals to overlay UI
         self.bridge.level_changed.connect(self.overlay.update_audio_level)
         self.bridge.state_listening.connect(self.overlay.show_listening)
         self.bridge.state_processing.connect(self.overlay.show_processing)
         self.bridge.state_inserted.connect(self.overlay.show_inserted)
+        self.bridge.state_inserted_offline.connect(self.overlay.show_inserted_offline)
         self.bridge.state_copied.connect(self.overlay.show_copied)
         self.bridge.state_error.connect(self.overlay.show_error)
 
-        # System tray
+        # 3. Initialize Main Application Window
+        self.main_window = MainWindow(
+            config=self.config,
+            db=self.db,
+            model_manager=self.model_manager,
+            gemini=self.gemini,
+            on_config_changed=self._on_config_updated,
+        )
+        self.main_window.replay_tutorial_requested.connect(self.show_onboarding)
+
+        # 4. System Tray
         self.tray = SystemTrayManager(
             config=self.config,
             icon=app_icon,
-            on_open_history=self.open_history,
-            on_open_settings=self.open_settings,
+            on_open_main=self.open_main_window,
             on_toggle_gemini=self._on_toggle_gemini,
             on_change_tier=self._on_change_tier,
             on_quit=self.quit,
+            gemini=self.gemini,
         )
         self.tray.show()
 
-        # Check OS permissions quietly without intrusive popup dialogs
+        # 5. Check permissions quietly
         PermissionsManager.check_accessibility(prompt_if_needed=False)
         PermissionsManager.check_microphone()
 
-        # Warm up the selected Whisper model in a background thread for instant response
+        # 6. Warm up Whisper model in background
         threading.Thread(
             target=lambda: self.stt_engine.load(self.config.model_tier),
             daemon=True,
         ).start()
 
-        # Register global keyboard shortcuts
+        # 7. Start keyboard shortcuts
         self.shortcut_manager = ShortcutManager(
             shortcut=self.config.shortcut,
             action_shortcut=self.config.action_shortcut,
@@ -144,6 +190,34 @@ class JustTalkApp:
             on_stop_recording=self.on_stop_recording,
         )
         self.shortcut_manager.start()
+
+        # 8. First-run onboarding check
+        if not self.config.has_completed_onboarding:
+            self.show_onboarding()
+        elif not self.config.start_minimized:
+            self.open_main_window("home")
+
+    def _on_system_color_scheme_changed(self, app: QApplication) -> None:
+        """Handle live OS theme change."""
+        if self.config.appearance == "system":
+            ThemeManager.apply_theme(app, "system")
+
+    def open_main_window(self, screen_name: Optional[str] = "home") -> None:
+        """Open or raise the main full application window."""
+        if self.main_window:
+            self.main_window.show_and_activate(screen_name)
+
+    def show_onboarding(self) -> None:
+        """Open the 5-step onboarding wizard."""
+        if not self.onboarding_window:
+            self.onboarding_window = OnboardingWindow(
+                config=self.config,
+                gemini=self.gemini,
+                on_complete=lambda: self.open_main_window("home"),
+            )
+        self.onboarding_window.show()
+        self.onboarding_window.raise_()
+        self.onboarding_window.activateWindow()
 
     def on_start_recording(self, is_action_mode: bool = False) -> None:
         """Triggered when push-to-talk shortcut is pressed."""
@@ -187,8 +261,9 @@ class JustTalkApp:
 
         # 2. Action Routing & Intent Detection
         intent = ActionRouter.parse_intent(raw_text, is_action_mode=is_action_mode)
-        final_text = raw_text
         action_name = intent.action_type
+        final_text = intent.target_payload
+        is_offline_fallback = False
 
         # 3. Gemini Formatting Layer
         use_gemini = self.config.gemini_enabled and not self.config.offline_mode
@@ -204,9 +279,15 @@ class JustTalkApp:
             if success and cleaned:
                 final_text = cleaned
             else:
-                # Zero-loss fallback: if Gemini fails or times out, use raw transcription
-                final_text = intent.target_payload
-                print(f"[Gemini Fallback]: {msg}")
+                # Zero-loss fallback: if Gemini fails or times out, use local cleaned transcript
+                final_text = cleaned
+                is_offline_fallback = True
+                print(f"[Gemini Fallback]: {CredentialManager.redact(msg)}")
+                if self.tray:
+                    self.tray.refresh_menu()
+        else:
+            final_text = GeminiFormatter.light_local_cleanup(intent.target_payload)
+            is_offline_fallback = True
 
         # 4. Text Insertion
         inserted_ok, status, active_app = self.inserter.insert(
@@ -218,11 +299,14 @@ class JustTalkApp:
 
         # 5. UI Status Feedback
         if status == "inserted":
-            self.bridge.state_inserted.emit()
+            if is_offline_fallback:
+                self.bridge.state_inserted_offline.emit()
+            else:
+                self.bridge.state_inserted.emit()
         else:
             self.bridge.state_copied.emit()
 
-        # 6. Save to local history database
+        # 6. Save to local history database (always preserving raw transcription)
         self.db.add(
             raw_transcription=raw_text,
             processed_text=final_text,
@@ -232,9 +316,15 @@ class JustTalkApp:
             duration_ms=total_latency_ms,
         )
 
+        # Refresh home recent items if visible
+        if self.main_window and self.main_window.isVisible():
+            self.main_window._refresh_home_status()
+
     def _on_toggle_gemini(self, enabled: bool) -> None:
         self.config.gemini_enabled = enabled
         self.config.save()
+        if self.main_window:
+            self.main_window._refresh_home_status()
 
     def _on_change_tier(self, tier_id: str) -> None:
         self.config.model_tier = tier_id
@@ -243,18 +333,8 @@ class JustTalkApp:
             target=lambda: self.stt_engine.load(tier_id),
             daemon=True,
         ).start()
-
-    def open_settings(self) -> None:
-        """Display settings window."""
-        if not self.settings_window:
-            self.settings_window = SettingsWindow(
-                config=self.config,
-                model_manager=self.model_manager,
-                on_config_changed=self._on_config_updated,
-            )
-        self.settings_window.show()
-        self.settings_window.raise_()
-        self.settings_window.activateWindow()
+        if self.main_window:
+            self.main_window._refresh_home_status()
 
     def _on_config_updated(self, new_config: AppConfig) -> None:
         self.config = new_config
@@ -273,15 +353,6 @@ class JustTalkApp:
             daemon=True,
         ).start()
 
-    def open_history(self) -> None:
-        """Display history window."""
-        if not self.history_window:
-            self.history_window = HistoryWindow(self.db)
-        self.history_window.load_history()
-        self.history_window.show()
-        self.history_window.raise_()
-        self.history_window.activateWindow()
-
     def quit(self) -> None:
         """Clean shutdown."""
         if self.shortcut_manager:
@@ -295,20 +366,24 @@ def main() -> None:
     """Desktop application entrypoint."""
     multiprocessing.freeze_support()
 
-    app = QApplication(sys.argv)
+    app = JustTalkApplication(sys.argv)
     app.setApplicationName("Just Talk")
     app.setOrganizationName("JustTalk")
-    app.setQuitOnLastWindowClosed(False)  # Stays alive in system tray
+    app.setQuitOnLastWindowClosed(False)  # Stays alive in system tray / background
 
     # Enforce strict single-instance lock
     from .single_instance import SingleInstanceManager
+
     single_instance = SingleInstanceManager()
     if not single_instance.try_lock():
-        print("[JustTalk] Another instance of Just Talk is already running. Focused existing window. Exiting.")
+        print(
+            "[JustTalk] Another instance of Just Talk is already running. Focused existing window. Exiting."
+        )
         sys.exit(0)
 
     controller = JustTalkApp()
-    single_instance.on_activate = controller.open_settings
+    app.controller = controller
+    single_instance.on_activate = lambda: controller.open_main_window("home")
     controller.initialize_ui(app)
 
     exit_code = app.exec()

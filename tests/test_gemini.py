@@ -6,12 +6,13 @@ from just_talk.ai.gemini import GeminiFormatter
 
 def test_gemini_missing_key_fallback():
     # If API key is None, it must return raw text with failure flag so speech is never lost
-    formatter = GeminiFormatter(api_key=None)
-    raw = "hey send me the report tomorrow"
-    out, success, msg = formatter.format_text(raw)
-    assert out == raw
-    assert success is False
-    assert "missing" in msg.lower()
+    with patch("just_talk.security.CredentialManager.get_api_key", return_value=None):
+        formatter = GeminiFormatter(api_key=None)
+        raw = "um, hey send me the report tomorrow"
+        out, success, msg = formatter.format_text(raw)
+        assert out == "Hey send me the report tomorrow."
+        assert success is False
+        assert "missing" in msg.lower()
 
 
 def test_gemini_empty_input():
