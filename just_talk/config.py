@@ -82,6 +82,14 @@ class AppConfig:
     show_idle_indicator: bool = False
     sound_effects: bool = False
 
+    @property
+    def has_completed_onboarding(self) -> bool:
+        return self.onboarding_completed
+
+    @has_completed_onboarding.setter
+    def has_completed_onboarding(self, val: bool) -> None:
+        self.onboarding_completed = val
+
     @classmethod
     def get_config_path(cls) -> Path:
         return get_app_data_dir() / "config.json"

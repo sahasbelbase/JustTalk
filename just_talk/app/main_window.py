@@ -725,8 +725,8 @@ class MainWindow(QMainWindow):
         layout.addWidget(header)
 
         # Section 1: General & Shortcuts
-        sec1 = self._create_settings_section("Trigger & General")
-        s1_form = QFormLayout(sec1)
+        sec1, sec1_layout = self._create_settings_section("Trigger & General")
+        s1_form = QFormLayout()
         s1_form.setSpacing(12)
 
         self.shortcut_combo = QComboBox()
@@ -759,11 +759,12 @@ class MainWindow(QMainWindow):
         self.minimized_check = QCheckBox("Start minimized in menu bar / system tray")
         s1_form.addRow("Window State:", self.minimized_check)
 
+        sec1_layout.addLayout(s1_form)
         layout.addWidget(sec1)
 
         # Section 2: Speech-to-Text & Microphone
-        sec2 = self._create_settings_section("Voice & Speech Recognition")
-        s2_form = QFormLayout(sec2)
+        sec2, sec2_layout = self._create_settings_section("Voice & Speech Recognition")
+        s2_form = QFormLayout()
         s2_form.setSpacing(12)
 
         self.device_combo = QComboBox()
@@ -784,23 +785,22 @@ class MainWindow(QMainWindow):
         self.download_btn.clicked.connect(self._on_download_model)
         s2_form.addRow("Model Storage:", self.download_btn)
 
+        sec2_layout.addLayout(s2_form)
         layout.addWidget(sec2)
 
         # Section 3: Hardened Gemini AI Formatting
-        sec3 = self._create_settings_section("Gemini AI Formatting")
-        s3_layout = QVBoxLayout(sec3)
-        s3_layout.setContentsMargins(16, 16, 16, 16)
+        sec3, sec3_layout = self._create_settings_section("Gemini AI Formatting")
 
         # Embedded AI Formatting View
         self.ai_view = AIFormattingView(self.config, self.gemini, parent=self)
         self.ai_view.config_changed.connect(self._on_ai_config_changed)
-        s3_layout.addWidget(self.ai_view)
+        sec3_layout.addWidget(self.ai_view)
 
         layout.addWidget(sec3)
 
         # Section 4: Appearance & Themes
-        sec4 = self._create_settings_section("Appearance & Theme")
-        s4_form = QFormLayout(sec4)
+        sec4, sec4_layout = self._create_settings_section("Appearance & Theme")
+        s4_form = QFormLayout()
         s4_form.setSpacing(12)
 
         self.theme_combo = QComboBox()
@@ -810,22 +810,20 @@ class MainWindow(QMainWindow):
         self.theme_combo.currentIndexChanged.connect(self._on_theme_changed)
         s4_form.addRow("Theme:", self.theme_combo)
 
+        sec4_layout.addLayout(s4_form)
         layout.addWidget(sec4)
 
         # Section 5: Onboarding & Help
-        sec5 = self._create_settings_section("Tutorial & Onboarding")
-        s5_layout = QVBoxLayout(sec5)
-        s5_layout.setContentsMargins(16, 16, 16, 16)
-        s5_layout.setSpacing(8)
+        sec5, sec5_layout = self._create_settings_section("Tutorial & Onboarding")
 
         replay_desc = QLabel("Re-run the interactive first-time walkthrough to test your microphone, permissions, and keyboard triggers.")
         replay_desc.setObjectName("mutedLabel")
-        s5_layout.addWidget(replay_desc)
+        sec5_layout.addWidget(replay_desc)
 
         replay_btn = QPushButton("Replay Onboarding Tutorial")
         replay_btn.setObjectName("secondaryBtn")
         replay_btn.clicked.connect(lambda: self.replay_tutorial_requested.emit())
-        s5_layout.addWidget(replay_btn)
+        sec5_layout.addWidget(replay_btn)
 
         layout.addWidget(sec5)
 
@@ -844,7 +842,7 @@ class MainWindow(QMainWindow):
         self._load_settings_values()
         return scroll
 
-    def _create_settings_section(self, title: str) -> QFrame:
+    def _create_settings_section(self, title: str) -> tuple[QFrame, QVBoxLayout]:
         frame = QFrame()
         frame.setObjectName("card")
         layout = QVBoxLayout(frame)
@@ -854,7 +852,7 @@ class MainWindow(QMainWindow):
         lbl = QLabel(title)
         lbl.setFont(ThemeManager.get_ui_font(14, weight=QFont.Weight.DemiBold))
         layout.addWidget(lbl)
-        return frame
+        return frame, layout
 
     def _populate_audio_devices(self) -> None:
         self.device_combo.clear()

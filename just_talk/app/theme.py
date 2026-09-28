@@ -144,12 +144,23 @@ class ThemeManager:
             f_name = cls._mono_font_family
         else:
             f_name = cls._ui_font_family
-
         f = QFont(f_name, size)
         f.setWeight(weight)
         if size >= 28:
             f.setLetterSpacing(QFont.SpacingType.PercentageSpacing, 98.0)  # Subtle negative tracking
         return f
+
+    @classmethod
+    def get_ui_font(cls, size: int = 14, weight: QFont.Weight = QFont.Weight.Normal) -> QFont:
+        return cls.font(size=size, weight=weight, family="ui")
+
+    @classmethod
+    def get_display_font(cls, size: int = 24, weight: QFont.Weight = QFont.Weight.Normal) -> QFont:
+        return cls.font(size=size, weight=weight, family="display")
+
+    @classmethod
+    def get_mono_font(cls, size: int = 12, weight: QFont.Weight = QFont.Weight.Normal) -> QFont:
+        return cls.font(size=size, weight=weight, family="mono")
 
     @classmethod
     def get_tokens(cls, is_dark: bool) -> ColorTokens:

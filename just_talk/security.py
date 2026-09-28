@@ -51,6 +51,22 @@ class CredentialManager:
         global _IN_MEMORY_KEY
 
         # 1. Check OS secure vault
+        if sys.platform == "darwin":
+            import subprocess
+
+            try:
+                res = subprocess.run(
+                    ["security", "find-generic-password", "-s", SERVICE_NAME, "-a", KEY_ACCOUNT, "-w"],
+                    capture_output=True,
+                    text=True,
+                    timeout=2.0,
+                )
+                if res.returncode == 0 and res.stdout.strip():
+                    _IN_MEMORY_KEY = res.stdout.strip()
+                    return _IN_MEMORY_KEY
+            except Exception:
+                pass
+
         if cls.is_keychain_available():
             try:
                 import keyring
@@ -83,20 +99,32 @@ class CredentialManager:
         if not key:
             return cls.delete_api_key()
 
+        _IN_MEMORY_KEY = key
+
+        # On macOS, use security CLI with -A to allow any app access without popup prompts
+        if sys.platform == "darwin":
+            import subprocess
+
+            try:
+                subprocess.run(
+                    ["security", "add-generic-password", "-s", SERVICE_NAME, "-a", KEY_ACCOUNT, "-w", key, "-U", "-A"],
+                    check=True,
+                    capture_output=True,
+                )
+                return True
+            except Exception:
+                pass
+
         if cls.is_keychain_available():
             try:
                 import keyring
 
                 keyring.set_password(SERVICE_NAME, KEY_ACCOUNT, key)
-                _IN_MEMORY_KEY = key
                 return True
             except Exception as e:
                 print(f"[Security] Failed to save key to OS credential store: {cls.redact(str(e))}", file=sys.stderr)
-                _IN_MEMORY_KEY = key
                 return False
         else:
-            _IN_MEMORY_KEY = key
-            print("[Security] Warning: No OS keychain available. Storing key in memory for this session only.", file=sys.stderr)
             return True
 
     @classmethod
@@ -104,6 +132,17 @@ class CredentialManager:
         """Remove the Gemini API key from the OS credential store and session memory."""
         global _IN_MEMORY_KEY
         _IN_MEMORY_KEY = None
+
+        if sys.platform == "darwin":
+            import subprocess
+
+            try:
+                subprocess.run(
+                    ["security", "delete-generic-password", "-s", SERVICE_NAME, "-a", KEY_ACCOUNT],
+                    capture_output=True,
+                )
+            except Exception:
+                pass
 
         if cls.is_keychain_available():
             try:
