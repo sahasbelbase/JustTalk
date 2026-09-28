@@ -30,11 +30,17 @@ if [ -d "$APP_PATH" ]; then
 
     echo "--> JustTalk.app successfully built and signed at: $APP_PATH"
 
-    # 3. Create DMG if hdiutil is present
+    # 3. Create DMG with drag-to-Applications link
     DMG_PATH="dist/JustTalk-macOS.dmg"
-    rm -f "$DMG_PATH"
+    STAGING_DIR="dist/dmg_staging"
+    rm -rf "$STAGING_DIR" "$DMG_PATH"
+    mkdir -p "$STAGING_DIR"
+    cp -R "$APP_PATH" "$STAGING_DIR/"
+    ln -s /Applications "$STAGING_DIR/Applications"
+
     echo "--> Packaging into $DMG_PATH..."
-    hdiutil create -volname "Just Talk" -srcfolder "$APP_PATH" -ov -format UDZO "$DMG_PATH"
+    hdiutil create -volname "Just Talk" -srcfolder "$STAGING_DIR" -ov -format UDZO "$DMG_PATH"
+    rm -rf "$STAGING_DIR"
     echo "=== Build Complete! Installer ready at $DMG_PATH ==="
 else
     echo "Error: $APP_PATH was not created!"
