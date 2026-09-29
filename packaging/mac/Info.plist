@@ -32,5 +32,7 @@
     <string>Just Talk converts your speech to text locally on your device.</string>
     <key>NSAppleEventsUsageDescription</key>
     <string>Just Talk requires Accessibility access to detect hotkeys and insert text into your active applications.</string>
+    <key>NSInputMonitoringUsageDescription</key>
+    <string>Just Talk requires Input Monitoring permission to detect the hold-to-talk shortcut system-wide across all applications.</string>
 </dict>
 </plist>

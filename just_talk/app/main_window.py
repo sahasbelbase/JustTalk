@@ -41,6 +41,7 @@ from ..config import AppConfig
 from ..database.history import HistoryDatabase, HistoryItem
 from ..security import CredentialManager
 from ..stt.model_manager import TIERS, ModelManager
+from ..system.autostart import AutostartManager
 from ..system.clipboard import ClipboardManager
 from ..system.permissions import PermissionsManager
 from .ai_formatting_view import AIFormattingView
@@ -106,6 +107,13 @@ class MainWindow(QMainWindow):
         self.show()
         self.raise_()
         self.activateWindow()
+        if sys.platform == "darwin":
+            try:
+                from AppKit import NSApp
+
+                NSApp.activateIgnoringOtherApps_(True)
+            except Exception:
+                pass
 
     def closeEvent(self, event: QCloseEvent) -> None:
         """
@@ -341,6 +349,87 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(hero_card)
 
+        # macOS Fn Key Emoji Assistant Alert Banner
+        if sys.platform == "darwin":
+            self.home_fn_alert_card = QFrame()
+            self.home_fn_alert_card.setObjectName("surfaceCard")
+            hfa_layout = QHBoxLayout(self.home_fn_alert_card)
+            hfa_layout.setContentsMargins(14, 10, 14, 10)
+
+            self.home_fn_msg = QLabel("")
+            self.home_fn_msg.setFont(ThemeManager.get_ui_font(12))
+            hfa_layout.addWidget(self.home_fn_msg, 1)
+
+            self.home_fn_fix_btn = QPushButton("1-Click Fix")
+            self.home_fn_fix_btn.setObjectName("secondaryBtn")
+            self.home_fn_fix_btn.setStyleSheet("background-color: #6C8EEF; color: white; border: none; font-weight: bold; padding: 4px 10px;")
+            self.home_fn_fix_btn.clicked.connect(self._on_home_fix_fn_clicked)
+            hfa_layout.addWidget(self.home_fn_fix_btn)
+            layout.addWidget(self.home_fn_alert_card)
+
+        # Multilingual Language & Speech Mode Card
+        mode_card = QFrame()
+        mode_card.setObjectName("card")
+        mc_layout = QVBoxLayout(mode_card)
+        mc_layout.setContentsMargins(18, 16, 18, 16)
+        mc_layout.setSpacing(12)
+
+        mc_head = QHBoxLayout()
+        mc_title = QLabel("SPEECH LANGUAGE & DUAL OUTPUT MODE")
+        mc_title.setFont(ThemeManager.get_mono_font(11, weight=QFont.Weight.Bold))
+        mc_title.setObjectName("mutedLabel")
+        mc_head.addWidget(mc_title)
+        mc_head.addStretch()
+        mc_layout.addLayout(mc_head)
+
+        mode_btn_row = QHBoxLayout()
+        mode_btn_row.setSpacing(10)
+        self.home_mode_transcribe_btn = QPushButton("✍️ Write in My Language")
+        self.home_mode_transcribe_btn.setCheckable(True)
+        self.home_mode_transcribe_btn.setChecked(getattr(self.config, "speech_mode", "transcribe") != "translate")
+        self.home_mode_transcribe_btn.clicked.connect(lambda: self._set_home_speech_mode("transcribe"))
+
+        self.home_mode_translate_btn = QPushButton("🌐 Translate to English")
+        self.home_mode_translate_btn.setCheckable(True)
+        self.home_mode_translate_btn.setChecked(getattr(self.config, "speech_mode", "transcribe") == "translate")
+        self.home_mode_translate_btn.clicked.connect(lambda: self._set_home_speech_mode("translate"))
+
+        self._style_home_mode_buttons()
+        mode_btn_row.addWidget(self.home_mode_transcribe_btn)
+        mode_btn_row.addWidget(self.home_mode_translate_btn)
+        mc_layout.addLayout(mode_btn_row)
+
+        # Spoken Language Dropdown
+        lang_row = QHBoxLayout()
+        lang_lbl = QLabel("Spoken Language:")
+        lang_lbl.setFont(ThemeManager.get_ui_font(13, weight=QFont.Weight.Medium))
+        lang_row.addWidget(lang_lbl)
+
+        self.home_lang_combo = QComboBox()
+        self.home_lang_combo.addItem("Auto-Detect Language (Recommended)", "auto")
+        self.home_lang_combo.addItem("Nepali (नेपाली)", "ne")
+        self.home_lang_combo.addItem("English", "en")
+        self.home_lang_combo.addItem("German (Deutsch)", "de")
+        self.home_lang_combo.addItem("French (Français)", "fr")
+        self.home_lang_combo.addItem("Italian (Italiano)", "it")
+        self.home_lang_combo.addItem("Mandarin Chinese (中文)", "zh")
+
+        cur_lang = getattr(self.config, "language", "auto")
+        idx = self.home_lang_combo.findData(cur_lang)
+        if idx >= 0:
+            self.home_lang_combo.setCurrentIndex(idx)
+        self.home_lang_combo.currentIndexChanged.connect(self._on_home_lang_changed)
+        lang_row.addWidget(self.home_lang_combo, 1)
+        mc_layout.addLayout(lang_row)
+
+        self.home_mode_desc = QLabel("")
+        self.home_mode_desc.setObjectName("mutedLabel")
+        self.home_mode_desc.setFont(ThemeManager.get_ui_font(12))
+        self.home_mode_desc.setWordWrap(True)
+        mc_layout.addWidget(self.home_mode_desc)
+
+        layout.addWidget(mode_card)
+
         # Status Cards Row (Speech Engine, AI Formatter, Audio Input)
         status_row = QHBoxLayout()
         status_row.setSpacing(10)
@@ -446,8 +535,38 @@ class MainWindow(QMainWindow):
         # 1. Speech engine
         tier_info = TIERS.get(self.config.model_tier)
         tier_name = tier_info.display_name if tier_info else self.config.model_tier
+        is_dl = self.model_manager.is_model_downloaded(self.config.model_tier)
         self.model_card.title_label.setText(f"Whisper {tier_name}")
-        self.model_card.status_label.setText("Loaded in RAM")
+        self.model_card.status_label.setText("Ready Locally" if is_dl else "Downloading / Not Cached")
+
+        # Update macOS Fn Key and global permissions status if banner is present
+        if sys.platform == "darwin" and hasattr(self, "home_fn_alert_card"):
+            acc_ok = PermissionsManager.check_accessibility(prompt_if_needed=False)
+            input_ok = PermissionsManager.check_input_monitoring()
+            fn_ok = PermissionsManager.is_fn_emoji_disabled()
+
+            if not acc_ok or not input_ok:
+                missing = []
+                if not acc_ok:
+                    missing.append("Accessibility")
+                if not input_ok:
+                    missing.append("Input Monitoring")
+                self.home_fn_msg.setText(f"⚠️ Permissions required: {', '.join(missing)} needed for global hold-to-talk.")
+                self.home_fn_msg.setStyleSheet("color: #FF9F0A;")
+                self.home_fn_fix_btn.setText("Grant Permission")
+                self.home_fn_fix_btn.show()
+            elif not fn_ok:
+                self.home_fn_msg.setText("⚠️ Pressing Fn opens macOS Emoji window.")
+                self.home_fn_msg.setStyleSheet("color: #FF9F0A;")
+                self.home_fn_fix_btn.setText("1-Click Fix")
+                self.home_fn_fix_btn.show()
+            else:
+                self.home_fn_msg.setText("✓ Global shortcuts active across all applications.")
+                self.home_fn_msg.setStyleSheet("color: #30D158;")
+                self.home_fn_fix_btn.hide()
+
+        if hasattr(self, "home_mode_desc"):
+            self._update_home_mode_desc()
 
         # 2. AI Formatting & Circuit Breaker
         if self.config.offline_mode:
@@ -457,7 +576,7 @@ class MainWindow(QMainWindow):
             self.sidebar_status_text.setText("Offline")
         elif not self.config.gemini_enabled:
             self.gemini_card.title_label.setText("Raw STT Only")
-            self.gemini_card.status_label.setText("Gemini formatting disabled")
+            self.gemini_card.status_label.setText("AI formatting disabled")
             self.sidebar_dot.setStyleSheet("color: #8E8E93;")
             self.sidebar_status_text.setText("Ready (Raw)")
         elif self.gemini.circuit_breaker.is_paused:
@@ -467,8 +586,13 @@ class MainWindow(QMainWindow):
             self.sidebar_dot.setStyleSheet("color: #FF9F0A;")  # macOS amber
             self.sidebar_status_text.setText("AI Paused")
         else:
-            self.gemini_card.title_label.setText("Gemini Active")
-            self.gemini_card.status_label.setText(self.config.gemini_model)
+            pid = getattr(self.config, "ai_provider", "gemini") or "gemini"
+            from ..ai.providers import get_provider
+            p = get_provider(pid)
+            p_name = p.display_name if p else "AI"
+            active_model = getattr(self.config, "ai_model", "") or self.config.gemini_model
+            self.gemini_card.title_label.setText(f"{p_name} Active")
+            self.gemini_card.status_label.setText(active_model)
             self.sidebar_dot.setStyleSheet("color: #30D158;")  # macOS green
             self.sidebar_status_text.setText("Ready")
 
@@ -758,26 +882,34 @@ class MainWindow(QMainWindow):
         if sys.platform == "darwin":
             self.shortcut_combo.addItem("Function / Globe Key (Fn) [Recommended]", "fn")
             self.shortcut_combo.addItem("Right Option Key", "right_alt")
+            self.shortcut_combo.addItem("Control + Space", "ctrl_space")
             self.shortcut_combo.addItem("Option + Space", "alt_space")
             self.shortcut_combo.addItem("Control + Shift + Space", "ctrl_shift_space")
         else:
             self.shortcut_combo.addItem("Right Alt Key [Recommended]", "right_alt")
+            self.shortcut_combo.addItem("Control + Space", "ctrl_space")
             self.shortcut_combo.addItem("Alt + Space", "alt_space")
             self.shortcut_combo.addItem("Control + Shift + Space", "ctrl_shift_space")
         s1_form.addRow("Voice Shortcut:", self.shortcut_combo)
 
         if sys.platform == "darwin":
             kb_row = QHBoxLayout()
-            kb_hint = QLabel("Set 'Press Globe key to' to 'Do Nothing' in macOS Keyboard Settings.")
-            kb_hint.setStyleSheet("color: #8E8E93; font-size: 11px;")
-            kb_row.addWidget(kb_hint, 1)
+            self.fn_fix_status = QLabel("")
+            self.fn_fix_status.setFont(ThemeManager.get_ui_font(12))
+            self.fn_fix_btn = QPushButton("1-Click Fix (Stop Emoji Popup)")
+            self.fn_fix_btn.setObjectName("secondaryBtn")
+            self.fn_fix_btn.setStyleSheet("background-color: #6C8EEF; color: white; border: none; font-weight: bold; padding: 4px 10px;")
+            self.fn_fix_btn.clicked.connect(self._on_fix_fn_emoji_clicked)
+            kb_row.addWidget(self.fn_fix_status)
+            kb_row.addWidget(self.fn_fix_btn)
 
-            kb_btn = QPushButton("Keyboard Settings...")
+            kb_btn = QPushButton("macOS Settings...")
             kb_btn.setObjectName("secondaryBtn")
             kb_btn.setStyleSheet("font-size: 11px; padding: 3px 8px;")
             kb_btn.clicked.connect(PermissionsManager.open_keyboard_settings)
             kb_row.addWidget(kb_btn)
-            s1_form.addRow("", kb_row)
+            kb_row.addStretch()
+            s1_form.addRow("Fn Key Behavior:", kb_row)
 
         self.ptt_check = QCheckBox("Push-to-Talk (Hold shortcut to speak, release to format and insert)")
         s1_form.addRow("Trigger Mode:", self.ptt_check)
@@ -823,11 +955,36 @@ class MainWindow(QMainWindow):
         self.download_btn.clicked.connect(self._on_download_model)
         s2_form.addRow("Model Storage:", self.download_btn)
 
+        self.speech_mode_combo = QComboBox()
+        self.speech_mode_combo.addItem("✍️ Write in My Language (Transcribe)", "transcribe")
+        self.speech_mode_combo.addItem("🌐 Translate Speech to English (Translate)", "translate")
+        cur_mode = getattr(self.config, "speech_mode", "transcribe")
+        m_idx = self.speech_mode_combo.findData(cur_mode)
+        if m_idx >= 0:
+            self.speech_mode_combo.setCurrentIndex(m_idx)
+        self.speech_mode_combo.currentIndexChanged.connect(self._on_speech_mode_setting_changed)
+        s2_form.addRow("Speech Output Mode:", self.speech_mode_combo)
+
+        self.language_combo = QComboBox()
+        self.language_combo.addItem("Auto-Detect Language (Recommended)", "auto")
+        self.language_combo.addItem("Nepali (नेपाली)", "ne")
+        self.language_combo.addItem("English", "en")
+        self.language_combo.addItem("German (Deutsch)", "de")
+        self.language_combo.addItem("French (Français)", "fr")
+        self.language_combo.addItem("Italian (Italiano)", "it")
+        self.language_combo.addItem("Mandarin Chinese (中文)", "zh")
+        cur_lang = getattr(self.config, "language", "auto")
+        l_idx = self.language_combo.findData(cur_lang)
+        if l_idx >= 0:
+            self.language_combo.setCurrentIndex(l_idx)
+        self.language_combo.currentIndexChanged.connect(self._on_language_setting_changed)
+        s2_form.addRow("Spoken Language:", self.language_combo)
+
         sec2_layout.addLayout(s2_form)
         layout.addWidget(sec2)
 
-        # Section 3: Hardened Gemini AI Formatting
-        sec3, sec3_layout = self._create_settings_section("Gemini AI Formatting")
+        # Section 3: Multi-Provider AI Formatting
+        sec3, sec3_layout = self._create_settings_section("AI Formatting Layer (Gemini, Claude, OpenAI, Grok, Groq, OpenRouter, Custom)")
 
         # Embedded AI Formatting View
         self.ai_view = AIFormattingView(self.config, self.gemini, parent=self)
@@ -941,16 +1098,24 @@ class MainWindow(QMainWindow):
         self.model_status_label.setText("Downloading model weights... please wait.")
         self.download_btn.setEnabled(False)
 
-        def progress(pct, msg):
-            self.model_status_label.setText(f"{msg} ({int(pct)}%)")
+        def worker():
+            def progress(pct, msg):
+                QTimer.singleShot(0, lambda: self.model_status_label.setText(f"{msg} ({int(pct)}%)"))
 
-        success = self.model_manager.download_model(tier_id, progress_callback=progress)
-        self.download_btn.setEnabled(True)
-        if success:
-            QMessageBox.information(self, "Download Complete", "Speech model downloaded successfully!")
-            self._update_model_status()
-        else:
-            QMessageBox.warning(self, "Download Failed", "Failed to download model. Check your internet connection.")
+            success = self.model_manager.download_model(tier_id, progress_callback=progress)
+
+            def done():
+                self.download_btn.setEnabled(True)
+                if success:
+                    QMessageBox.information(self, "Download Complete", "Speech model downloaded successfully!")
+                    self._update_model_status()
+                    self._refresh_home_status()
+                else:
+                    QMessageBox.warning(self, "Download Failed", "Failed to download model. Check your internet connection.")
+            QTimer.singleShot(0, done)
+
+        import threading
+        threading.Thread(target=worker, daemon=True).start()
 
     def _on_theme_changed(self) -> None:
         app = QApplication.instance()
@@ -965,6 +1130,80 @@ class MainWindow(QMainWindow):
             self.on_config_changed_callback(self.config)
         self._refresh_home_status()
 
+    def _style_home_mode_buttons(self) -> None:
+        transcribe_active = getattr(self.config, "speech_mode", "transcribe") != "translate"
+        if transcribe_active:
+            self.home_mode_transcribe_btn.setStyleSheet("background-color: #6C8EEF; color: white; border: none; font-weight: bold; border-radius: 8px; padding: 10px 14px;")
+            self.home_mode_translate_btn.setStyleSheet("background-color: rgba(255, 255, 255, 0.08); color: #8E8E93; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 10px 14px;")
+        else:
+            self.home_mode_transcribe_btn.setStyleSheet("background-color: rgba(255, 255, 255, 0.08); color: #8E8E93; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 10px 14px;")
+            self.home_mode_translate_btn.setStyleSheet("background-color: #6C8EEF; color: white; border: none; font-weight: bold; border-radius: 8px; padding: 10px 14px;")
+
+    def _set_home_speech_mode(self, mode: str) -> None:
+        self.config.speech_mode = mode
+        self.config.save()
+        self._style_home_mode_buttons()
+        self._update_home_mode_desc()
+        if hasattr(self, "speech_mode_combo"):
+            idx = self.speech_mode_combo.findData(mode)
+            if idx >= 0:
+                self.speech_mode_combo.blockSignals(True)
+                self.speech_mode_combo.setCurrentIndex(idx)
+                self.speech_mode_combo.blockSignals(False)
+        self.config_changed.emit(self.config)
+
+    def _on_home_lang_changed(self, idx: int) -> None:
+        val = self.home_lang_combo.itemData(idx)
+        self.config.language = val
+        self.config.save()
+        self._update_home_mode_desc()
+        if hasattr(self, "language_combo"):
+            l_idx = self.language_combo.findData(val)
+            if l_idx >= 0:
+                self.language_combo.blockSignals(True)
+                self.language_combo.setCurrentIndex(l_idx)
+                self.language_combo.blockSignals(False)
+        self.config_changed.emit(self.config)
+
+    def _update_home_mode_desc(self) -> None:
+        lang_code = getattr(self.config, "language", "auto")
+        mode = getattr(self.config, "speech_mode", "transcribe")
+        if mode == "translate":
+            self.home_mode_desc.setText(
+                "🌐 Translate Mode: Whatever you speak (Nepali, German, French, etc.) is translated directly into English."
+            )
+        else:
+            if lang_code == "ne":
+                self.home_mode_desc.setText("✍️ Transcribe Mode: Speak in Nepali, and it types directly in Nepali Devanagari (नेपाली).")
+            else:
+                self.home_mode_desc.setText("✍️ Transcribe Mode: Text is typed directly in the exact language you speak.")
+
+    def _on_home_fix_fn_clicked(self) -> None:
+        acc_ok = PermissionsManager.check_accessibility(prompt_if_needed=False)
+        input_ok = PermissionsManager.check_input_monitoring()
+        if not acc_ok:
+            PermissionsManager.open_accessibility_settings()
+        elif not input_ok:
+            PermissionsManager.open_input_monitoring_settings()
+        else:
+            PermissionsManager.disable_fn_emoji_popup()
+        self._refresh_home_status()
+
+    def _on_fix_fn_emoji_clicked(self) -> None:
+        PermissionsManager.disable_fn_emoji_popup()
+        self._refresh_home_status()
+        if hasattr(self, "fn_fix_status"):
+            self.fn_fix_status.setText("✓ Fixed (Emoji popup disabled)")
+            self.fn_fix_status.setStyleSheet("color: #30D158;")
+            self.fn_fix_btn.hide()
+
+    def _on_speech_mode_setting_changed(self, idx: int) -> None:
+        mode = self.speech_mode_combo.itemData(idx)
+        self._set_home_speech_mode(mode)
+
+    def _on_language_setting_changed(self, idx: int) -> None:
+        self._on_home_lang_changed(idx)
+
     def _on_save_settings(self) -> None:
         self.config.shortcut = self.shortcut_combo.currentData()
         self.config.push_to_talk = self.ptt_check.isChecked()
@@ -974,7 +1213,14 @@ class MainWindow(QMainWindow):
         self.config.audio_device_index = self.device_combo.currentData()
         self.config.model_tier = self.tier_combo.currentData()
         self.config.appearance = self.theme_combo.currentData()
+        if hasattr(self, "speech_mode_combo"):
+            self.config.speech_mode = self.speech_mode_combo.currentData()
+        if hasattr(self, "language_combo"):
+            self.config.language = self.language_combo.currentData()
         self.config.save()
+
+        # Synchronize autostart with operating system
+        AutostartManager.set_autostart(self.config.launch_at_startup)
 
         # Update in-memory and notify main loop
         if self.on_config_changed_callback:

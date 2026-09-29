@@ -43,6 +43,10 @@ class ShortcutManager:
             "right_command",
             "alt",
             "option",
+            "alt_space",
+            "alt+space",
+            "ctrl_space",
+            "ctrl+space",
         ):
             self._mac_monitor = MacFnKeyMonitor(
                 on_start_recording=self.on_start_recording,

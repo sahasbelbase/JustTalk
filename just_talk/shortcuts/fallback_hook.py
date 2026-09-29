@@ -44,6 +44,12 @@ class PynputHotkeyMonitor:
                        keyboard.Key.alt_r in self._current_keys)
             has_space = keyboard.Key.space in self._current_keys
             return has_alt and has_space
+        elif self.trigger_key in ("ctrl_space", "ctrl+space"):
+            has_ctrl = (keyboard.Key.ctrl in self._current_keys or
+                        keyboard.Key.ctrl_l in self._current_keys or
+                        keyboard.Key.ctrl_r in self._current_keys)
+            has_space = keyboard.Key.space in self._current_keys
+            return has_ctrl and has_space
         elif self.trigger_key in ("ctrl_shift_space", "ctrl+shift+space"):
             has_ctrl = (keyboard.Key.ctrl in self._current_keys or
                         keyboard.Key.ctrl_l in self._current_keys or

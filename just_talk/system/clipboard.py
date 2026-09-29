@@ -20,11 +20,7 @@ class ClipboardManager:
     @staticmethod
     def get_text() -> str:
         """Retrieve current plain text from clipboard."""
-        if HAS_PYSIDE and QGuiApplication.instance():
-            cb = QGuiApplication.clipboard()
-            return cb.text() or ""
-
-        # macOS native pasteboard fallback
+        # macOS native pasteboard is thread-safe and fast across all threads
         if sys.platform == "darwin":
             try:
                 from AppKit import NSPasteboard, NSPasteboardTypeString
@@ -33,8 +29,13 @@ class ClipboardManager:
                 text = pb.stringForType_(NSPasteboardTypeString)
                 if text is not None:
                     return str(text)
+                return ""
             except Exception:
                 pass
+
+        if HAS_PYSIDE and QGuiApplication.instance():
+            cb = QGuiApplication.clipboard()
+            return cb.text() or ""
 
         try:
             import pyperclip
@@ -46,12 +47,6 @@ class ClipboardManager:
     @staticmethod
     def set_text(text: str) -> bool:
         """Put text onto system clipboard."""
-        if HAS_PYSIDE and QGuiApplication.instance():
-            cb = QGuiApplication.clipboard()
-            cb.setText(text)
-            return True
-
-        # macOS native pasteboard fallback
         if sys.platform == "darwin":
             try:
                 from AppKit import NSPasteboard, NSPasteboardTypeString
@@ -62,6 +57,11 @@ class ClipboardManager:
                 return True
             except Exception:
                 pass
+
+        if HAS_PYSIDE and QGuiApplication.instance():
+            cb = QGuiApplication.clipboard()
+            cb.setText(text)
+            return True
 
         try:
             import pyperclip

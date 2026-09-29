@@ -42,11 +42,16 @@ class AudioRecorder:
         self._frames: List[np.ndarray] = []
         self._lock = threading.Lock()
         self._is_recording = False
+        self._current_rms: float = 0.0
 
     @property
     def is_recording(self) -> bool:
         with self._lock:
             return self._is_recording
+
+    def get_audio_level(self) -> float:
+        """Thread-safe query for current audio RMS energy level (0.0 to 1.0)."""
+        return self._current_rms
 
     @staticmethod
     def get_input_devices() -> List[AudioDeviceInfo]:
@@ -83,21 +88,22 @@ class AudioRecorder:
         status: sd.CallbackFlags,
     ) -> None:
         """PortAudio stream callback running in a real-time audio thread."""
-        if status:
-            pass  # Buffer overflow/underflow warnings ignored for latency
+        if not self._is_recording:
+            return
 
-        # Copy incoming 1D float32 audio frame
         frame = indata[:, 0].copy()
 
         with self._lock:
             if self._is_recording:
                 self._frames.append(frame)
 
-        # Notify visual level indicator
+        # Thread-safe atomic float update (safe in CPython GIL, no cross-thread lock)
+        self._current_rms = VoiceActivityDetector.calculate_rms(frame)
+
+        # Optional legacy callback hook
         if self.level_callback is not None:
-            rms = VoiceActivityDetector.calculate_rms(frame)
             try:
-                self.level_callback(rms)
+                self.level_callback(self._current_rms)
             except Exception:
                 pass
 
@@ -107,6 +113,7 @@ class AudioRecorder:
             if self._is_recording:
                 return True
             self._frames.clear()
+            self._current_rms = 0.0
             self._is_recording = True
 
         try:
@@ -123,6 +130,7 @@ class AudioRecorder:
         except Exception as e:
             with self._lock:
                 self._is_recording = False
+                self._stream = None
             print(f"[AudioRecorder] Failed to open microphone stream: {e}", file=sys.stderr)
             return False
 
@@ -130,24 +138,30 @@ class AudioRecorder:
         """
         Stop recording and return the accumulated audio as a 1D NumPy float32 array.
         Returns None if no audio or microphone stream error.
+        Flushes and stops the PortAudio stream first so all audio is captured without loss.
         """
         with self._lock:
             if not self._is_recording:
                 return None
-            self._is_recording = False
+            stream_to_close = self._stream
 
-        if self._stream is not None:
+        # Stop stream first to allow PortAudio to flush any in-flight buffer
+        if stream_to_close is not None:
             try:
-                self._stream.stop()
-                self._stream.close()
+                stream_to_close.stop()
+                stream_to_close.close()
             except Exception:
                 pass
-            self._stream = None
 
         with self._lock:
+            self._is_recording = False
+            self._current_rms = 0.0
+            self._stream = None
+
             if not self._frames:
-                return None
-            audio = np.concatenate(self._frames, axis=0)
+                captured_audio = None
+            else:
+                captured_audio = np.concatenate(self._frames, axis=0)
             self._frames.clear()
 
-        return audio
+        return captured_audio

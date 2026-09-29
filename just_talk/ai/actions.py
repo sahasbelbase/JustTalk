@@ -11,6 +11,7 @@ from .prompts import (
     SYSTEM_PROMPT_FORMAL,
     SYSTEM_PROMPT_SUBTLE,
     SYSTEM_PROMPT_TRANSLATE,
+    build_prompt,
 )
 
 
@@ -61,7 +62,7 @@ class ActionRouter:
                     else:
                         target_lang, payload = groups[0].strip(), groups[1].strip()
 
-                    instruction = f"{SYSTEM_PROMPT_TRANSLATE}\nTarget language: {target_lang.capitalize()}."
+                    instruction = build_prompt("translate", target_language=target_lang.capitalize())
                     return ActionIntent(
                         action_type="translate",
                         target_payload=payload if payload else text,

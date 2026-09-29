@@ -11,6 +11,7 @@ from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
+    QComboBox,
     QDialog,
     QFrame,
     QHBoxLayout,
@@ -30,6 +31,8 @@ from ..ai.gemini import GeminiFormatter
 from ..audio.recorder import AudioRecorder
 from ..config import AppConfig
 from ..security import CredentialManager
+from ..stt.model_manager import TIERS, ModelManager
+from ..system.autostart import AutostartManager
 from ..system.permissions import PermissionsManager
 from .theme import ThemeManager
 
@@ -38,25 +41,30 @@ class OnboardingWindow(QDialog):
     """
     5-step interactive onboarding wizard:
     1. Setup checklist & permissions (with restart detection)
-    2. "Say Hello" live push-to-talk demo
+    2. Multilingual speech model & language setup
     3. "Fix as you speak" self-correction walkthrough
     4. Floating pill legend
     5. Menu bar & tray overview
     """
 
     onboarding_completed = Signal()
+    model_progress_signal = Signal(float, str)
 
     def __init__(
         self,
         config: AppConfig,
         gemini: GeminiFormatter,
+        model_manager: Optional[ModelManager] = None,
         on_complete: Optional[Callable[[], None]] = None,
         parent: Optional[QWidget] = None,
     ):
         super().__init__(parent)
         self.config = config
         self.gemini = gemini
+        self.model_manager = model_manager or ModelManager()
         self.on_complete_callback = on_complete
+        self._is_downloading_model = False
+        self.model_progress_signal.connect(self._on_model_progress_update)
 
         self.setWindowTitle("Welcome to Just Talk")
         self.resize(680, 540)
@@ -72,6 +80,12 @@ class OnboardingWindow(QDialog):
             )
 
         self._setup_ui()
+
+        if sys.platform == "darwin":
+            self._perm_poll_timer = QTimer(self)
+            self._perm_poll_timer.setInterval(1500)
+            self._perm_poll_timer.timeout.connect(self._check_permissions_status)
+            self._perm_poll_timer.start()
 
     def _setup_ui(self) -> None:
         main_layout = QVBoxLayout(self)
@@ -262,20 +276,42 @@ class OnboardingWindow(QDialog):
             kb_info.setSpacing(2)
             kb_title = QLabel("macOS Globe / Fn Key Setup")
             kb_title.setFont(ThemeManager.get_ui_font(14, weight=QFont.Weight.DemiBold))
-            kb_sub = QLabel("Set 'Press Globe key to' to 'Do Nothing' in Keyboard settings so macOS doesn't open emoji picker.")
+            kb_sub = QLabel("Stop macOS from opening the Emoji & Symbols picker when pressing Fn.")
             kb_sub.setObjectName("mutedLabel")
             kb_sub.setFont(ThemeManager.get_ui_font(12))
             kb_info.addWidget(kb_title)
             kb_info.addWidget(kb_sub)
             kc_layout.addLayout(kb_info, 1)
 
-            open_kb_btn = QPushButton("Keyboard Settings")
+            self.fn_status_lbl = QLabel("Checking...")
+            self.fn_status_lbl.setFont(ThemeManager.get_ui_font(12))
+            kc_layout.addWidget(self.fn_status_lbl)
+
+            self.fix_fn_btn = QPushButton("1-Click Fix")
+            self.fix_fn_btn.setObjectName("secondaryBtn")
+            self.fix_fn_btn.setStyleSheet("background-color: #6C8EEF; color: white; border: none; font-weight: bold; padding: 4px 10px;")
+            self.fix_fn_btn.clicked.connect(self._fix_fn_emoji)
+            kc_layout.addWidget(self.fix_fn_btn)
+
+            open_kb_btn = QPushButton("Settings...")
             open_kb_btn.setObjectName("secondaryBtn")
             open_kb_btn.clicked.connect(PermissionsManager.open_keyboard_settings)
             kc_layout.addWidget(open_kb_btn)
             layout.addWidget(kb_card)
 
-        # 4. AI Formatting Status Card (Ready out of the box, no asking for key)
+        # 4. Launch at Startup Card
+        startup_card = QFrame()
+        startup_card.setObjectName("surfaceCard")
+        st_layout = QHBoxLayout(startup_card)
+        st_layout.setContentsMargins(14, 10, 14, 10)
+        self.startup_chk = QCheckBox("Start Just Talk automatically when you log into your computer")
+        self.startup_chk.setFont(ThemeManager.get_ui_font(13))
+        self.startup_chk.setChecked(self.config.launch_at_startup or True)
+        self.startup_chk.toggled.connect(self._on_startup_toggled)
+        st_layout.addWidget(self.startup_chk)
+        layout.addWidget(startup_card)
+
+        # 5. AI Formatting Status Card (Ready out of the box, no asking for key)
         gem_card = QFrame()
         gem_card.setObjectName("surfaceCard")
         gc_layout = QVBoxLayout(gem_card)
@@ -347,42 +383,70 @@ class OnboardingWindow(QDialog):
 
         # Check Accessibility / Input Monitoring
         has_acc = PermissionsManager.check_accessibility(prompt_if_needed=False)
-        if has_acc:
-            monitor_working = self._verify_event_monitor()
-            if monitor_working:
-                self.acc_status_lbl.setText("✓ Granted")
-                self.acc_status_lbl.setStyleSheet("color: #30D158;")
-                self.open_settings_btn.hide()
-                self.restart_app_btn.hide()
-            else:
-                self.acc_status_lbl.setText("Granted (Restart needed)")
-                self.acc_status_lbl.setStyleSheet("color: #FF9F0A;")
-                self.open_settings_btn.hide()
-                self.restart_app_btn.show()
-        else:
-            self.acc_status_lbl.setText("Action required")
+        has_input = PermissionsManager.check_input_monitoring()
+        if has_acc and has_input:
+            self.acc_status_lbl.setText("✓ Granted")
+            self.acc_status_lbl.setStyleSheet("color: #30D158;")
+            self.open_settings_btn.hide()
+            self.restart_app_btn.hide()
+        elif not has_acc and not has_input:
+            self.acc_status_lbl.setText("Accessibility & Input Monitoring required")
             self.acc_status_lbl.setStyleSheet("color: #FF9F0A;")
+            self.open_settings_btn.setText("Grant Permissions")
+            self.open_settings_btn.show()
+            self.restart_app_btn.hide()
+        elif not has_acc:
+            self.acc_status_lbl.setText("Accessibility required")
+            self.acc_status_lbl.setStyleSheet("color: #FF9F0A;")
+            self.open_settings_btn.setText("Grant Accessibility")
+            self.open_settings_btn.show()
+            self.restart_app_btn.hide()
+        else:
+            self.acc_status_lbl.setText("Input Monitoring required")
+            self.acc_status_lbl.setStyleSheet("color: #FF9F0A;")
+            self.open_settings_btn.setText("Grant Input Monitoring")
             self.open_settings_btn.show()
             self.restart_app_btn.hide()
 
+        # Check macOS Globe/Fn emoji status
+        if sys.platform == "darwin" and hasattr(self, "fn_status_lbl"):
+            if PermissionsManager.is_fn_emoji_disabled():
+                self.fn_status_lbl.setText("✓ Configured")
+                self.fn_status_lbl.setStyleSheet("color: #30D158;")
+                self.fix_fn_btn.hide()
+            else:
+                self.fn_status_lbl.setText("Opens emoji picker")
+                self.fn_status_lbl.setStyleSheet("color: #FF9F0A;")
+                self.fix_fn_btn.show()
+
+    def _fix_fn_emoji(self) -> None:
+        PermissionsManager.disable_fn_emoji_popup()
+        self._check_permissions_status()
+
+    def _on_startup_toggled(self, checked: bool) -> None:
+        self.config.launch_at_startup = checked
+        self.config.save()
+        AutostartManager.set_autostart(checked)
+
     def _verify_event_monitor(self) -> bool:
-        """On macOS, test whether Quartz / AppKit event tap is functional."""
+        """On macOS, test whether Quartz event tap permissions are functional."""
         if sys.platform != "darwin":
             return True
-        try:
-            from Quartz import CGEventSourceCreate, kCGEventSourceStateCombinedSessionState
-
-            source = CGEventSourceCreate(kCGEventSourceStateCombinedSessionState)
-            return source is not None
-        except Exception:
-            return False
+        return PermissionsManager.check_accessibility(prompt_if_needed=False) and PermissionsManager.check_input_monitoring()
 
     def _request_microphone(self) -> None:
         PermissionsManager.request_microphone()
         QTimer.singleShot(1500, self._check_permissions_status)
 
     def _open_accessibility_settings(self) -> None:
-        PermissionsManager.open_accessibility_settings()
+        has_acc = PermissionsManager.check_accessibility(prompt_if_needed=False)
+        has_input = PermissionsManager.check_input_monitoring()
+        if not has_acc:
+            PermissionsManager.open_accessibility_settings()
+        elif not has_input:
+            PermissionsManager.open_input_monitoring_settings()
+        else:
+            PermissionsManager.open_accessibility_settings()
         QTimer.singleShot(2000, self._check_permissions_status)
 
     def _restart_application(self) -> None:
@@ -424,72 +488,299 @@ class OnboardingWindow(QDialog):
             self.ai_badge.setStyleSheet("color: #FF453A;")
 
     # -------------------------------------------------------------------------
-    # Step 2: "Say Hello" Live Demo
+    # Step 2: Multilingual Speech Model & Language Setup
     # -------------------------------------------------------------------------
 
     def _create_step2_say_hello(self) -> QWidget:
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+
         container = QWidget()
         layout = QVBoxLayout(container)
         layout.setContentsMargins(16, 8, 16, 16)
         layout.setSpacing(14)
 
-        title = QLabel("Try It: Say Hello")
+        title = QLabel("Speech Model & Language")
         title.setFont(ThemeManager.get_display_font(26, weight=QFont.Weight.Bold))
         layout.addWidget(title)
 
-        desc = QLabel("Just Talk is built on push-to-talk: you hold your voice trigger shortcut while speaking, and release it the instant you are done.")
+        desc = QLabel("Just Talk transcribes speech 100% locally on your computer with zero latency. No audio is ever sent to cloud servers.")
         desc.setObjectName("mutedLabel")
         desc.setFont(ThemeManager.get_ui_font(13))
         desc.setWordWrap(True)
         layout.addWidget(desc)
 
-        # Shortcut Display Card
+        # 1. Model Status & Download Progress Card
+        model_card = QFrame()
+        model_card.setObjectName("card")
+        m_layout = QVBoxLayout(model_card)
+        m_layout.setContentsMargins(16, 14, 16, 14)
+        m_layout.setSpacing(10)
+
+        m_head = QHBoxLayout()
+        m_title = QLabel("Multilingual Speech Model (Balanced · 466 MB)")
+        m_title.setFont(ThemeManager.get_ui_font(13, weight=QFont.Weight.DemiBold))
+        m_head.addWidget(m_title)
+        m_head.addStretch()
+
+        self.model_status_badge = QLabel("Checking...")
+        self.model_status_badge.setFont(ThemeManager.get_ui_font(12, weight=QFont.Weight.Medium))
+        m_head.addWidget(self.model_status_badge)
+        m_layout.addLayout(m_head)
+
+        m_sub = QLabel("Supports Nepali, English, German, French, Italian, Mandarin, and 90+ languages with high punctuation accuracy.")
+        m_sub.setObjectName("mutedLabel")
+        m_sub.setFont(ThemeManager.get_ui_font(12))
+        m_sub.setWordWrap(True)
+        m_layout.addWidget(m_sub)
+
+        # Progress bar
+        self.model_progress_bar = QProgressBar()
+        self.model_progress_bar.setRange(0, 100)
+        self.model_progress_bar.setFixedHeight(8)
+        self.model_progress_bar.setTextVisible(False)
+        self.model_progress_bar.setStyleSheet("""
+            QProgressBar {
+                background: rgba(255, 255, 255, 0.08);
+                border-radius: 4px;
+            }
+            QProgressBar::chunk {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #6C8EEF, stop:1 #30D158);
+                border-radius: 4px;
+            }
+        """)
+        m_layout.addWidget(self.model_progress_bar)
+
+        btn_row = QHBoxLayout()
+        self.model_detail_lbl = QLabel("")
+        self.model_detail_lbl.setFont(ThemeManager.get_ui_font(11))
+        self.model_detail_lbl.setObjectName("mutedLabel")
+        btn_row.addWidget(self.model_detail_lbl, 1)
+
+        self.download_model_btn = QPushButton("Download Model")
+        self.download_model_btn.setObjectName("secondaryBtn")
+        self.download_model_btn.clicked.connect(self._start_model_download)
+        btn_row.addWidget(self.download_model_btn)
+        m_layout.addLayout(btn_row)
+
+        layout.addWidget(model_card)
+
+        # 2. Language & Output Mode Card
+        lang_card = QFrame()
+        lang_card.setObjectName("card")
+        l_layout = QVBoxLayout(lang_card)
+        l_layout.setContentsMargins(16, 14, 16, 14)
+        l_layout.setSpacing(12)
+
+        # Mode Selector (Transcribe vs Translate)
+        mode_header = QLabel("Output Mode:")
+        mode_header.setFont(ThemeManager.get_ui_font(13, weight=QFont.Weight.DemiBold))
+        l_layout.addWidget(mode_header)
+
+        mode_row = QHBoxLayout()
+        self.mode_transcribe_btn = QPushButton("✍️ Write in My Language")
+        self.mode_transcribe_btn.setCheckable(True)
+        self.mode_transcribe_btn.setChecked(self.config.speech_mode != "translate")
+        self.mode_transcribe_btn.clicked.connect(lambda: self._set_speech_mode("transcribe"))
+
+        self.mode_translate_btn = QPushButton("🌐 Translate to English")
+        self.mode_translate_btn.setCheckable(True)
+        self.mode_translate_btn.setChecked(self.config.speech_mode == "translate")
+        self.mode_translate_btn.clicked.connect(lambda: self._set_speech_mode("translate"))
+
+        self._style_mode_buttons()
+        mode_row.addWidget(self.mode_transcribe_btn)
+        mode_row.addWidget(self.mode_translate_btn)
+        l_layout.addLayout(mode_row)
+
+        # Spoken Language Dropdown
+        lang_row = QHBoxLayout()
+        lang_lbl = QLabel("Spoken Language:")
+        lang_lbl.setFont(ThemeManager.get_ui_font(13, weight=QFont.Weight.DemiBold))
+        lang_row.addWidget(lang_lbl)
+
+        self.onboarding_lang_combo = QComboBox()
+        self.onboarding_lang_combo.addItem("Auto-Detect Language (Recommended)", "auto")
+        self.onboarding_lang_combo.addItem("Nepali (नेपाली)", "ne")
+        self.onboarding_lang_combo.addItem("English", "en")
+        self.onboarding_lang_combo.addItem("German (Deutsch)", "de")
+        self.onboarding_lang_combo.addItem("French (Français)", "fr")
+        self.onboarding_lang_combo.addItem("Italian (Italiano)", "it")
+        self.onboarding_lang_combo.addItem("Mandarin Chinese (中文)", "zh")
+
+        # Select matching item
+        cur_lang = getattr(self.config, "language", "auto")
+        idx = self.onboarding_lang_combo.findData(cur_lang)
+        if idx >= 0:
+            self.onboarding_lang_combo.setCurrentIndex(idx)
+        self.onboarding_lang_combo.currentIndexChanged.connect(self._on_lang_combo_changed)
+        lang_row.addWidget(self.onboarding_lang_combo, 1)
+        l_layout.addLayout(lang_row)
+
+        self.mode_explanation_lbl = QLabel("")
+        self.mode_explanation_lbl.setObjectName("mutedLabel")
+        self.mode_explanation_lbl.setFont(ThemeManager.get_ui_font(12))
+        self.mode_explanation_lbl.setWordWrap(True)
+        l_layout.addWidget(self.mode_explanation_lbl)
+
+        layout.addWidget(lang_card)
+
+        # 3. Practice & Voice Shortcut Card
         sc_card = QFrame()
-        sc_card.setObjectName("card")
+        sc_card.setObjectName("surfaceCard")
         sc_layout = QVBoxLayout(sc_card)
-        sc_layout.setContentsMargins(20, 20, 20, 20)
-        sc_layout.setSpacing(12)
+        sc_layout.setContentsMargins(16, 14, 16, 14)
+        sc_layout.setSpacing(10)
 
         sc_row = QHBoxLayout()
         shortcut_name = "fn" if sys.platform == "darwin" else "Right Alt"
         keycap = QLabel(shortcut_name)
         keycap.setObjectName("keycap")
-        keycap.setFont(ThemeManager.get_ui_font(18, weight=QFont.Weight.Bold))
+        keycap.setFont(ThemeManager.get_ui_font(16, weight=QFont.Weight.Bold))
         sc_row.addWidget(keycap)
 
         inst_layout = QVBoxLayout()
         inst_title = QLabel("Hold this key and say:")
-        inst_title.setFont(ThemeManager.get_ui_font(14, weight=QFont.Weight.Medium))
-        sample_phrase = QLabel('"Hello Just Talk, this is my first voice test."')
-        sample_phrase.setFont(ThemeManager.get_ui_font(14, weight=QFont.Weight.Bold))
-        sample_phrase.setStyleSheet("color: #6C8EEF;")
+        inst_title.setFont(ThemeManager.get_ui_font(13, weight=QFont.Weight.Medium))
+        self.sample_phrase = QLabel('"Hello Just Talk, this is my first voice test."')
+        self.sample_phrase.setFont(ThemeManager.get_ui_font(13, weight=QFont.Weight.Bold))
+        self.sample_phrase.setStyleSheet("color: #6C8EEF;")
         inst_layout.addWidget(inst_title)
-        inst_layout.addWidget(sample_phrase)
+        inst_layout.addWidget(self.sample_phrase)
         sc_row.addLayout(inst_layout)
         sc_row.addStretch()
         sc_layout.addLayout(sc_row)
 
-        layout.addWidget(sc_card)
-
-        # Interactive Test Sandbox Box
-        test_box = QFrame()
-        test_box.setObjectName("surfaceCard")
-        tb_layout = QVBoxLayout(test_box)
-        tb_layout.setContentsMargins(16, 14, 16, 14)
-        tb_layout.setSpacing(8)
-
-        tb_lbl = QLabel("Live Transcription Practice Box:")
-        tb_lbl.setFont(ThemeManager.get_ui_font(13, weight=QFont.Weight.DemiBold))
-        tb_layout.addWidget(tb_lbl)
-
         self.demo_text_input = QTextEdit()
         self.demo_text_input.setPlaceholderText("Click here, hold your shortcut key, and speak...")
-        self.demo_text_input.setFixedHeight(75)
-        tb_layout.addWidget(self.demo_text_input)
+        self.demo_text_input.setFixedHeight(65)
+        sc_layout.addWidget(self.demo_text_input)
 
-        layout.addWidget(test_box)
+        layout.addWidget(sc_card)
         layout.addStretch()
-        return container
+
+        self._update_model_status_display()
+        self._update_mode_explanation()
+        scroll.setWidget(container)
+        return scroll
+
+    def _style_mode_buttons(self) -> None:
+        transcribe_active = getattr(self.config, "speech_mode", "transcribe") != "translate"
+        if transcribe_active:
+            self.mode_transcribe_btn.setStyleSheet("background-color: #6C8EEF; color: white; border: none; font-weight: bold; border-radius: 8px; padding: 10px 14px;")
+            self.mode_translate_btn.setStyleSheet("background-color: rgba(255, 255, 255, 0.08); color: #8E8E93; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 10px 14px;")
+        else:
+            self.mode_transcribe_btn.setStyleSheet("background-color: rgba(255, 255, 255, 0.08); color: #8E8E93; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 10px 14px;")
+            self.mode_translate_btn.setStyleSheet("background-color: #6C8EEF; color: white; border: none; font-weight: bold; border-radius: 8px; padding: 10px 14px;")
+
+    def _set_speech_mode(self, mode: str) -> None:
+        self.config.speech_mode = mode
+        self.config.save()
+        self._style_mode_buttons()
+        self._update_mode_explanation()
+
+    def _on_lang_combo_changed(self, idx: int) -> None:
+        val = self.onboarding_lang_combo.itemData(idx)
+        self.config.language = val
+        self.config.save()
+        self._update_mode_explanation()
+
+    def _update_mode_explanation(self) -> None:
+        lang_code = self.onboarding_lang_combo.currentData()
+        mode = getattr(self.config, "speech_mode", "transcribe")
+
+        if mode == "translate":
+            self.mode_explanation_lbl.setText(
+                "Speech will automatically be translated into clear English text, regardless of whether you speak in Nepali, German, French, Italian, or Mandarin."
+            )
+            if lang_code == "ne":
+                self.sample_phrase.setText('"नमस्ते, मलाई अंग्रेजी सिक्न मन छ।" → (types in English)')
+            else:
+                self.sample_phrase.setText('"Hello Just Talk, translate this into English."')
+        else:
+            self.mode_explanation_lbl.setText(
+                "Speech will be transcribed directly in the spoken language (e.g. Nepali is typed in Devanagari script: नेपाली)."
+            )
+            if lang_code == "ne":
+                self.sample_phrase.setText('"नमस्ते Just Talk, यो मेरो पहिलो आवाज परीक्षण हो।"')
+            elif lang_code == "de":
+                self.sample_phrase.setText('"Hallo Just Talk, das ist mein erster Sprachtest."')
+            elif lang_code == "fr":
+                self.sample_phrase.setText('"Bonjour Just Talk, c\'est mon premier test vocal."')
+            elif lang_code == "zh":
+                self.sample_phrase.setText('"你好 Just Talk，这是我的语音输入测试。"')
+            else:
+                self.sample_phrase.setText('"Hello Just Talk, this is my first voice test."')
+
+    def _update_model_status_display(self) -> None:
+        tier_id = getattr(self.config, "model_tier", "balanced")
+        is_dl = self.model_manager.is_model_downloaded(tier_id)
+        if is_dl:
+            self.model_status_badge.setText("✓ Ready Locally")
+            self.model_status_badge.setStyleSheet("color: #30D158;")
+            self.model_progress_bar.setValue(100)
+            self.model_detail_lbl.setText("Speech model is downloaded and verified on disk.")
+            self.download_model_btn.hide()
+        elif self._is_downloading_model:
+            self.model_status_badge.setText("Downloading...")
+            self.model_status_badge.setStyleSheet("color: #6C8EEF;")
+            self.download_model_btn.setEnabled(False)
+            self.download_model_btn.setText("Downloading...")
+        else:
+            self.model_status_badge.setText("Not Downloaded")
+            self.model_status_badge.setStyleSheet("color: #FF9F0A;")
+            self.model_progress_bar.setValue(0)
+            self.model_detail_lbl.setText("Click below to download the model (~466 MB) for offline speech recognition.")
+            self.download_model_btn.show()
+            self.download_model_btn.setEnabled(True)
+            self.download_model_btn.setText("Download Speech Model")
+
+    def _start_model_download(self) -> None:
+        if self._is_downloading_model:
+            return
+        self._is_downloading_model = True
+        self.download_model_btn.setEnabled(False)
+        self.download_model_btn.setText("Downloading...")
+        self.model_status_badge.setText("Downloading...")
+        self.model_status_badge.setStyleSheet("color: #6C8EEF;")
+
+        def worker():
+            def progress(pct: float, msg: str):
+                self.model_progress_signal.emit(pct, msg)
+
+            tier_id = getattr(self.config, "model_tier", "balanced")
+            success = self.model_manager.download_model(tier_id, progress_callback=progress)
+            if success:
+                self.model_progress_signal.emit(100.0, "✓ Model ready!")
+            else:
+                self.model_progress_signal.emit(-1.0, "Download failed. Please check internet connection.")
+
+        import threading
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_model_progress_update(self, pct: float, msg: str) -> None:
+        if pct < 0:
+            self._is_downloading_model = False
+            self.model_status_badge.setText("✗ Download Failed")
+            self.model_status_badge.setStyleSheet("color: #FF453A;")
+            self.model_detail_lbl.setText(msg)
+            self.download_model_btn.setEnabled(True)
+            self.download_model_btn.setText("Retry Download")
+            self.download_model_btn.show()
+        elif pct >= 100.0:
+            self._is_downloading_model = False
+            self.model_progress_bar.setValue(100)
+            self.model_status_badge.setText("✓ Ready Locally")
+            self.model_status_badge.setStyleSheet("color: #30D158;")
+            self.model_detail_lbl.setText("Speech model is downloaded and verified on disk.")
+            self.download_model_btn.hide()
+        else:
+            self.model_progress_bar.setValue(int(pct))
+            self.model_status_badge.setText(f"Downloading {pct:.0f}%")
+            self.model_status_badge.setStyleSheet("color: #6C8EEF;")
+            self.model_detail_lbl.setText(msg)
 
     # -------------------------------------------------------------------------
     # Step 3: Self-Correction Walkthrough

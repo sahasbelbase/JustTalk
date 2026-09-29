@@ -80,9 +80,10 @@ class TextInserter:
 
             # Step 3: Restore prior clipboard in background thread after app consumes paste
             if restore_clipboard and original_clipboard != text:
+                restore_delay = max(0.45, min(1.5, 0.45 + len(text) * 0.001))
                 threading.Thread(
                     target=ClipboardManager.restore_after_delay,
-                    args=(original_clipboard, 0.08),
+                    args=(original_clipboard, restore_delay),
                     daemon=True,
                 ).start()
 

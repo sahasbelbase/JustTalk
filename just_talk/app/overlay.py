@@ -78,10 +78,9 @@ class FloatingPillOverlay(QWidget):
         self._pill_width = 216.0
         self._pill_height = 48.0
 
-        # Window flags: Frameless, Always on Top, Non-activating
+        # Window flags: Frameless, Always on Top, Non-activating (No Tool flag to prevent macOS deactivation auto-hide)
         self.setWindowFlags(
-            Qt.WindowType.Tool
-            | Qt.WindowType.FramelessWindowHint
+            Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
             | Qt.WindowType.WindowDoesNotAcceptFocus
         )
@@ -128,7 +127,7 @@ class FloatingPillOverlay(QWidget):
     fadeOpacity = Property(float, _get_fade, _set_fade)
 
     def _apply_native_window_attributes(self) -> None:
-        """Allow overlay to appear over full-screen apps, VS Code, and across all macOS spaces."""
+        """Allow overlay to appear over full-screen apps, VS Code, and across all macOS spaces without stealing focus."""
         if sys.platform == "darwin":
             try:
                 import ctypes
@@ -136,29 +135,44 @@ class FloatingPillOverlay(QWidget):
                 from AppKit import (
                     NSWindowCollectionBehaviorCanJoinAllSpaces,
                     NSWindowCollectionBehaviorFullScreenAuxiliary,
-                    NSWindowCollectionBehaviorMoveToActiveSpace,
                     NSWindowCollectionBehaviorTransient,
                     NSWindowCollectionBehaviorIgnoresCycle,
+                    NSWindowStyleMaskNonactivatingPanel,
                 )
-                from Quartz import CGWindowLevelForKey, kCGScreenSaverWindowLevelKey
+                from Quartz import CGWindowLevelForKey, kCGPopUpMenuWindowLevelKey
 
                 view_ptr = int(self.winId())
                 c_void_p = ctypes.c_void_p(view_ptr)
                 ns_view = objc.objc_object(c_void_p=c_void_p)
                 ns_window = ns_view.window()
                 if ns_window:
-                    # Level 1000 guarantees floating above VS Code, Chrome, Terminal, and full-screen windows
-                    ns_window.setLevel_(CGWindowLevelForKey(kCGScreenSaverWindowLevelKey))
+                    # Non-activating panel style: NEVER steals focus or activates app when ordered front
+                    current_mask = ns_window.styleMask()
+                    ns_window.setStyleMask_(current_mask | NSWindowStyleMaskNonactivatingPanel)
+
+                    # Do not accept key or main window focus
+                    if hasattr(ns_window, "setCanBecomeKeyWindow_"):
+                        ns_window.setCanBecomeKeyWindow_(False)
+                    if hasattr(ns_window, "setCanBecomeMainWindow_"):
+                        ns_window.setCanBecomeMainWindow_(False)
+
+                    # Crucial: Prevent macOS from automatically hiding panel when other apps gain focus!
+                    ns_window.setHidesOnDeactivate_(False)
+
+                    # Level 1001 (NSScreenSaverWindowLevel + 1) floats above ALL browser windows, popups, full-screen spaces, and dialogs
+                    ns_window.setLevel_(NSScreenSaverWindowLevel + 1)
+
+                    # CanJoinAllSpaces allows the window to appear on any space without switching spaces
                     behavior = (
                         NSWindowCollectionBehaviorCanJoinAllSpaces
                         | NSWindowCollectionBehaviorFullScreenAuxiliary
-                        | NSWindowCollectionBehaviorMoveToActiveSpace
                         | NSWindowCollectionBehaviorTransient
                         | NSWindowCollectionBehaviorIgnoresCycle
                     )
                     ns_window.setCollectionBehavior_(behavior)
-            except Exception:
-                pass
+                    ns_window.orderFrontRegardless()
+            except Exception as e:
+                print(f"[Overlay] Native window config error: {e}", file=sys.stderr)
 
     def _bring_to_front_mac(self) -> None:
         """Force window to the very front of all applications without stealing keyboard focus."""
@@ -166,44 +180,40 @@ class FloatingPillOverlay(QWidget):
             try:
                 import ctypes
                 import objc
+                from AppKit import NSScreenSaverWindowLevel
 
-                c_void_p = ctypes.c_void_p(int(self.winId()))
+                view_ptr = int(self.winId())
+                c_void_p = ctypes.c_void_p(view_ptr)
                 ns_view = objc.objc_object(c_void_p=c_void_p)
                 ns_window = ns_view.window()
                 if ns_window:
+                    ns_window.setHidesOnDeactivate_(False)
+                    ns_window.setLevel_(NSScreenSaverWindowLevel + 1)
                     ns_window.orderFrontRegardless()
             except Exception:
                 pass
 
     def _reposition(self) -> None:
-        """Position pill at bottom-center of active display."""
-        from PySide6.QtGui import QCursor, QGuiApplication
+        """Position pill near active text caret, focused input, or active window, like Wispr Flow and Typeless."""
+        try:
+            from just_talk.system.caret_locator import CaretLocator
 
-        target_geom = None
-        if sys.platform == "darwin":
-            try:
-                from AppKit import NSScreen
-                main_screen = NSScreen.mainScreen()
-                if main_screen:
-                    mf = main_screen.frame()
-                    for qs in QGuiApplication.screens():
-                        qg = qs.geometry()
-                        if abs(qg.width() - mf.size.width) < 5 and abs(qg.height() - mf.size.height) < 5:
-                            target_geom = qs.availableGeometry()
-                            break
-            except Exception:
-                pass
+            x, y = CaretLocator.get_target_position(
+                pill_width=self.width(),
+                pill_height=self.height(),
+                offset_y=8,
+            )
+            self.move(x, y)
+        except Exception:
+            from PySide6.QtGui import QCursor, QGuiApplication
 
-        if target_geom is None:
             cursor_pos = QCursor.pos()
             screen = QGuiApplication.screenAt(cursor_pos) or QGuiApplication.primaryScreen()
             if screen:
-                target_geom = screen.availableGeometry()
-
-        if target_geom:
-            x = target_geom.x() + (target_geom.width() - self.width()) // 2
-            y = target_geom.y() + target_geom.height() - self.height() - 44
-            self.move(x, y)
+                geom = screen.availableGeometry()
+                x = geom.x() + (geom.width() - self.width()) // 2
+                y = geom.y() + geom.height() - self.height() - 36
+                self.move(x, y)
 
     # -------------------------------------------------------------------------
     # State Transitions
@@ -224,6 +234,7 @@ class FloatingPillOverlay(QWidget):
 
         self._reposition()
         self.show()
+        self.raise_()
         self._apply_native_window_attributes()
         self._bring_to_front_mac()
 
@@ -237,7 +248,7 @@ class FloatingPillOverlay(QWidget):
 
         self._fade_anim = QPropertyAnimation(self, b"fadeOpacity")
         self._fade_anim.setDuration(140)
-        self._fade_anim.setStartValue(0.0)
+        self._fade_anim.setStartValue(self._opacity if self._opacity > 0.0 else 0.0)
         self._fade_anim.setEndValue(1.0)
         self._fade_anim.start()
 
@@ -255,6 +266,9 @@ class FloatingPillOverlay(QWidget):
         self._state = self.STATE_PROCESSING
         self._status_text = text
         self._pill_width = 175.0
+        self._opacity = 1.0
+        self.show()
+        self.raise_()
         self._bring_to_front_mac()
         self.update()
 
@@ -263,6 +277,9 @@ class FloatingPillOverlay(QWidget):
         self._state = self.STATE_INSERTED
         self._status_text = "Inserted"
         self._pill_width = 150.0
+        self._opacity = 1.0
+        self.show()
+        self.raise_()
         self._bring_to_front_mac()
         self.update()
         self._auto_hide_timer.start(1100)
@@ -272,6 +289,9 @@ class FloatingPillOverlay(QWidget):
         self._state = self.STATE_INSERTED_OFFLINE
         self._status_text = "Inserted (offline)"
         self._pill_width = 190.0
+        self._opacity = 1.0
+        self.show()
+        self.raise_()
         self._bring_to_front_mac()
         self.update()
         self._auto_hide_timer.start(1400)
@@ -281,6 +301,9 @@ class FloatingPillOverlay(QWidget):
         self._state = self.STATE_COPIED
         self._status_text = "Copied"
         self._pill_width = 145.0
+        self._opacity = 1.0
+        self.show()
+        self.raise_()
         self._bring_to_front_mac()
         self.update()
         self._auto_hide_timer.start(1300)
@@ -291,6 +314,9 @@ class FloatingPillOverlay(QWidget):
         self._status_text = message
         self._pill_width = 200.0
         self._shake_start = time.time()
+        self._opacity = 1.0
+        self.show()
+        self.raise_()
         self._bring_to_front_mac()
         self.update()
         self._auto_hide_timer.start(1500)
@@ -335,7 +361,12 @@ class FloatingPillOverlay(QWidget):
             phase = now * 13.0 - dist_from_center * 0.44
             harmonic = 0.40 + 0.60 * (0.5 + 0.5 * math.sin(phase))
             dynamic_speech = self._audio_level * harmonic * weight
-            target_h = max(breath * weight, dynamic_speech)
+            # Only show full breathing animation when real audio is present;
+            # otherwise keep bars nearly flat so silence looks like silence.
+            if self._audio_level > 0.001:
+                target_h = max(breath * weight, dynamic_speech)
+            else:
+                target_h = breath * weight * 0.2
 
             if target_h > self._bars[i]:
                 self._bars[i] += (target_h - self._bars[i]) * 0.55
@@ -361,6 +392,13 @@ class FloatingPillOverlay(QWidget):
     # -------------------------------------------------------------------------
 
     def mouseMoveEvent(self, event) -> None:
+        # Handle dragging if active
+        if hasattr(self, "_drag_start_offset") and self._drag_start_offset is not None:
+            if event.buttons() & Qt.MouseButton.LeftButton:
+                new_pos = event.globalPosition().toPoint() - self._drag_start_offset
+                self.move(new_pos)
+                return
+
         if self._state != self.STATE_LISTENING:
             self.setCursor(Qt.CursorShape.ArrowCursor)
             return
@@ -413,6 +451,14 @@ class FloatingPillOverlay(QWidget):
         # Right button area: Confirm / Finish
         elif pos.x() > x + w - 40.0:
             self.confirm_requested.emit()
+        else:
+            # Click on pill body: allow dragging
+            if event.button() == Qt.MouseButton.LeftButton:
+                self._drag_start_offset = event.globalPosition().toPoint() - self.pos()
+
+    def mouseReleaseEvent(self, event) -> None:
+        self._drag_start_offset = None
+
 
     # -------------------------------------------------------------------------
     # Painting (Pixel-Perfect Typeless Replica)

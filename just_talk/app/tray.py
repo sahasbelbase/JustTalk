@@ -35,12 +35,16 @@ class SystemTrayManager:
         self.on_quit = on_quit
         self.gemini = gemini
 
+        self._menu: Optional[QMenu] = None
         self.tray_icon = QSystemTrayIcon(parent)
         self.tray_icon.setIcon(self.icon)
         self.tray_icon.setToolTip("Just Talk — Voice Keyboard")
+        self.tray_icon.activated.connect(self._on_tray_activated)
         self._build_menu()
 
     def _build_menu(self) -> None:
+        # Avoid orphan menus leaking in memory
+        old_menu = self._menu
         menu = QMenu()
 
         # Primary Action: Open Full App Window
@@ -66,8 +70,12 @@ class SystemTrayManager:
         menu.addAction(status_action)
         menu.addSeparator()
 
-        # Quick Toggle: Gemini AI Formatting
-        self.gemini_action = QAction("Enable Gemini AI Formatting", menu)
+        # Quick Toggle: AI Formatting
+        pid = getattr(self.config, "ai_provider", "gemini") or "gemini"
+        from ..ai.providers import get_provider
+        p = get_provider(pid)
+        p_name = p.display_name if p else "AI"
+        self.gemini_action = QAction(f"Enable {p_name} Formatting", menu)
         self.gemini_action.setCheckable(True)
         self.gemini_action.setChecked(self.config.gemini_enabled)
         self.gemini_action.toggled.connect(self._on_gemini_toggled)
@@ -106,12 +114,15 @@ class SystemTrayManager:
         quit_action.triggered.connect(self.on_quit)
         menu.addAction(quit_action)
 
+        self._menu = menu
         self.tray_icon.setContextMenu(menu)
-        self.tray_icon.activated.connect(self._on_tray_activated)
+        if old_menu is not None:
+            old_menu.deleteLater()
 
     def refresh_menu(self) -> None:
-        """Re-render menu to update dynamic circuit breaker state."""
-        self._build_menu()
+        """Re-render menu to update dynamic circuit breaker state (main-thread safe)."""
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, self._build_menu)
 
     def _on_gemini_toggled(self, checked: bool) -> None:
         self.config.gemini_enabled = checked
@@ -119,11 +130,17 @@ class SystemTrayManager:
         self.on_toggle_gemini(checked)
 
     def _on_tray_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
-        if reason in (
-            QSystemTrayIcon.ActivationReason.DoubleClick,
-            QSystemTrayIcon.ActivationReason.Trigger,
-        ):
-            self.on_open_main("home")
+        # On macOS, left clicking status icon naturally opens the context menu via AppKit.
+        # Intercepting Trigger on macOS and popping up a window causes an NSMenuTrackingSession assertion crash!
+        if sys.platform == "darwin":
+            if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
+                self.on_open_main("home")
+        else:
+            if reason in (
+                QSystemTrayIcon.ActivationReason.DoubleClick,
+                QSystemTrayIcon.ActivationReason.Trigger,
+            ):
+                self.on_open_main("home")
 
     def show(self) -> None:
         self.tray_icon.show()

@@ -23,12 +23,17 @@ class SingleInstanceManager(QObject):
 
     instance_activated = Signal()
 
-    def __init__(self, on_activate: Optional[Callable[[], None]] = None):
+    def __init__(
+        self,
+        on_activate: Optional[Callable[[], None]] = None,
+        lock_name: str = SOCKET_NAME,
+    ):
         super().__init__()
         self.on_activate = on_activate
+        self.lock_name = lock_name
         self._server: Optional[QLocalServer] = None
         self._lock_file = None
-        self._lock_path = get_app_data_dir() / "app.lock"
+        self._lock_path = get_app_data_dir() / f"{lock_name}.lock"
 
     def try_lock(self) -> bool:
         """
@@ -38,7 +43,7 @@ class SingleInstanceManager(QObject):
         """
         # Step 1: Check if an existing QLocalServer is listening
         socket = QLocalSocket()
-        socket.connectToServer(SOCKET_NAME)
+        socket.connectToServer(self.lock_name)
         if socket.waitForConnected(300):
             # Another instance is already active! Tell it to activate
             socket.write(b"ACTIVATE\n")
@@ -62,10 +67,10 @@ class SingleInstanceManager(QObject):
             return False
 
         # Step 3: Start QLocalServer to listen for future launch attempts
-        QLocalServer.removeServer(SOCKET_NAME)  # Clean any stale socket file
+        QLocalServer.removeServer(self.lock_name)  # Clean any stale socket file
         self._server = QLocalServer(self)
         self._server.newConnection.connect(self._handle_new_connection)
-        self._server.listen(SOCKET_NAME)
+        self._server.listen(self.lock_name)
 
         return True
 
@@ -88,7 +93,7 @@ class SingleInstanceManager(QObject):
         """Release server and file locks upon exit."""
         if self._server:
             self._server.close()
-            QLocalServer.removeServer(SOCKET_NAME)
+            QLocalServer.removeServer(self.lock_name)
             self._server = None
 
         if self._lock_file:

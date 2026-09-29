@@ -60,7 +60,7 @@ def test_formatting_fallback_inserts_raw_and_saves_history():
 
 def test_key_redaction_in_logs_and_errors():
     """Verify that credentials in exception messages or log strings are redacted."""
-    gemini_key = "AQ.Ab8RN6KoTB0_kqgjTQ6QXopwIdKzVVBCKFNEME64eBDz9n3ypw"
+    gemini_key = "AQ.MockTestKey0123456789abcdefghij"
     google_key = "AIzaSyD-mockTestKey9876543210ABCDEFGH"
 
     log_entry_1 = f"Failed to post to https://generativelanguage.googleapis.com with key={gemini_key}"

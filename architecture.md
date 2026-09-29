@@ -14,7 +14,7 @@
 2. **Sub-Second Latency:** Streaming 16kHz audio buffer, voice activity detection (VAD), and hardware-accelerated local inference guarantee minimal latency between releasing the key and text insertion.
 3. **Deterministic & Resilient AI Formatting:** If enabled, only the plain-text transcript is sent to Google Gemini for subtle punctuation, capitalization, and filler-word removal. If offline or if the API exceeds a 2.0s threshold, the system immediately falls back to raw local transcription.
 4. **Non-Intrusive Desktop Integration:** True clipboard preservation restores prior clipboard contents after simulated paste; active window detection ensures text lands where the user expects or falls back safely to the system clipboard.
-5. **Modern Native Aesthetics:** Adheres strictly to macOS Big Sur/Sonoma/Sequoia visual standards (frosted glass acrylics, SF Pro / Inter typography, smooth state animations) while fully supporting Windows 10/11 taskbar conventions.
+5. **Modern Native Aesthetics:** Adheres strictly to macOS Big Sur/Sonoma/Sequoia visual standards (frosted glass acrylics, SF Pro / Lato typography, smooth state animations) while fully supporting Windows 10/11 taskbar conventions.
 
 ---
 
@@ -66,7 +66,7 @@ graph TD
 
 ### 3.2 UI & Design System (`just_talk/app/`)
 * **`theme.py`:** Comprehensive macOS-inspired design system:
-  * **Typography:** Embedded variable fonts (`Inter`, `Lato`, `JetBrains Mono`, `Instrument Serif`).
+  * **Typography:** Embedded bundled fonts (`Lato` family, `JetBrains Mono` variable monospace) with fallback to native system fonts (`SF Pro` / `Segoe UI`).
   * **Palette:** Semantic dark/light tokens with translucent surfaces, acrylic borders, smooth hover states, and dynamic status badges.
   * **Custom Controls:** Frosted-glass styled push buttons, custom slider bars, segmented tabs, and rounded combo boxes.
 * **`overlay.py` (`FloatingPillOverlay`):** Unobtrusive, borderless floating pill HUD displayed on the user's active screen during speech capture:

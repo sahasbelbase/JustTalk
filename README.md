@@ -162,11 +162,10 @@ JustTalk/
 │   │   ├── single_instance.py  # IPC socket / mutex single-instance enforcer
 │   │   ├── theme.py            # macOS-inspired design tokens, typography, dark/light styles
 │   │   ├── overlay.py          # Floating animated status pill HUD (waveform, pulse, badges)
-│   │   ├── main_window.py      # Dual-mode split-view control center & settings window
+│   │   ├── main_window.py      # Unified Control Center (Home, History, Settings, Models, AI Prompts)
 │   │   ├── onboarding_window.py# First-run onboarding & permissions setup wizard
 │   │   ├── ai_formatting_view.py# AI prompt tuning, temperature, and formatting controls
-│   │   ├── tray.py             # Native system tray / menu bar integration
-│   │   └── history_window.py   # Searchable local dictation history viewer
+│   │   └── tray.py             # Native system tray / menu bar integration
 │   │
 │   ├── audio/
 │   │   ├── recorder.py         # 16kHz low-latency streaming microphone buffer (sounddevice)

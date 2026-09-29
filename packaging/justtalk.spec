@@ -13,9 +13,12 @@ if sys.platform == "darwin":
 else:
     app_icon = str(project_root / "just_talk" / "assets" / "icon.ico")
 
+from PyInstaller.utils.hooks import collect_data_files
+
 datas = [
     (str(project_root / "just_talk" / "assets"), "just_talk/assets"),
 ]
+datas += collect_data_files("faster_whisper")
 
 hidden_imports = [
     "ctranslate2",
@@ -30,6 +33,7 @@ hidden_imports = [
     "keyring.backends.macOS",
     "keyring.backends.Windows",
     "httpx",
+    "huggingface_hub",
     "google_genai",
     "scipy",
     "scipy.signal",
@@ -37,6 +41,11 @@ hidden_imports = [
     "PySide6.QtCore",
     "PySide6.QtGui",
     "PySide6.QtWidgets",
+    "objc",
+    "Foundation",
+    "AppKit",
+    "Quartz",
+    "AVFoundation",
 ]
 
 a = Analysis(
@@ -72,7 +81,7 @@ exe = EXE(
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
-    entitlements_file=None,
+    entitlements_file=str(project_root / "packaging" / "mac" / "entitlements.plist"),
     icon=app_icon,
 )
 

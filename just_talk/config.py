@@ -47,16 +47,23 @@ class AppConfig:
 
     # STT Model
     model_tier: str = "balanced"  # "fast", "balanced", "quality"
-    language: str = "en"
+    language: str = "auto"  # "auto", "ne", "en", "de", "fr", "it", "zh"
+    speech_mode: str = "transcribe"  # "transcribe" (write what I say) or "translate" (translate speech to English)
     audio_device_index: Optional[int] = None
     push_to_talk: bool = True  # True: hold to speak, False: toggle on/off
 
-    # Gemini Cloud Layer & Resilience
+    # AI Formatting Layer & Resilience
     gemini_enabled: bool = True
     offline_mode: bool = False
     gemini_model: str = "gemini-3.8-flash"
     prompt_style: str = "subtle"  # "subtle", "formal", "concise"
-    formatting_budget_sec: float = 3.0  # Max time budget before raw text fallback
+    formatting_budget_sec: float = 6.0  # Max time budget before raw text fallback
+
+    # Multi-Provider AI Configuration
+    ai_provider: str = "gemini"  # Active provider ID: 'gemini', 'openai', 'anthropic', 'grok', 'groq', 'openrouter', 'deepseek', 'custom'
+    ai_model: str = ""  # Model override (empty = use provider default)
+    custom_api_base_url: str = ""  # Base URL for 'custom' provider
+    custom_model_name: str = ""  # Model name for 'custom' provider
 
     # Shortcuts
     shortcut: str = field(default_factory=get_default_shortcut)
@@ -72,7 +79,7 @@ class AppConfig:
     # System, Appearance & Window Behavior
     appearance: str = "system"  # "system", "light", "dark"
     open_window_on_launch: bool = True
-    show_in_dock: bool = False  # macOS: show dock icon even when main window is closed
+    show_in_dock: bool = True  # macOS: show dock icon even when main window is closed
     close_to_tray: bool = True  # Windows: hide window to tray instead of keeping taskbar button
     start_minimized: bool = False
     launch_at_startup: bool = False
@@ -124,6 +131,12 @@ class AppConfig:
             # Filter valid keys for forward compatibility
             valid_keys = {f.name for f in cls.__dataclass_fields__.values()}  # type: ignore
             filtered = {k: v for k, v in data.items() if k in valid_keys}
+
+            # If open_window_on_launch is True (default), ensure start_minimized is False
+            # so the application window opens immediately when launched by the user.
+            if filtered.get("open_window_on_launch", True):
+                filtered["start_minimized"] = False
+
             config = cls(**filtered)
 
             # Re-save if legacy keys were stripped
