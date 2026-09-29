@@ -138,8 +138,8 @@ class FloatingPillOverlay(QWidget):
                     NSWindowCollectionBehaviorTransient,
                     NSWindowCollectionBehaviorIgnoresCycle,
                     NSWindowStyleMaskNonactivatingPanel,
+                    NSScreenSaverWindowLevel,
                 )
-                from Quartz import CGWindowLevelForKey, kCGPopUpMenuWindowLevelKey
 
                 view_ptr = int(self.winId())
                 c_void_p = ctypes.c_void_p(view_ptr)
