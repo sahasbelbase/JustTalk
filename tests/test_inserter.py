@@ -19,12 +19,28 @@ def test_text_inserter_empty():
 
 
 def test_text_inserter_active():
+    from just_talk.system.caret_locator import CaretLocator
+
     inserter = TextInserter()
     test_phrase = "Hello world from Just Talk"
 
-    # Mock keyboard synthesis to prevent accidental typing during unit tests
-    with patch.object(inserter._keyboard, "press"), patch.object(inserter._keyboard, "release"):
+    # Mock keyboard synthesis and active target to test genuine insertion path
+    with patch.object(CaretLocator, "_last_has_text_target", True), patch.object(inserter._keyboard, "press"), patch.object(inserter._keyboard, "release"):
         success, status, app = inserter.insert(test_phrase, restore_clipboard=False)
         assert success is True
         assert status == "inserted"
+        assert ClipboardManager.get_text() == test_phrase
+
+
+def test_text_inserter_clipboard_fallback():
+    from just_talk.system.caret_locator import CaretLocator
+
+    inserter = TextInserter()
+    test_phrase = "Text copied when no active target"
+
+    # Simulate CaretLocator determining there is no active text target (e.g. desktop/Finder)
+    with patch.object(CaretLocator, "_last_has_text_target", False):
+        success, status, app = inserter.insert(test_phrase, restore_clipboard=False)
+        assert success is True
+        assert status == "clipboard"
         assert ClipboardManager.get_text() == test_phrase

@@ -48,3 +48,38 @@ def test_history_crud():
         # 5. Clear
         db.clear()
         assert len(db.get_recent()) == 0
+
+
+def test_voice_profiles_crud():
+    import numpy as np
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = Path(tmpdir) / "test_profiles.db"
+        db = HistoryDatabase(db_path=db_path)
+
+        dummy_emb = np.random.randn(512).astype(np.float32)
+        pid = db.save_voice_profile("Speaker 1", dummy_emb)
+        assert pid is not None
+
+        profiles = db.get_voice_profiles()
+        assert "Speaker 1" in profiles
+        assert np.allclose(profiles["Speaker 1"], dummy_emb, atol=1e-5)
+
+        listing = db.list_voice_profiles()
+        assert len(listing) == 1
+        assert listing[0]["name"] == "Speaker 1"
+
+        # Test adding history with speaker attribution
+        item = db.add(
+            raw_transcription="testing speaker tagging",
+            processed_text="Testing speaker tagging.",
+            speaker="Speaker 1",
+        )
+        assert item.speaker == "Speaker 1"
+        recent = db.get_recent(limit=1)
+        assert recent[0].speaker == "Speaker 1"
+
+        # Delete profile
+        deleted = db.delete_voice_profile("Speaker 1")
+        assert deleted is True
+        assert len(db.get_voice_profiles()) == 0

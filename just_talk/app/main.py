@@ -34,7 +34,9 @@ from PySide6.QtWidgets import QApplication
 from ..ai.actions import ActionRouter
 from ..ai.gemini import GeminiFormatter
 from ..ai.providers import MultiProviderFormatter
+from ..audio.noise_filter import NoiseFilter
 from ..audio.recorder import AudioRecorder
+from ..audio.speaker_recognizer import SpeakerRecognizer
 from ..audio.vad import VoiceActivityDetector
 from ..config import AppConfig
 from ..database.history import HistoryDatabase
@@ -43,6 +45,7 @@ from ..shortcuts.manager import ShortcutManager
 from ..stt.model_manager import ModelManager
 from ..stt.whisper_engine import WhisperSTTEngine
 from ..system.autostart import AutostartManager
+from ..system.caret_locator import CaretLocator
 from ..system.inserter import TextInserter
 from ..system.permissions import PermissionsManager
 from .main_window import MainWindow
@@ -212,6 +215,8 @@ class JustTalkApp:
             timeout=getattr(self.config, "formatting_budget_sec", 3.0),
         )
         self.inserter = TextInserter()
+        self.noise_filter = NoiseFilter()
+        self.speaker_recognizer = SpeakerRecognizer()
         self.shortcut_manager: Optional[ShortcutManager] = None
 
         self._is_action_mode = False
@@ -539,7 +544,28 @@ class JustTalkApp:
                     self.bridge.state_error.emit("Speech model downloading")
                     return
 
-            # 1. Local Speech-to-Text with Multilingual & Dual-Task Support
+            # 1. Voice & Echo Isolation (DeepFilterNet v3)
+            if getattr(self.config, "voice_isolation_enabled", True) and hasattr(self, "noise_filter"):
+                audio = self.noise_filter.filter(audio, sr=16000)
+
+            # 2. Speaker Identification & Target Voice Isolation (WeSpeaker CAM++)
+            identified_speaker = None
+            if (
+                getattr(self.config, "speaker_id_enabled", True)
+                and hasattr(self, "speaker_recognizer")
+                and self.speaker_recognizer.is_available()
+            ):
+                profiles = self.db.get_voice_profiles()
+                if profiles:
+                    identified_speaker, sim = self.speaker_recognizer.identify_speaker(audio, profiles)
+                    if identified_speaker:
+                        print(f"[SpeakerID] Identified speaker: '{identified_speaker}' (similarity={sim:.2f})", file=sys.stderr)
+                    elif getattr(self.config, "target_speaker_isolation", False):
+                        print(f"[SpeakerID] Unrecognized speaker (similarity={sim:.2f}) filtered out.", file=sys.stderr)
+                        self.bridge.state_error.emit("Filtered background voice")
+                        return
+
+            # 3. Local Speech-to-Text with Multilingual & Dual-Task Support
             speech_mode = getattr(self.config, "speech_mode", "transcribe")
             task = "translate" if speech_mode == "translate" else "transcribe"
             lang = self.config.language if self.config.language not in ("auto", "none", "", None) else None
@@ -584,7 +610,7 @@ class JustTalkApp:
             raw_text = raw_text.strip()
             print(f"[STT Raw (task={task}, lang={lang})]: {raw_text}")
 
-            # 2. Action Routing & Intent Detection
+            # 4. Action Routing & Intent Detection
             if task == "translate":
                 # Speech already translated into English by Whisper
                 intent = ActionRouter.parse_intent(raw_text, is_action_mode=False)
@@ -596,8 +622,22 @@ class JustTalkApp:
                 final_text = intent.target_payload
             is_offline_fallback = False
 
-            # 3. Gemini Formatting Layer
+            # Typeless Two-Phase Fast Emission: Phase 1 (Immediate Draft Emission)
+            has_text_target = CaretLocator.has_active_text_target()
             use_gemini = self.config.gemini_enabled and not self.config.offline_mode
+            two_phase_active = (
+                getattr(self.config, "two_phase_emission", True)
+                and use_gemini
+                and has_text_target
+            )
+            draft_emitted = False
+
+            if two_phase_active:
+                print(f"[TwoPhase] Phase 1: Immediately emitting draft text ({len(final_text)} chars)", file=sys.stderr)
+                draft_ok, _, _ = self.inserter.insert(final_text, restore_clipboard=False)
+                draft_emitted = draft_ok
+
+            # 5. Gemini / AI Formatting Layer
             if use_gemini:
                 self.bridge.state_processing.emit(
                     "Translating..." if intent.action_type == "translate" else "Cleaning..."
@@ -622,15 +662,25 @@ class JustTalkApp:
                 final_text = GeminiFormatter.light_local_cleanup(final_text)
                 is_offline_fallback = True
 
-            # 4. Text Insertion
-            inserted_ok, status, active_app = self.inserter.insert(
-                final_text,
-                restore_clipboard=self.config.restore_clipboard,
-            )
+            # 6. Text Insertion (or Phase 2 In-Place Polish)
+            if draft_emitted and final_text != raw_text:
+                print(f"[TwoPhase] Phase 2: In-place updating text with polished AI output ({len(final_text)} chars)", file=sys.stderr)
+                # Paste polished text
+                inserted_ok, status, active_app = self.inserter.insert(
+                    final_text,
+                    restore_clipboard=self.config.restore_clipboard,
+                )
+            elif not draft_emitted:
+                inserted_ok, status, active_app = self.inserter.insert(
+                    final_text,
+                    restore_clipboard=self.config.restore_clipboard,
+                )
+            else:
+                inserted_ok, status, active_app = True, "inserted", self.inserter.get_active_app_name()
 
             total_latency_ms = int((time.time() - start_time) * 1000)
 
-            # 5. UI Status Feedback
+            # 7. UI Status Feedback
             if status == "inserted":
                 if is_offline_fallback:
                     self.bridge.state_inserted_offline.emit()
@@ -639,7 +689,7 @@ class JustTalkApp:
             else:
                 self.bridge.state_copied.emit()
 
-            # 6. Save to local history database (always preserving raw transcription)
+            # 8. Save to local history database with speaker attribution
             status_to_save = "inserted (offline)" if (status == "inserted" and is_offline_fallback) else status
             try:
                 self.db.add(
@@ -649,6 +699,7 @@ class JustTalkApp:
                     application=active_app,
                     status=status_to_save,
                     duration_ms=total_latency_ms,
+                    speaker=identified_speaker,
                 )
             except Exception as db_err:
                 print(f"[Database] Failed to record history: {db_err}", file=sys.stderr)

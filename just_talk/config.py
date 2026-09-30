@@ -55,6 +55,12 @@ class AppConfig:
     # Custom Vocabulary (comma-separated words, personal names, product terms)
     custom_vocabulary: str = ""
 
+    # Voice Isolation & Speaker Identification
+    voice_isolation_enabled: bool = True  # DeepFilterNet v3 noise & laptop audio cancellation
+    speaker_id_enabled: bool = True       # WeSpeaker CAM++ speaker recognition & tagging
+    target_speaker_isolation: bool = False  # If True, ignore speech from unrecognized speakers
+    two_phase_emission: bool = True       # Typeless-style: instant draft emission + AI polish
+
     # AI Formatting Layer & Resilience
     gemini_enabled: bool = True
     offline_mode: bool = False

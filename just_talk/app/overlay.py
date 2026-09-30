@@ -252,7 +252,7 @@ class FloatingPillOverlay(QWidget):
         try:
             from just_talk.system.caret_locator import CaretLocator
 
-            x, y = CaretLocator.get_target_position(
+            x, y, has_text = CaretLocator.locate_target(
                 pill_width=self.width(),
                 pill_height=self.height(),
                 offset_y=8,
@@ -349,16 +349,16 @@ class FloatingPillOverlay(QWidget):
         self._auto_hide_timer.start(1400)
 
     def show_copied(self) -> None:
-        """Clipboard confirmation."""
+        """Clipboard confirmation badge."""
         self._state = self.STATE_COPIED
-        self._status_text = "Copied"
-        self._pill_width = 145.0
+        self._status_text = "Copied to Clipboard"
+        self._pill_width = 180.0
         self._opacity = 1.0
         if not self.isVisible():
             self.show()
         self._bring_to_front()
         self.update()
-        self._auto_hide_timer.start(1300)
+        self._auto_hide_timer.start(1400)
 
     def show_error(self, message: str = "No speech detected") -> None:
         """Subtle horizontal shake with error message."""

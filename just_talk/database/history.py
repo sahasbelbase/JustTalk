@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import numpy as np
 import sqlite3
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Iterator, List, Optional
+from typing import Dict, Iterator, List, Optional
 
 from ..config import get_app_data_dir
 
@@ -25,6 +26,7 @@ class HistoryItem:
     application: str
     status: str  # "inserted", "clipboard", "failed"
     duration_ms: int = 0
+    speaker: Optional[str] = None
 
     @property
     def formatted_time(self) -> str:
@@ -77,10 +79,28 @@ class HistoryDatabase:
                     processed_text TEXT NOT NULL,
                     application TEXT NOT NULL,
                     status TEXT NOT NULL,
-                    duration_ms INTEGER DEFAULT 0
+                    duration_ms INTEGER DEFAULT 0,
+                    speaker TEXT DEFAULT NULL
                 )
                 """
             )
+            # Ensure speaker column exists in pre-existing databases
+            try:
+                conn.execute("ALTER TABLE history ADD COLUMN speaker TEXT DEFAULT NULL")
+            except sqlite3.OperationalError:
+                pass
+
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS voice_profiles (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL UNIQUE,
+                    created_at TEXT NOT NULL,
+                    embedding BLOB NOT NULL
+                )
+                """
+            )
+
             conn.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_history_timestamp 
@@ -97,6 +117,7 @@ class HistoryDatabase:
         application: str = "Unknown",
         status: str = "inserted",
         duration_ms: int = 0,
+        speaker: Optional[str] = None,
     ) -> HistoryItem:
         """Insert a new history entry."""
         item_id = str(uuid.uuid4())
@@ -110,13 +131,14 @@ class HistoryDatabase:
             application=application,
             status=status,
             duration_ms=duration_ms,
+            speaker=speaker,
         )
 
         with self._get_connection() as conn:
             conn.execute(
                 """
-                INSERT INTO history (id, timestamp, action, raw_transcription, processed_text, application, status, duration_ms)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO history (id, timestamp, action, raw_transcription, processed_text, application, status, duration_ms, speaker)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     item.id,
@@ -127,6 +149,7 @@ class HistoryDatabase:
                     item.application,
                     item.status,
                     item.duration_ms,
+                    item.speaker,
                 ),
             )
             conn.commit()
@@ -137,7 +160,7 @@ class HistoryDatabase:
         with self._get_connection() as conn:
             cursor = conn.execute(
                 """
-                SELECT id, timestamp, action, raw_transcription, processed_text, application, status, duration_ms
+                SELECT id, timestamp, action, raw_transcription, processed_text, application, status, duration_ms, speaker
                 FROM history
                 ORDER BY timestamp DESC
                 LIMIT ?
@@ -155,6 +178,7 @@ class HistoryDatabase:
                     application=row["application"],
                     status=row["status"],
                     duration_ms=row["duration_ms"],
+                    speaker=row["speaker"] if "speaker" in row.keys() else None,
                 )
                 for row in rows
             ]
@@ -165,7 +189,7 @@ class HistoryDatabase:
         with self._get_connection() as conn:
             cursor = conn.execute(
                 """
-                SELECT id, timestamp, action, raw_transcription, processed_text, application, status, duration_ms
+                SELECT id, timestamp, action, raw_transcription, processed_text, application, status, duration_ms, speaker
                 FROM history
                 WHERE raw_transcription LIKE ? OR processed_text LIKE ?
                 ORDER BY timestamp DESC
@@ -184,9 +208,54 @@ class HistoryDatabase:
                     application=row["application"],
                     status=row["status"],
                     duration_ms=row["duration_ms"],
+                    speaker=row["speaker"] if "speaker" in row.keys() else None,
                 )
                 for row in rows
             ]
+
+    def save_voice_profile(self, name: str, embedding: np.ndarray) -> str:
+        """Save or update an enrolled speaker voice profile."""
+        profile_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+        blob = embedding.astype(np.float32).tobytes()
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO voice_profiles (id, name, created_at, embedding)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(name) DO UPDATE SET
+                    created_at = excluded.created_at,
+                    embedding = excluded.embedding
+                """,
+                (profile_id, name.strip(), now, blob),
+            )
+            conn.commit()
+        return profile_id
+
+    def get_voice_profiles(self) -> Dict[str, np.ndarray]:
+        """Load all enrolled speaker profiles as a mapping of name -> normalized embedding."""
+        profiles = {}
+        with self._get_connection() as conn:
+            cursor = conn.execute("SELECT name, embedding FROM voice_profiles ORDER BY created_at ASC")
+            for row in cursor.fetchall():
+                name = row["name"]
+                blob = row["embedding"]
+                if blob:
+                    profiles[name] = np.frombuffer(blob, dtype=np.float32)
+        return profiles
+
+    def delete_voice_profile(self, name: str) -> bool:
+        """Delete an enrolled voice profile by name."""
+        with self._get_connection() as conn:
+            cur = conn.execute("DELETE FROM voice_profiles WHERE name = ?", (name.strip(),))
+            conn.commit()
+            return cur.rowcount > 0
+
+    def list_voice_profiles(self) -> List[dict]:
+        """List metadata for all enrolled voice profiles."""
+        with self._get_connection() as conn:
+            cur = conn.execute("SELECT id, name, created_at FROM voice_profiles ORDER BY created_at ASC")
+            return [dict(row) for row in cur.fetchall()]
 
     def clear(self) -> None:
         """Manually clear all history records."""

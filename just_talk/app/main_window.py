@@ -1079,7 +1079,7 @@ class MainWindow(QMainWindow):
         s2_form.addRow("Spoken Language:", self.language_combo)
 
         self.vocab_input = QLineEdit()
-        self.vocab_input.setPlaceholderText("e.g. JustTalk, Sahas, Belbase, Kubernetes, PyTorch, GraphQL")
+        self.vocab_input.setPlaceholderText("e.g. JustTalk, Python, Kubernetes, PyTorch, GraphQL")
         self.vocab_input.setText(getattr(self.config, "custom_vocabulary", ""))
         self.vocab_input.textChanged.connect(self._on_custom_vocabulary_changed)
         s2_form.addRow("Custom Vocabulary:", self.vocab_input)
@@ -1089,8 +1089,46 @@ class MainWindow(QMainWindow):
         vocab_desc.setWordWrap(True)
         s2_form.addRow("", vocab_desc)
 
+        self.voice_isolation_check = QCheckBox("Voice & Echo Isolation (DeepFilterNet v3: eliminate background noise & laptop speakers)")
+        self.voice_isolation_check.setChecked(getattr(self.config, "voice_isolation_enabled", True))
+        self.voice_isolation_check.toggled.connect(self._on_voice_isolation_toggled)
+        s2_form.addRow("Voice Isolation:", self.voice_isolation_check)
+
+        self.two_phase_check = QCheckBox("Typeless Fast Emission (Insert draft words instantly in 250ms, then polish with AI)")
+        self.two_phase_check.setChecked(getattr(self.config, "two_phase_emission", True))
+        self.two_phase_check.toggled.connect(self._on_two_phase_toggled)
+        s2_form.addRow("Typeless Emission:", self.two_phase_check)
+
         sec2_layout.addLayout(s2_form)
         layout.addWidget(sec2)
+
+        # Section: Voice Profiles & Speaker Identification (WeSpeaker CAM++)
+        sec_spk, sec_spk_layout = self._create_settings_section("Speaker Recognition & Voice Profiles (WeSpeaker CAM++)")
+        spk_form = QFormLayout()
+        spk_form.setSpacing(12)
+
+        self.speaker_id_check = QCheckBox("Identify speaker profiles and tag history (e.g. [Speaker 1]: ...)")
+        self.speaker_id_check.setChecked(getattr(self.config, "speaker_id_enabled", True))
+        self.speaker_id_check.toggled.connect(self._on_speaker_id_toggled)
+        spk_form.addRow("Speaker Identification:", self.speaker_id_check)
+
+        self.target_isolation_check = QCheckBox("Filter & drop speech from unrecognized background voices")
+        self.target_isolation_check.setChecked(getattr(self.config, "target_speaker_isolation", False))
+        self.target_isolation_check.toggled.connect(self._on_target_isolation_toggled)
+        spk_form.addRow("Voice Isolation Filter:", self.target_isolation_check)
+
+        # Profile container
+        self.profiles_container = QVBoxLayout()
+        self._refresh_profiles_list()
+        spk_form.addRow("Enrolled Profiles:", self.profiles_container)
+
+        self.enroll_btn = QPushButton("➕ Enroll New Voice Profile (4s calibration)")
+        self.enroll_btn.setObjectName("secondaryBtn")
+        self.enroll_btn.clicked.connect(self._on_enroll_voice_clicked)
+        spk_form.addRow("", self.enroll_btn)
+
+        sec_spk_layout.addLayout(spk_form)
+        layout.addWidget(sec_spk)
 
         # Section 3: Multi-Provider AI Formatting
         sec3, sec3_layout = self._create_settings_section("AI Formatting Layer (Gemini, Claude, OpenAI, Grok, Groq, OpenRouter, Custom)")
@@ -1201,6 +1239,109 @@ class MainWindow(QMainWindow):
         self.config.save()
         if self.on_config_changed_callback:
             self.on_config_changed_callback(self.config)
+
+    def _on_voice_isolation_toggled(self, checked: bool) -> None:
+        self.config.voice_isolation_enabled = checked
+        self.config.save()
+        if self.on_config_changed_callback:
+            self.on_config_changed_callback(self.config)
+
+    def _on_two_phase_toggled(self, checked: bool) -> None:
+        self.config.two_phase_emission = checked
+        self.config.save()
+        if self.on_config_changed_callback:
+            self.on_config_changed_callback(self.config)
+
+    def _on_speaker_id_toggled(self, checked: bool) -> None:
+        self.config.speaker_id_enabled = checked
+        self.config.save()
+        if self.on_config_changed_callback:
+            self.on_config_changed_callback(self.config)
+
+    def _on_target_isolation_toggled(self, checked: bool) -> None:
+        self.config.target_speaker_isolation = checked
+        self.config.save()
+        if self.on_config_changed_callback:
+            self.on_config_changed_callback(self.config)
+
+    def _refresh_profiles_list(self) -> None:
+        if not hasattr(self, "profiles_container"):
+            return
+        while self.profiles_container.count():
+            item = self.profiles_container.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        profiles = self.db.list_voice_profiles() if hasattr(self.db, "list_voice_profiles") else []
+        if not profiles:
+            empty_lbl = QLabel("No voice profiles enrolled yet. Click 'Enroll New Voice Profile' below.")
+            empty_lbl.setObjectName("mutedLabel")
+            self.profiles_container.addWidget(empty_lbl)
+            return
+
+        for p in profiles:
+            p_row = QHBoxLayout()
+            name_lbl = QLabel(f"🎙️ {p['name']}")
+            name_lbl.setStyleSheet("font-weight: 600; color: #FFFFFF;")
+            p_row.addWidget(name_lbl)
+
+            date_lbl = QLabel(f"Added {p['created_at'][:10]}")
+            date_lbl.setObjectName("mutedLabel")
+            p_row.addWidget(date_lbl)
+
+            p_row.addStretch()
+
+            del_btn = QPushButton("Delete")
+            del_btn.setObjectName("dangerBtn")
+            del_btn.setStyleSheet("background-color: rgba(255, 69, 58, 0.15); color: #FF453A; font-size: 11px; padding: 2px 8px; border-radius: 4px;")
+            name_to_del = p['name']
+            del_btn.clicked.connect(lambda checked=False, n=name_to_del: self._on_delete_profile(n))
+            p_row.addWidget(del_btn)
+
+            row_widget = QWidget()
+            row_widget.setLayout(p_row)
+            self.profiles_container.addWidget(row_widget)
+
+    def _on_delete_profile(self, name: str) -> None:
+        if hasattr(self.db, "delete_voice_profile"):
+            self.db.delete_voice_profile(name)
+            self._refresh_profiles_list()
+
+    def _on_enroll_voice_clicked(self) -> None:
+        from PySide6.QtWidgets import QInputDialog, QMessageBox
+        name, ok = QInputDialog.getText(self, "Enroll Voice Profile", "Enter a name for this voice profile (e.g. Speaker 1):")
+        if not ok or not name.strip():
+            return
+
+        profile_name = name.strip()
+        QMessageBox.information(
+            self,
+            "Calibrating Voice Profile",
+            f"Click OK and speak clearly for 4 seconds to calibrate '{profile_name}'.",
+        )
+
+        try:
+            import sounddevice as sd
+            from ..audio.speaker_recognizer import SpeakerRecognizer
+
+            sr = SpeakerRecognizer()
+            if not sr.is_available():
+                QMessageBox.warning(self, "Model Missing", "WeSpeaker CAM++ model is downloading or not yet loaded.")
+                return
+
+            audio = sd.rec(int(16000 * 4.0), samplerate=16000, channels=1, dtype="float32", device=self.config.audio_device_index)
+            sd.wait()
+            audio_flat = audio.flatten()
+
+            emb = sr.extract_embedding(audio_flat)
+            if emb is not None:
+                self.db.save_voice_profile(profile_name, emb)
+                self._refresh_profiles_list()
+                QMessageBox.information(self, "Voice Enrolled", f"Successfully enrolled voice profile: '{profile_name}'!")
+            else:
+                QMessageBox.warning(self, "Calibration Failed", "Could not extract voice embedding. Ensure your microphone is working and speak clearly.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Voice enrollment failed: {e}")
 
     def _on_tier_selection_changed(self) -> None:
         tier_id = self.tier_combo.currentData()

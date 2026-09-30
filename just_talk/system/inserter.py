@@ -236,10 +236,16 @@ class TextInserter:
         if not set_ok:
             return False, "failed", active_app
 
-        # Step 2: Reactivate the original target application
+        # Step 2: Check if an active text target is present
+        from .caret_locator import CaretLocator
+        if CaretLocator._last_has_text_target is False:
+            print("[TextInserter] No active text area detected. Text copied to clipboard safely without typing.", file=sys.stderr)
+            return True, "clipboard", active_app
+
+        # Step 3: Reactivate the original target application
         self._reactivate_target_window()
 
-        # Step 3: Synthesize simulated paste keystroke
+        # Step 4: Synthesize simulated paste keystroke
         try:
             paste_ok = self._synthesize_paste()
             if not paste_ok:

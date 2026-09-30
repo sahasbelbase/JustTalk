@@ -37,6 +37,7 @@ hidden_imports = [
     "google_genai",
     "scipy",
     "scipy.signal",
+    "onnxruntime",
     "PySide6",
     "PySide6.QtCore",
     "PySide6.QtGui",

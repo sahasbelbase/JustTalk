@@ -37,3 +37,16 @@ def test_caret_locator_bounds_clamping():
         for s in screens
     )
     assert contained
+
+
+def test_caret_locator_locate_target():
+    """Verify locate_target returns 3 items: x, y, and boolean has_text_target."""
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication([])
+
+    x, y, has_text = CaretLocator.locate_target(pill_width=216, pill_height=48)
+    assert isinstance(x, int)
+    assert isinstance(y, int)
+    assert isinstance(has_text, bool)
+    assert CaretLocator.has_active_text_target() == has_text

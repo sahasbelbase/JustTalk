@@ -17,38 +17,45 @@ from PySide6.QtGui import QCursor, QGuiApplication
 class CaretLocator:
     """Discovers screen coordinates for active text insertion points and input fields."""
 
+    _last_has_text_target: Optional[bool] = None
+
     @classmethod
-    def get_target_position(
+    def has_active_text_target(cls) -> bool:
+        """Returns True if the most recently located target or currently focused control is a genuine text input area."""
+        return bool(cls._last_has_text_target)
+
+    @classmethod
+    def locate_target(
         cls,
         pill_width: int = 216,
         pill_height: int = 48,
         offset_y: int = 8,
-    ) -> Tuple[int, int]:
+    ) -> Tuple[int, int, bool]:
         """
-        Calculates optimal (x, y) coordinates for the floating pill.
-        Prioritizes:
-          1. Exact text caret screen position (AXSelectedTextRange + AXBoundsForRange).
-          2. Focused input box bounding box (AXPosition + AXSize).
-          3. Frontmost active window + Mouse cursor position (where user clicked).
-          4. Mouse cursor position (QCursor.pos()).
-          5. Center of active screen (fallback).
+        Calculates optimal (x, y) coordinates for the floating pill and determines
+        whether a genuine editable text target is focused.
+        Returns:
+            Tuple[x: int, y: int, has_text_target: bool]
         """
         target_x: Optional[float] = None
         target_y: Optional[float] = None
         top_anchor: Optional[float] = None
+        has_text_target = False
 
         if sys.platform == "darwin":
-            target_x, target_y, top_anchor = cls._get_macos_caret_coords(
+            target_x, target_y, top_anchor, has_text_target = cls._get_macos_caret_coords(
                 pill_width=pill_width,
                 pill_height=pill_height,
                 offset_y=offset_y,
             )
         elif sys.platform == "win32":
-            target_x, target_y, top_anchor = cls._get_windows_caret_coords(
+            target_x, target_y, top_anchor, has_text_target = cls._get_windows_caret_coords(
                 pill_width=pill_width,
                 pill_height=pill_height,
                 offset_y=offset_y,
             )
+
+        cls._last_has_text_target = bool(has_text_target)
 
         # Fallback to mouse cursor position
         if target_x is None or target_y is None:
@@ -89,7 +96,20 @@ class CaretLocator:
             target_x = 400.0
             target_y = 400.0
 
-        return int(target_x), int(target_y)
+        return int(target_x), int(target_y), bool(has_text_target)
+
+    @classmethod
+    def get_target_position(
+        cls,
+        pill_width: int = 216,
+        pill_height: int = 48,
+        offset_y: int = 8,
+    ) -> Tuple[int, int]:
+        """
+        Calculates optimal (x, y) coordinates for the floating pill (2-tuple for backwards compatibility).
+        """
+        x, y, _ = cls.locate_target(pill_width=pill_width, pill_height=pill_height, offset_y=offset_y)
+        return x, y
 
     @classmethod
     def _get_macos_caret_coords(
@@ -97,7 +117,7 @@ class CaretLocator:
         pill_width: int,
         pill_height: int,
         offset_y: int,
-    ) -> Tuple[Optional[float], Optional[float], Optional[float]]:
+    ) -> Tuple[Optional[float], Optional[float], Optional[float], bool]:
         """Query macOS Accessibility (AXUIElement) for active caret and input box bounds."""
         try:
             from AppKit import NSWorkspace
@@ -105,12 +125,19 @@ class CaretLocator:
 
             front_app = NSWorkspace.sharedWorkspace().frontmostApplication()
             if not front_app:
-                return None, None, None
+                return None, None, None, False
 
             pid = front_app.processIdentifier()
             app_elem = ApplicationServices.AXUIElementCreateApplication(pid)
             if not app_elem:
-                return None, None, None
+                return None, None, None, False
+
+            # Enable accessibility DOM tree on Electron / Chromium apps (Teams, Brave, Antigravity, VS Code, Chrome)
+            try:
+                ApplicationServices.AXUIElementSetAttributeValue(app_elem, "AXEnhancedUserInterface", True)
+                ApplicationServices.AXUIElementSetAttributeValue(app_elem, "AXManualAccessibility", True)
+            except Exception:
+                pass
 
             focused = None
             err, focused = ApplicationServices.AXUIElementCopyAttributeValue(
@@ -128,15 +155,20 @@ class CaretLocator:
                     win, ApplicationServices.kAXFocusedUIElementAttribute, None
                 )
 
-            # NOTE: DO NOT query AXUIElementCreateSystemWide() when focused is None!
-            # On macOS, SystemWide element returns the entire desktop background,
-            # which misidentifies as an input field and pushes coordinates off screen.
-
             if focused:
+                # Inspect role and text attributes
+                role = None
+                err_role, role = ApplicationServices.AXUIElementCopyAttributeValue(
+                    focused, ApplicationServices.kAXRoleAttribute, None
+                )
+                is_text_role = role in ("AXTextArea", "AXTextField", "AXSearchField", "AXComboBox")
+
                 # --- Attempt 1: Exact text selection / caret bounds ---
                 err_r, range_val = ApplicationServices.AXUIElementCopyAttributeValue(
                     focused, ApplicationServices.kAXSelectedTextRangeAttribute, None
                 )
+                has_text = is_text_role or (err_r == 0 and range_val is not None)
+
                 if err_r == 0 and range_val:
                     err_b, bounds_val = ApplicationServices.AXUIElementCopyParameterizedAttributeValue(
                         focused,
@@ -154,7 +186,7 @@ class CaretLocator:
                             caret_h = max(rect.size.height, 16.0)
                             cy = rect.origin.y + caret_h + offset_y
                             tx = cx - (pill_width / 2.0)
-                            return tx, cy, rect.origin.y
+                            return tx, cy, rect.origin.y, True
 
                 # --- Attempt 2: Focused UI Element Bounds (Input Box, Search Bar, Text Field) ---
                 err_p, pos_val = ApplicationServices.AXUIElementCopyAttributeValue(
@@ -180,11 +212,11 @@ class CaretLocator:
                         if (pt.x <= mouse.x() <= pt.x + bw) and (pt.y <= mouse.y() <= pt.y + bh):
                             tx = float(mouse.x()) - (pill_width / 2.0)
                             ty = float(mouse.y()) + 22.0
-                            return tx, ty, float(mouse.y())
+                            return tx, ty, float(mouse.y()), has_text
                         else:
                             tx = pt.x + (bw - pill_width) / 2.0
                             ty = pt.y + bh + offset_y
-                            return tx, ty, pt.y
+                            return tx, ty, pt.y, has_text
 
             # --- Attempt 3: Focused Window Bounds (Frontmost App Window) ---
             if win:
@@ -205,12 +237,12 @@ class CaretLocator:
                         # Cleanly center at the bottom of the active target window (VS Code, Brave, Chrome, Antigravity)
                         tx = pt.x + (sz.width - pill_width) / 2.0
                         ty = pt.y + sz.height - pill_height - 32.0
-                        return tx, ty, None
+                        return tx, ty, None, False
 
         except Exception as e:
             print(f"[CaretLocator] Error resolving caret coordinates: {e}", file=sys.stderr)
 
-        return None, None, None
+        return None, None, None, False
 
     @classmethod
     def _get_windows_caret_coords(
@@ -218,7 +250,7 @@ class CaretLocator:
         pill_width: int,
         pill_height: int,
         offset_y: int,
-    ) -> Tuple[Optional[float], Optional[float], Optional[float]]:
+    ) -> Tuple[Optional[float], Optional[float], Optional[float], bool]:
         """Query Windows Win32 API (GetGUIThreadInfo) for active caret and focused window bounds."""
         try:
             import ctypes
@@ -251,7 +283,7 @@ class CaretLocator:
                         caret_top = float(pt.y - (rc.bottom - rc.top))
                         target_x = caret_screen_x - (pill_width / 2.0)
                         target_y = caret_screen_y + offset_y
-                        return target_x, target_y, caret_top
+                        return target_x, target_y, caret_top, True
 
                 hwnd_target = gui_info.hwndFocus or gui_info.hwndActive
                 if hwnd_target:
@@ -262,8 +294,9 @@ class CaretLocator:
                         if 10 < box_w < 1600 and 10 < box_h < 1200:
                             center_x = float(rect.left + (box_w / 2.0))
                             bottom_y = float(rect.bottom)
-                            return center_x - (pill_width / 2.0), bottom_y + offset_y, float(rect.top)
+                            is_focus = bool(gui_info.hwndFocus and hwnd_target == gui_info.hwndFocus)
+                            return center_x - (pill_width / 2.0), bottom_y + offset_y, float(rect.top), is_focus
         except Exception:
             pass
 
-        return None, None, None
+        return None, None, None, False
