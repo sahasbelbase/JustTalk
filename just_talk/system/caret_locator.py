@@ -43,6 +43,12 @@ class CaretLocator:
                 pill_height=pill_height,
                 offset_y=offset_y,
             )
+        elif sys.platform == "win32":
+            target_x, target_y, top_anchor = cls._get_windows_caret_coords(
+                pill_width=pill_width,
+                pill_height=pill_height,
+                offset_y=offset_y,
+            )
 
         # Fallback to mouse cursor position
         if target_x is None or target_y is None:
@@ -208,5 +214,61 @@ class CaretLocator:
 
         except Exception as e:
             print(f"[CaretLocator] Error resolving caret coordinates: {e}", file=sys.stderr)
+
+        return None, None, None
+
+    @classmethod
+    def _get_windows_caret_coords(
+        cls,
+        pill_width: int,
+        pill_height: int,
+        offset_y: int,
+    ) -> Tuple[Optional[float], Optional[float], Optional[float]]:
+        """Query Windows Win32 API (GetGUIThreadInfo) for active caret and focused window bounds."""
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            class GUITHREADINFO(ctypes.Structure):
+                _fields_ = [
+                    ("cbSize", wintypes.DWORD),
+                    ("flags", wintypes.DWORD),
+                    ("hwndActive", wintypes.HWND),
+                    ("hwndFocus", wintypes.HWND),
+                    ("hwndCapture", wintypes.HWND),
+                    ("hwndMenuOwner", wintypes.HWND),
+                    ("hwndMoveSize", wintypes.HWND),
+                    ("hwndCaret", wintypes.HWND),
+                    ("rcCaret", wintypes.RECT),
+                ]
+
+            user32 = ctypes.windll.user32
+            gui_info = GUITHREADINFO()
+            gui_info.cbSize = ctypes.sizeof(GUITHREADINFO)
+
+            if user32.GetGUIThreadInfo(0, ctypes.byref(gui_info)):
+                rc = gui_info.rcCaret
+                if gui_info.hwndCaret and (rc.right > rc.left or rc.bottom > rc.top):
+                    pt = wintypes.POINT(rc.left, rc.bottom)
+                    if user32.ClientToScreen(gui_info.hwndCaret, ctypes.byref(pt)):
+                        caret_screen_x = float(pt.x)
+                        caret_screen_y = float(pt.y)
+                        caret_top = float(pt.y - (rc.bottom - rc.top))
+                        target_x = caret_screen_x - (pill_width / 2.0)
+                        target_y = caret_screen_y + offset_y
+                        return target_x, target_y, caret_top
+
+                hwnd_target = gui_info.hwndFocus or gui_info.hwndActive
+                if hwnd_target:
+                    rect = wintypes.RECT()
+                    if user32.GetWindowRect(hwnd_target, ctypes.byref(rect)):
+                        box_w = rect.right - rect.left
+                        box_h = rect.bottom - rect.top
+                        if 10 < box_w < 1600 and 10 < box_h < 1200:
+                            center_x = float(rect.left + (box_w / 2.0))
+                            bottom_y = float(rect.bottom)
+                            return center_x - (pill_width / 2.0), bottom_y + offset_y, float(rect.top)
+        except Exception:
+            pass
 
         return None, None, None

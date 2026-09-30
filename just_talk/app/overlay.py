@@ -179,6 +179,53 @@ class FloatingPillOverlay(QWidget):
                     ns_window.orderFrontRegardless()
             except Exception as e:
                 print(f"[Overlay] Native window config error: {e}", file=sys.stderr)
+        elif sys.platform == "win32":
+            try:
+                import ctypes
+
+                hwnd = int(self.winId())
+                user32 = ctypes.windll.user32
+                GWL_EXSTYLE = -20
+                WS_EX_TOPMOST = 0x00000008
+                WS_EX_TOOLWINDOW = 0x00000080
+                WS_EX_NOACTIVATE = 0x08000000
+                HWND_TOPMOST = -1
+                SWP_NOMOVE = 0x0002
+                SWP_NOSIZE = 0x0001
+                SWP_NOACTIVATE = 0x0010
+                SWP_SHOWWINDOW = 0x0040
+
+                style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+                user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style | WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW)
+                user32.SetWindowPos(
+                    hwnd,
+                    HWND_TOPMOST,
+                    0, 0, 0, 0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+                )
+            except Exception as e:
+                print(f"[Overlay] Windows native window config error: {e}", file=sys.stderr)
+
+    def _bring_to_front_windows(self) -> None:
+        """Force window to the very front on Windows without stealing keyboard focus."""
+        if sys.platform == "win32":
+            try:
+                import ctypes
+
+                hwnd = int(self.winId())
+                HWND_TOPMOST = -1
+                SWP_NOMOVE = 0x0002
+                SWP_NOSIZE = 0x0001
+                SWP_NOACTIVATE = 0x0010
+                SWP_SHOWWINDOW = 0x0040
+                ctypes.windll.user32.SetWindowPos(
+                    hwnd,
+                    HWND_TOPMOST,
+                    0, 0, 0, 0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+                )
+            except Exception:
+                pass
 
     def _bring_to_front_mac(self) -> None:
         """Force window to the very front of all applications without stealing keyboard focus."""
@@ -201,6 +248,13 @@ class FloatingPillOverlay(QWidget):
                     ns_window.orderFrontRegardless()
             except Exception:
                 pass
+
+    def _bring_to_front(self) -> None:
+        """Force window to the front across platforms without stealing focus."""
+        if sys.platform == "darwin":
+            self._bring_to_front_mac()
+        elif sys.platform == "win32":
+            self._bring_to_front_windows()
 
     def _reposition(self) -> None:
         """Position pill near active text caret, focused input, or active window, like Wispr Flow and Typeless."""
@@ -245,7 +299,7 @@ class FloatingPillOverlay(QWidget):
         self.show()
         self.raise_()
         self._apply_native_window_attributes()
-        self._bring_to_front_mac()
+        self._bring_to_front()
 
         self._opacity = 1.0
         self._morph_progress = 1.0
@@ -276,7 +330,7 @@ class FloatingPillOverlay(QWidget):
         self._opacity = 1.0
         self.show()
         self.raise_()
-        self._bring_to_front_mac()
+        self._bring_to_front()
         self.update()
 
     def show_inserted(self) -> None:
@@ -287,7 +341,7 @@ class FloatingPillOverlay(QWidget):
         self._opacity = 1.0
         self.show()
         self.raise_()
-        self._bring_to_front_mac()
+        self._bring_to_front()
         self.update()
         self._auto_hide_timer.start(1100)
 
@@ -299,7 +353,7 @@ class FloatingPillOverlay(QWidget):
         self._opacity = 1.0
         self.show()
         self.raise_()
-        self._bring_to_front_mac()
+        self._bring_to_front()
         self.update()
         self._auto_hide_timer.start(1400)
 
@@ -311,7 +365,7 @@ class FloatingPillOverlay(QWidget):
         self._opacity = 1.0
         self.show()
         self.raise_()
-        self._bring_to_front_mac()
+        self._bring_to_front()
         self.update()
         self._auto_hide_timer.start(1300)
 
@@ -324,7 +378,7 @@ class FloatingPillOverlay(QWidget):
         self._opacity = 1.0
         self.show()
         self.raise_()
-        self._bring_to_front_mac()
+        self._bring_to_front()
         self.update()
         self._auto_hide_timer.start(1500)
 

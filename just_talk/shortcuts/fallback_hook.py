@@ -34,32 +34,56 @@ class PynputHotkeyMonitor:
         self._is_active = False
         self._lock = threading.Lock()
 
+    @staticmethod
+    def _is_right_alt(key) -> bool:
+        """Robust check for Right Alt / AltGr across Windows, macOS, and Linux keyboard drivers."""
+        if key in (keyboard.Key.alt_r, getattr(keyboard.Key, "alt_gr", None)):
+            return True
+        name = getattr(key, "name", "")
+        if name in ("alt_r", "alt_gr", "altgr"):
+            return True
+        vk = getattr(key, "vk", None)
+        # Windows virtual key codes: VK_RMENU = 165 (0xA5)
+        if vk in (165, 0xA5):
+            return True
+        return False
+
     def _matches_trigger(self) -> bool:
         """Evaluate if the currently pressed keys match the trigger shortcut."""
-        if self.trigger_key in ("right_alt", "alt_r"):
-            return keyboard.Key.alt_r in self._current_keys
-        elif self.trigger_key in ("alt_space", "alt+space"):
-            has_alt = (keyboard.Key.alt in self._current_keys or
-                       keyboard.Key.alt_l in self._current_keys or
-                       keyboard.Key.alt_r in self._current_keys)
-            has_space = keyboard.Key.space in self._current_keys
+        trigger = self.trigger_key.lower().replace(" ", "_").replace("-", "_")
+
+        if trigger in ("right_alt", "alt_r", "alt_gr", "altgr", "right_option", "rightalt"):
+            return any(self._is_right_alt(k) for k in self._current_keys)
+        elif trigger in ("alt_space", "alt+space"):
+            has_alt = any(
+                k in (keyboard.Key.alt, keyboard.Key.alt_l, keyboard.Key.alt_r, getattr(keyboard.Key, "alt_gr", None))
+                or getattr(k, "vk", None) in (18, 164, 165)
+                for k in self._current_keys
+            )
+            has_space = any(k == keyboard.Key.space or getattr(k, "vk", None) == 32 for k in self._current_keys)
             return has_alt and has_space
-        elif self.trigger_key in ("ctrl_space", "ctrl+space"):
-            has_ctrl = (keyboard.Key.ctrl in self._current_keys or
-                        keyboard.Key.ctrl_l in self._current_keys or
-                        keyboard.Key.ctrl_r in self._current_keys)
-            has_space = keyboard.Key.space in self._current_keys
+        elif trigger in ("ctrl_space", "ctrl+space"):
+            has_ctrl = any(
+                k in (keyboard.Key.ctrl, keyboard.Key.ctrl_l, keyboard.Key.ctrl_r)
+                or getattr(k, "vk", None) in (17, 162, 163)
+                for k in self._current_keys
+            )
+            has_space = any(k == keyboard.Key.space or getattr(k, "vk", None) == 32 for k in self._current_keys)
             return has_ctrl and has_space
-        elif self.trigger_key in ("ctrl_shift_space", "ctrl+shift+space"):
-            has_ctrl = (keyboard.Key.ctrl in self._current_keys or
-                        keyboard.Key.ctrl_l in self._current_keys or
-                        keyboard.Key.ctrl_r in self._current_keys)
-            has_shift = (keyboard.Key.shift in self._current_keys or
-                         keyboard.Key.shift_l in self._current_keys or
-                         keyboard.Key.shift_r in self._current_keys)
-            has_space = keyboard.Key.space in self._current_keys
+        elif trigger in ("ctrl_shift_space", "ctrl+shift+space"):
+            has_ctrl = any(
+                k in (keyboard.Key.ctrl, keyboard.Key.ctrl_l, keyboard.Key.ctrl_r)
+                or getattr(k, "vk", None) in (17, 162, 163)
+                for k in self._current_keys
+            )
+            has_shift = any(
+                k in (keyboard.Key.shift, keyboard.Key.shift_l, keyboard.Key.shift_r)
+                or getattr(k, "vk", None) in (16, 160, 161)
+                for k in self._current_keys
+            )
+            has_space = any(k == keyboard.Key.space or getattr(k, "vk", None) == 32 for k in self._current_keys)
             return has_ctrl and has_shift and has_space
-        elif self.trigger_key in ("fn", "globe"):
+        elif trigger in ("fn", "globe"):
             return any(
                 getattr(k, "vk", None) in (63, 0xFF) or getattr(k, "char", "") == "fn"
                 for k in self._current_keys
@@ -68,9 +92,11 @@ class PynputHotkeyMonitor:
 
     def _matches_action(self) -> bool:
         """Evaluate if the currently pressed keys match the action shortcut."""
-        has_shift = (keyboard.Key.shift in self._current_keys or
-                     keyboard.Key.shift_l in self._current_keys or
-                     keyboard.Key.shift_r in self._current_keys)
+        has_shift = any(
+            k in (keyboard.Key.shift, keyboard.Key.shift_l, keyboard.Key.shift_r)
+            or getattr(k, "vk", None) in (16, 160, 161)
+            for k in self._current_keys
+        )
         return self._matches_trigger() and has_shift
 
     def _on_press(self, key):
@@ -97,8 +123,32 @@ class PynputHotkeyMonitor:
 
     def _on_release(self, key):
         with self._lock:
-            if key in self._current_keys:
-                self._current_keys.remove(key)
+            is_right_alt_release = self._is_right_alt(key)
+
+            # Match and remove by key identity, virtual key code, or name
+            to_remove = set()
+            for k in self._current_keys:
+                if k == key:
+                    to_remove.add(k)
+                elif getattr(k, "vk", None) is not None and getattr(k, "vk", None) == getattr(key, "vk", None):
+                    to_remove.add(k)
+                elif getattr(k, "name", None) is not None and getattr(k, "name", None) == getattr(key, "name", None):
+                    to_remove.add(k)
+                elif is_right_alt_release and self._is_right_alt(k):
+                    to_remove.add(k)
+
+            for k in to_remove:
+                self._current_keys.discard(k)
+
+            # On Windows, AltGr often generates a synthetic Ctrl_L press event.
+            # When Right Alt is released, clean up synthetic Ctrl if present.
+            if is_right_alt_release:
+                ctrl_to_remove = [
+                    k for k in self._current_keys
+                    if k in (keyboard.Key.ctrl, keyboard.Key.ctrl_l) or getattr(k, "vk", None) in (17, 162)
+                ]
+                for ck in ctrl_to_remove:
+                    self._current_keys.discard(ck)
 
             if self.push_to_talk and self._is_active:
                 # If trigger key was released, stop recording
@@ -108,6 +158,12 @@ class PynputHotkeyMonitor:
                         self.on_stop_recording()
                     except Exception as e:
                         print(f"[PynputHook] on_stop error: {e}", file=sys.stderr)
+
+    def reset_state(self) -> None:
+        """Reset internal key tracking and state."""
+        with self._lock:
+            self._current_keys.clear()
+            self._is_active = False
 
     def start(self) -> bool:
         try:
@@ -126,4 +182,4 @@ class PynputHotkeyMonitor:
         if self._listener is not None:
             self._listener.stop()
             self._listener = None
-        self._is_active = False
+        self.reset_state()

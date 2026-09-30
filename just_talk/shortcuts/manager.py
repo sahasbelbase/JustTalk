@@ -81,6 +81,8 @@ class ShortcutManager:
         """Reset monitor states when cancelled or finished."""
         if self._mac_monitor and hasattr(self._mac_monitor, "reset_state"):
             self._mac_monitor.reset_state()
+        if self._pynput_monitor and hasattr(self._pynput_monitor, "reset_state"):
+            self._pynput_monitor.reset_state()
 
     def reload(self, shortcut: str, action_shortcut: str, push_to_talk: bool) -> bool:
         self.shortcut = shortcut

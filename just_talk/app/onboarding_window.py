@@ -81,11 +81,11 @@ class OnboardingWindow(QDialog):
 
         self._setup_ui()
 
-        if sys.platform == "darwin":
-            self._perm_poll_timer = QTimer(self)
-            self._perm_poll_timer.setInterval(1500)
-            self._perm_poll_timer.timeout.connect(self._check_permissions_status)
-            self._perm_poll_timer.start()
+        self._check_permissions_status()
+        self._perm_poll_timer = QTimer(self)
+        self._perm_poll_timer.setInterval(1500)
+        self._perm_poll_timer.timeout.connect(self._check_permissions_status)
+        self._perm_poll_timer.start()
 
     def _setup_ui(self) -> None:
         main_layout = QVBoxLayout(self)
@@ -373,7 +373,10 @@ class OnboardingWindow(QDialog):
         # Check Microphone
         has_mic, _ = PermissionsManager.check_microphone()
         if has_mic:
-            self.mic_status_lbl.setText("✓ Granted")
+            if sys.platform == "win32":
+                self.mic_status_lbl.setText("✓ Ready (Auto-granted)")
+            else:
+                self.mic_status_lbl.setText("✓ Granted")
             self.mic_status_lbl.setStyleSheet("color: #30D158;")
             self.req_mic_btn.hide()
         else:
@@ -382,31 +385,37 @@ class OnboardingWindow(QDialog):
             self.req_mic_btn.show()
 
         # Check Accessibility / Input Monitoring
-        has_acc = PermissionsManager.check_accessibility(prompt_if_needed=False)
-        has_input = PermissionsManager.check_input_monitoring()
-        if has_acc and has_input:
-            self.acc_status_lbl.setText("✓ Granted")
+        if sys.platform == "win32":
+            self.acc_status_lbl.setText("✓ Ready (Global Low-Level Hook)")
             self.acc_status_lbl.setStyleSheet("color: #30D158;")
             self.open_settings_btn.hide()
             self.restart_app_btn.hide()
-        elif not has_acc and not has_input:
-            self.acc_status_lbl.setText("Accessibility & Input Monitoring required")
-            self.acc_status_lbl.setStyleSheet("color: #FF9F0A;")
-            self.open_settings_btn.setText("Grant Permissions")
-            self.open_settings_btn.show()
-            self.restart_app_btn.hide()
-        elif not has_acc:
-            self.acc_status_lbl.setText("Accessibility required")
-            self.acc_status_lbl.setStyleSheet("color: #FF9F0A;")
-            self.open_settings_btn.setText("Grant Accessibility")
-            self.open_settings_btn.show()
-            self.restart_app_btn.hide()
         else:
-            self.acc_status_lbl.setText("Input Monitoring required")
-            self.acc_status_lbl.setStyleSheet("color: #FF9F0A;")
-            self.open_settings_btn.setText("Grant Input Monitoring")
-            self.open_settings_btn.show()
-            self.restart_app_btn.hide()
+            has_acc = PermissionsManager.check_accessibility(prompt_if_needed=False)
+            has_input = PermissionsManager.check_input_monitoring()
+            if has_acc and has_input:
+                self.acc_status_lbl.setText("✓ Granted")
+                self.acc_status_lbl.setStyleSheet("color: #30D158;")
+                self.open_settings_btn.hide()
+                self.restart_app_btn.hide()
+            elif not has_acc and not has_input:
+                self.acc_status_lbl.setText("Accessibility & Input Monitoring required")
+                self.acc_status_lbl.setStyleSheet("color: #FF9F0A;")
+                self.open_settings_btn.setText("Grant Permissions")
+                self.open_settings_btn.show()
+                self.restart_app_btn.hide()
+            elif not has_acc:
+                self.acc_status_lbl.setText("Accessibility required")
+                self.acc_status_lbl.setStyleSheet("color: #FF9F0A;")
+                self.open_settings_btn.setText("Grant Accessibility")
+                self.open_settings_btn.show()
+                self.restart_app_btn.hide()
+            else:
+                self.acc_status_lbl.setText("Input Monitoring required")
+                self.acc_status_lbl.setStyleSheet("color: #FF9F0A;")
+                self.open_settings_btn.setText("Grant Input Monitoring")
+                self.open_settings_btn.show()
+                self.restart_app_btn.hide()
 
         # Check macOS Globe/Fn emoji status
         if sys.platform == "darwin" and hasattr(self, "fn_status_lbl"):

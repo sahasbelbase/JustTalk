@@ -238,15 +238,30 @@ class PermissionsManager:
                 ["open", "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"],
                 check=False,
             )
+        elif sys.platform == "win32":
+            import os
+            os.system("start ms-settings:privacy-microphone")
 
     @staticmethod
     def check_microphone() -> Tuple[bool, str]:
         """
         Verify microphone access.
         On macOS, queries AVCaptureDevice authorization status.
+        On Windows, verifies that active audio input devices are detected.
         Returns:
             Tuple[is_authorized: bool, status_message: str]
         """
+        if sys.platform == "win32":
+            try:
+                import sounddevice as sd
+                devices = sd.query_devices()
+                input_devs = [d for d in devices if d.get("max_input_channels", 0) > 0]
+                if not input_devs:
+                    return False, "No active microphone detected. Check Windows Sound settings."
+                return True, "Microphone ready (Windows manages access automatically in Privacy Settings)."
+            except Exception:
+                return True, "Microphone access allowed."
+
         if sys.platform != "darwin":
             return True, "Microphone access allowed."
 
