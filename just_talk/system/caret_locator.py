@@ -170,9 +170,9 @@ class CaretLocator:
                     ok_s, sz = ApplicationServices.AXValueGetValue(
                         sz_val, ApplicationServices.kAXValueTypeCGSize, None
                     )
-                    # Real input elements are larger than 20x14, but NEVER larger than 1200x500
-                    # (which would be an entire window or web viewport, not an input box!)
-                    if ok_p and ok_s and 20.0 <= sz.width <= 1200.0 and 14.0 <= sz.height <= 500.0:
+                    # Real input elements are larger than 20x14, must be on-screen (pt.x > 0, pt.y > 0),
+                    # and NEVER larger than 1200x500 (which would be an entire window or web viewport, not an input box)
+                    if ok_p and ok_s and pt.x > 0 and pt.y > 0 and 20.0 <= sz.width <= 1200.0 and 14.0 <= sz.height <= 500.0:
                         bw = sz.width
                         bh = sz.height
                         mouse = QCursor.pos()

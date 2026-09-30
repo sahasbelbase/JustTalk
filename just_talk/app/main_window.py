@@ -1247,10 +1247,11 @@ class MainWindow(QMainWindow):
     def _on_download_model(self) -> None:
         tier_id = self.tier_combo.currentData() or self.config.model_tier
         info = self.model_manager.get_tier_info(tier_id)
+        is_redownload = "Re-download" in self.download_btn.text()
 
         self.model_error_label.hide()
         self.model_progress_bar.show()
-        self.model_progress_bar.setValue(4)
+        self.model_progress_bar.setValue(2)
         self.model_progress_bar.setStyleSheet("""
             QProgressBar {
                 border: 1px solid rgba(255, 255, 255, 0.12);
@@ -1262,10 +1263,11 @@ class MainWindow(QMainWindow):
                 border-radius: 3px;
             }
         """)
-        self.model_status_label.setText(f"Connecting to download {info.display_name} (~{info.disk_size_mb} MB)...")
+        action_verb = "Re-downloading" if is_redownload else "Downloading"
+        self.model_status_label.setText(f"Connecting to {action_verb.lower()} {info.display_name} ({info.disk_size_mb} MB)...")
         self.model_status_label.setStyleSheet("color: #6C8EEF;")
         self.download_btn.setEnabled(False)
-        self.download_btn.setText("Downloading...")
+        self.download_btn.setText(f"{action_verb}...")
 
         def worker():
             last_err = ""
@@ -1278,7 +1280,11 @@ class MainWindow(QMainWindow):
                 else:
                     QTimer.singleShot(0, lambda p=pct, m=msg: self._on_download_progress(p, m))
 
-            success = self.model_manager.download_model(tier_id, progress_callback=progress)
+            success = self.model_manager.download_model(
+                tier_id,
+                progress_callback=progress,
+                force_redownload=is_redownload,
+            )
 
             def done():
                 self.download_btn.setEnabled(True)

@@ -78,17 +78,16 @@ class FloatingPillOverlay(QWidget):
         self._pill_width = 216.0
         self._pill_height = 48.0
 
-        # Window flags: Tool panel creates an NSPanel on macOS which stays floating over external apps
+        # Window flags: Use Window type (not Tool) so Cocoa creates a persistent QNSWindow
+        # that does NOT automatically hide when other applications (VS Code, Brave, Teams, Antigravity) are active.
         self.setWindowFlags(
-            Qt.WindowType.Tool
+            Qt.WindowType.Window
             | Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
             | Qt.WindowType.WindowDoesNotAcceptFocus
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
-        if sys.platform == "darwin":
-            self.setAttribute(Qt.WidgetAttribute.WA_MacAlwaysShowToolWindow, True)
         self.setMouseTracking(True)
 
         # Timers
@@ -136,9 +135,7 @@ class FloatingPillOverlay(QWidget):
                 from AppKit import (
                     NSWindowCollectionBehaviorCanJoinAllSpaces,
                     NSWindowCollectionBehaviorFullScreenAuxiliary,
-                    NSWindowCollectionBehaviorTransient,
                     NSWindowCollectionBehaviorIgnoresCycle,
-                    NSWindowStyleMaskNonactivatingPanel,
                     NSScreenSaverWindowLevel,
                 )
 
@@ -147,32 +144,19 @@ class FloatingPillOverlay(QWidget):
                 ns_view = objc.objc_object(c_void_p=c_void_p)
                 ns_window = ns_view.window()
                 if ns_window:
-                    # Non-activating panel style: NEVER steals focus or activates app when ordered front
-                    current_mask = ns_window.styleMask()
-                    ns_window.setStyleMask_(current_mask | NSWindowStyleMaskNonactivatingPanel)
-
                     # Do not accept key or main window focus
                     if hasattr(ns_window, "setCanBecomeKeyWindow_"):
                         ns_window.setCanBecomeKeyWindow_(False)
                     if hasattr(ns_window, "setCanBecomeMainWindow_"):
                         ns_window.setCanBecomeMainWindow_(False)
 
-                    # Crucial: Configure NSPanel to float above all applications and never hide on deactivate
-                    if hasattr(ns_window, "setFloatingPanel_"):
-                        ns_window.setFloatingPanel_(True)
-                    if hasattr(ns_window, "setHidesOnDeactivate_"):
-                        ns_window.setHidesOnDeactivate_(False)
-                    if hasattr(ns_window, "setBecomesKeyOnlyIfNeeded_"):
-                        ns_window.setBecomesKeyOnlyIfNeeded_(True)
-
                     # Level 1001 (NSScreenSaverWindowLevel + 1) floats above ALL browser windows, popups, full-screen spaces, and dialogs
                     ns_window.setLevel_(NSScreenSaverWindowLevel + 1)
 
-                    # CanJoinAllSpaces allows the window to appear on any space without switching spaces
+                    # CanJoinAllSpaces allows the window to appear on any space (Desktop 1, 2, 3, 4) without switching spaces
                     behavior = (
                         NSWindowCollectionBehaviorCanJoinAllSpaces
                         | NSWindowCollectionBehaviorFullScreenAuxiliary
-                        | NSWindowCollectionBehaviorTransient
                         | NSWindowCollectionBehaviorIgnoresCycle
                     )
                     ns_window.setCollectionBehavior_(behavior)
@@ -228,22 +212,29 @@ class FloatingPillOverlay(QWidget):
                 pass
 
     def _bring_to_front_mac(self) -> None:
-        """Force window to the very front of all applications without stealing keyboard focus."""
+        """Force window to the very front of all applications and spaces without stealing keyboard focus."""
         if sys.platform == "darwin":
             try:
                 import ctypes
                 import objc
-                from AppKit import NSScreenSaverWindowLevel
+                from AppKit import (
+                    NSWindowCollectionBehaviorCanJoinAllSpaces,
+                    NSWindowCollectionBehaviorFullScreenAuxiliary,
+                    NSWindowCollectionBehaviorIgnoresCycle,
+                    NSScreenSaverWindowLevel,
+                )
 
                 view_ptr = int(self.winId())
                 c_void_p = ctypes.c_void_p(view_ptr)
                 ns_view = objc.objc_object(c_void_p=c_void_p)
                 ns_window = ns_view.window()
                 if ns_window:
-                    if hasattr(ns_window, "setFloatingPanel_"):
-                        ns_window.setFloatingPanel_(True)
-                    if hasattr(ns_window, "setHidesOnDeactivate_"):
-                        ns_window.setHidesOnDeactivate_(False)
+                    behavior = (
+                        NSWindowCollectionBehaviorCanJoinAllSpaces
+                        | NSWindowCollectionBehaviorFullScreenAuxiliary
+                        | NSWindowCollectionBehaviorIgnoresCycle
+                    )
+                    ns_window.setCollectionBehavior_(behavior)
                     ns_window.setLevel_(NSScreenSaverWindowLevel + 1)
                     ns_window.orderFrontRegardless()
             except Exception:

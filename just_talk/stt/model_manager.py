@@ -69,6 +69,49 @@ TIERS: Dict[str, ModelTierInfo] = {
 }
 
 
+# Exact HuggingFace repositories and deterministic file manifests for instant error-free streaming
+TIER_REPOS: Dict[str, Tuple[str, list[Tuple[str, int]]]] = {
+    "quality": (
+        "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
+        [
+            ("config.json", 2263),
+            ("preprocessor_config.json", 340),
+            ("tokenizer.json", 2710337),
+            ("vocabulary.json", 1068114),
+            ("model.bin", 1617884929),
+        ],
+    ),
+    "max": (
+        "Systran/faster-whisper-large-v3",
+        [
+            ("config.json", 2394),
+            ("preprocessor_config.json", 340),
+            ("tokenizer.json", 2480617),
+            ("vocabulary.json", 1068114),
+            ("model.bin", 3087284237),
+        ],
+    ),
+    "balanced": (
+        "Systran/faster-whisper-small",
+        [
+            ("config.json", 2370),
+            ("tokenizer.json", 2203239),
+            ("vocabulary.txt", 459861),
+            ("model.bin", 483546902),
+        ],
+    ),
+    "fast": (
+        "Systran/faster-whisper-base",
+        [
+            ("config.json", 2309),
+            ("tokenizer.json", 2203239),
+            ("vocabulary.txt", 459861),
+            ("model.bin", 145217532),
+        ],
+    ),
+}
+
+
 class ModelManager:
     """Manages Whisper model storage and pre-flight downloads."""
 
@@ -168,6 +211,7 @@ class ModelManager:
         self,
         tier_id: str,
         progress_callback: Optional[Callable[[float, str], None]] = None,
+        force_redownload: bool = False,
     ) -> bool:
         """
         Download Whisper model weights using high-speed streaming chunk HTTP requests with
@@ -197,9 +241,10 @@ class ModelManager:
             thread.join()
             return self.is_model_downloaded(tier_id)
 
-        # 2. Start new download
+        # 2. Register current thread and listeners
         self._cancel_flags[tier_id] = False
         with self._download_lock:
+            self._download_threads[tier_id] = threading.current_thread()
             if tier_id not in self._progress_listeners:
                 self._progress_listeners[tier_id] = []
             if progress_callback and progress_callback not in self._progress_listeners[tier_id]:
@@ -218,42 +263,32 @@ class ModelManager:
         target_dir = self.models_dir / info.model_name
         target_dir.mkdir(parents=True, exist_ok=True)
 
+        # If user explicitly requested Re-download, purge old destination files
+        if force_redownload:
+            notify(2.0, f"Clearing existing cache for {info.display_name}...")
+            try:
+                for old_f in target_dir.glob("*"):
+                    if old_f.is_file():
+                        old_f.unlink(missing_ok=True)
+            except Exception as e:
+                print(f"[ModelManager] Note: cache clear warning: {e}", file=sys.stderr)
+
         notify(1.0, f"Connecting to repository for {info.display_name}...")
 
         try:
             import time
             import httpx
-            from faster_whisper.utils import _MODELS
-            from huggingface_hub import HfApi
 
-            repo_id = _MODELS.get(info.model_name, f"Systran/faster-whisper-{info.model_name}")
-
-            # Discover required model files & sizes from HF API
-            REQUIRED_PATTERNS = {
-                "config.json",
-                "preprocessor_config.json",
-                "tokenizer.json",
-                "vocabulary.json",
-                "vocabulary.txt",
-                "model.bin",
-            }
-            files_meta = []
-            try:
-                hf_api = HfApi()
-                repo_info = hf_api.model_info(repo_id, files_metadata=True)
-                for s in (repo_info.siblings or []):
-                    fn = s.rfilename
-                    if fn in REQUIRED_PATTERNS or fn.startswith("vocabulary."):
-                        files_meta.append((fn, s.size or 0))
-            except Exception as e:
-                print(f"[ModelManager] Warning: HfApi metadata lookup failed: {e}. Using fallback map.", file=sys.stderr)
-
-            if not files_meta:
-                # Fallback manifest if metadata endpoint is unreachable
+            # Resolve repository ID and file manifest
+            if tier_id in TIER_REPOS:
+                repo_id, files_meta = TIER_REPOS[tier_id]
+            else:
+                # Generic fallback
+                repo_id = f"Systran/faster-whisper-{info.model_name}"
                 files_meta = [
                     ("config.json", 2400),
                     ("tokenizer.json", 2500000),
-                    ("vocabulary.json", 1100000),
+                    ("vocabulary.txt", 460000),
                     ("model.bin", int(info.disk_size_mb * 1024 * 1024 * 0.98)),
                 ]
 
@@ -263,22 +298,33 @@ class ModelManager:
             # Check files already completely downloaded
             downloaded_bytes = 0
             files_to_fetch = []
-            for fn, sz in files_meta:
+            for fn, expected_sz in files_meta:
                 dest_file = target_dir / fn
-                if dest_file.exists() and dest_file.stat().st_size > 0 and (sz == 0 or dest_file.stat().st_size == sz or dest_file.stat().st_size > 15_000_000):
-                    downloaded_bytes += dest_file.stat().st_size
-                else:
-                    files_to_fetch.append((fn, sz))
+                if not force_redownload and dest_file.exists() and dest_file.stat().st_size > 0:
+                    actual_sz = dest_file.stat().st_size
+                    # Small metadata files (<10MB) must match exact or non-zero size
+                    # Big weights files must be within 1% of expected size
+                    if expected_sz > 15_000_000:
+                        is_complete = abs(actual_sz - expected_sz) < 100_000 or actual_sz >= expected_sz
+                    else:
+                        is_complete = actual_sz > 0
+                    if is_complete:
+                        downloaded_bytes += actual_sz
+                        continue
+                files_to_fetch.append((fn, expected_sz))
 
             if not files_to_fetch and self._verify_directory_integrity(target_dir):
-                notify(100.0, f"✓ {info.display_name} ready!")
+                notify(100.0, f"✓ {info.display_name} ready in cache ({total_mb:.0f} MB)!")
                 return True
 
             start_time = time.time()
             session_start_bytes = downloaded_bytes
             last_notify_time = 0.0
 
-            with httpx.Client(follow_redirects=True, timeout=60.0) as client:
+            # Use dedicated HTTP timeouts: 15s connect, 45s read
+            timeout_cfg = httpx.Timeout(connect=15.0, read=45.0, write=30.0, pool=30.0)
+
+            with httpx.Client(follow_redirects=True, timeout=timeout_cfg) as client:
                 for fn, expected_sz in files_to_fetch:
                     if self._cancel_flags.get(tier_id, False):
                         notify(-1.0, "Download cancelled by user.")
@@ -288,69 +334,96 @@ class ModelManager:
                     part_file = target_dir / f"{fn}.part"
                     file_url = f"https://huggingface.co/{repo_id}/resolve/main/{fn}"
 
-                    # Resume support via HTTP Range header
-                    existing_bytes = part_file.stat().st_size if part_file.exists() else 0
-                    headers = {"User-Agent": "JustTalk-Desktop/1.0"}
-                    file_mode = "wb"
-                    if existing_bytes > 0:
-                        headers["Range"] = f"bytes={existing_bytes}-"
-                        file_mode = "ab"
-                        downloaded_bytes += existing_bytes
+                    # Up to 3 automatic resume retries per file on transient network disconnects
+                    max_file_retries = 3
+                    file_done = False
 
-                    with client.stream("GET", file_url, headers=headers) as resp:
-                        if resp.status_code == 416:
-                            # Requested range not satisfiable (file already fully downloaded in .part)
-                            pass
-                        elif resp.status_code not in (200, 206):
-                            resp.raise_for_status()
-                        else:
-                            if resp.status_code == 200 and existing_bytes > 0:
-                                # Server doesn't support range, restart file
-                                downloaded_bytes -= existing_bytes
-                                file_mode = "wb"
-                                existing_bytes = 0
+                    for retry_idx in range(max_file_retries):
+                        if self._cancel_flags.get(tier_id, False):
+                            notify(-1.0, "Download cancelled.")
+                            return False
 
-                            with open(part_file, file_mode) as f:
-                                for chunk in resp.iter_bytes(chunk_size=524288):  # 512 KB chunks
-                                    if self._cancel_flags.get(tier_id, False):
-                                        notify(-1.0, "Download cancelled.")
-                                        return False
-                                    if not chunk:
-                                        continue
-                                    f.write(chunk)
-                                    downloaded_bytes += len(chunk)
+                        existing_bytes = part_file.stat().st_size if part_file.exists() else 0
+                        headers = {"User-Agent": "JustTalk-Desktop/1.0"}
+                        file_mode = "wb"
+                        bytes_added_to_overall = 0
 
-                                    now = time.time()
-                                    if now - last_notify_time >= 0.1:  # 10 updates / sec
-                                        last_notify_time = now
-                                        curr_mb = downloaded_bytes / (1024 * 1024)
-                                        pct = min(99.0, max(2.0, (downloaded_bytes / max(1, total_bytes)) * 100.0))
-                                        elapsed = max(0.4, now - start_time)
-                                        rate_mb = (downloaded_bytes - session_start_bytes) / (1024 * 1024) / elapsed
-                                        speed_str = f"{rate_mb:.1f} MB/s" if rate_mb >= 1.0 else f"{int(rate_mb * 1024)} KB/s"
-                                        rem_mb = max(0.0, total_mb - curr_mb)
-                                        if rate_mb > 0.05 and rem_mb > 0:
-                                            rem_sec = int(rem_mb / rate_mb)
-                                            if rem_sec >= 60:
-                                                eta_str = f"~{rem_sec // 60}m {rem_sec % 60}s remaining"
-                                            else:
-                                                eta_str = f"~{rem_sec}s remaining"
-                                        else:
-                                            eta_str = "calculating time..."
+                        if existing_bytes > 0:
+                            headers["Range"] = f"bytes={existing_bytes}-"
+                            file_mode = "ab"
+                            bytes_added_to_overall = existing_bytes
+                            downloaded_bytes += existing_bytes
 
-                                        notify(
-                                            pct,
-                                            f"Downloading {info.display_name}: {curr_mb:.1f} MB / {total_mb:.0f} MB ({pct:.0f}%) • {speed_str} • {eta_str}",
-                                        )
+                        try:
+                            with client.stream("GET", file_url, headers=headers) as resp:
+                                if resp.status_code == 416:
+                                    # Requested range not satisfiable (part already complete)
+                                    pass
+                                elif resp.status_code not in (200, 206):
+                                    resp.raise_for_status()
+                                else:
+                                    if resp.status_code == 200 and existing_bytes > 0:
+                                        # Server did not accept Range header, restart file
+                                        downloaded_bytes -= existing_bytes
+                                        bytes_added_to_overall = 0
+                                        file_mode = "wb"
+                                        existing_bytes = 0
 
-                    # Atomically promote .part to final destination
-                    if part_file.exists():
-                        part_file.replace(dest_file)
+                                    with open(part_file, file_mode) as f:
+                                        for chunk in resp.iter_bytes(chunk_size=524288):  # 512 KB chunks
+                                            if self._cancel_flags.get(tier_id, False):
+                                                notify(-1.0, "Download cancelled.")
+                                                return False
+                                            if not chunk:
+                                                continue
+                                            f.write(chunk)
+                                            downloaded_bytes += len(chunk)
+
+                                            now = time.time()
+                                            if now - last_notify_time >= 0.10:  # 10 Hz UI updates
+                                                last_notify_time = now
+                                                curr_mb = downloaded_bytes / (1024 * 1024)
+                                                pct = min(99.0, max(2.0, (downloaded_bytes / max(1, total_bytes)) * 100.0))
+                                                elapsed = max(0.4, now - start_time)
+                                                rate_mb = max(0.01, (downloaded_bytes - session_start_bytes) / (1024 * 1024) / elapsed)
+                                                speed_str = f"{rate_mb:.1f} MB/s" if rate_mb >= 1.0 else f"{int(rate_mb * 1024)} KB/s"
+                                                rem_mb = max(0.0, total_mb - curr_mb)
+                                                if rate_mb > 0.05 and rem_mb > 0:
+                                                    rem_sec = int(rem_mb / rate_mb)
+                                                    if rem_sec >= 60:
+                                                        eta_str = f"~{rem_sec // 60}m {rem_sec % 60:02d}s left"
+                                                    else:
+                                                        eta_str = f"~{rem_sec}s left"
+                                                else:
+                                                    eta_str = "calculating time..."
+
+                                                notify(
+                                                    pct,
+                                                    f"Downloading {info.display_name}: {curr_mb:.1f} MB / {total_mb:.0f} MB ({pct:.0f}%) • {speed_str} • {eta_str}",
+                                                )
+
+                            # Atomically promote .part to final destination
+                            if part_file.exists():
+                                part_file.replace(dest_file)
+                            file_done = True
+                            break
+
+                        except Exception as file_err:
+                            print(f"[ModelManager] Retry {retry_idx + 1}/{max_file_retries} for {fn} after error: {file_err}", file=sys.stderr)
+                            # Roll back overall counter to avoid double counting on next loop
+                            downloaded_bytes -= bytes_added_to_overall
+                            if retry_idx + 1 < max_file_retries:
+                                time.sleep(1.5)
+                            else:
+                                raise file_err
+
+                    if not file_done:
+                        raise RuntimeError(f"Failed to download {fn} after {max_file_retries} attempts.")
 
             if not self._verify_directory_integrity(target_dir):
                 raise ValueError("Model download completed but files failed integrity verification.")
 
-            notify(100.0, f"✓ {info.display_name} ready!")
+            notify(100.0, f"✓ {info.display_name} ready ({total_mb:.0f} MB)!")
             print(f"[ModelManager] {info.display_name} downloaded and verified successfully.", file=sys.stderr)
             return True
 
