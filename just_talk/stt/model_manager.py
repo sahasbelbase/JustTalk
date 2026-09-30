@@ -73,18 +73,34 @@ class ModelManager:
 
     def get_model_path(self, tier_id: str) -> Path:
         info = self.get_tier_info(tier_id)
-        return self.models_dir / info.model_name
+        user_path = self.models_dir / info.model_name
+        if self._verify_directory_integrity(user_path):
+            return user_path
+
+        # Check bundled models directory (e.g. packaged by installer next to executable)
+        candidates = []
+        if getattr(sys, "frozen", False):
+            candidates.append(Path(sys.executable).parent / "models" / info.model_name)
+        if hasattr(sys, "_MEIPASS"):
+            candidates.append(Path(sys._MEIPASS) / "models" / info.model_name)
+        candidates.append(Path(__file__).resolve().parent.parent.parent / "models" / info.model_name)
+
+        for candidate in candidates:
+            if self._verify_directory_integrity(candidate):
+                return candidate
+
+        return user_path
 
     def is_model_downloaded(self, tier_id: str) -> bool:
         """
-        Check if model weights exist locally in the models cache and are valid.
+        Check if model weights exist locally in the models cache or bundled installer directory and are valid.
         Verifies model directory, required files (model.bin / model.safetensors, config.json),
         and verifies non-zero byte size to prevent corrupted or aborted downloads.
         """
         info = self.get_tier_info(tier_id)
         model_path = self.get_model_path(tier_id)
 
-        # Check direct named folder
+        # Check resolved path (user cache or bundled)
         if self._verify_directory_integrity(model_path):
             return True
 

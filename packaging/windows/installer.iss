@@ -80,6 +80,8 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilen
 Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\icon.ico"; Tasks: startupicon; AppUserModelID: "{#MyAppID}"
 
 [Run]
+; Download and verify the Whisper speech model during installation so it is 100% ready before first launch
+Filename: "{app}\{#MyAppExeName}"; Parameters: "--download-model"; StatusMsg: "Downloading and preparing Whisper speech recognition model..."; Flags: runhidden
 ; Option to launch Just Talk immediately upon completing installation
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 

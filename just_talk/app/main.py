@@ -740,6 +740,23 @@ def main() -> None:
     except Exception:
         pass
 
+    # Headless CLI: Pre-download model (invoked by Windows installer or setup scripts)
+    if "--download-model" in sys.argv or "--prewarm" in sys.argv:
+        print("[Setup] Checking / downloading Whisper speech recognition model...", file=sys.stderr)
+        try:
+            from ..config import AppConfig
+            from ..stt.model_manager import ModelManager
+
+            cfg = AppConfig.load()
+            mgr = ModelManager()
+            tier = cfg.model_tier or "balanced"
+            if not mgr.is_model_downloaded(tier):
+                mgr.download_model(tier)
+            print("[Setup] Whisper speech model is fully ready.", file=sys.stderr)
+        except Exception as err:
+            print(f"[Setup] Model pre-download warning: {err}", file=sys.stderr)
+        sys.exit(0)
+
     app = JustTalkApplication(sys.argv)
     app.setApplicationName("Just Talk")
     app.setOrganizationName("JustTalk")
