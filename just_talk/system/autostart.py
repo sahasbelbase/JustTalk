@@ -27,12 +27,16 @@ class AutostartManager:
             try:
                 import winreg
 
-                key = winreg.OpenKey(
-                    winreg.HKEY_CURRENT_USER,
-                    r"Software\Microsoft\Windows\CurrentVersion\Run",
-                    0,
-                    winreg.KEY_READ,
-                )
+                try:
+                    key = winreg.OpenKey(
+                        winreg.HKEY_CURRENT_USER,
+                        r"Software\Microsoft\Windows\CurrentVersion\Run",
+                        0,
+                        winreg.KEY_READ,
+                    )
+                except FileNotFoundError:
+                    return False
+
                 try:
                     val, _ = winreg.QueryValueEx(key, "JustTalk")
                     return bool(val)
@@ -88,11 +92,11 @@ class AutostartManager:
             try:
                 import winreg
 
-                key = winreg.OpenKey(
+                key = winreg.CreateKeyEx(
                     winreg.HKEY_CURRENT_USER,
                     r"Software\Microsoft\Windows\CurrentVersion\Run",
                     0,
-                    winreg.KEY_SET_VALUE,
+                    winreg.KEY_SET_VALUE | winreg.KEY_QUERY_VALUE,
                 )
                 try:
                     if enabled:
