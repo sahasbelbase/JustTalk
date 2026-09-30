@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import time
 from dataclasses import dataclass
 from typing import Callable, Optional, Tuple
@@ -499,6 +500,23 @@ class MultiProviderFormatter:
         # If length exploded unexpectedly (e.g. prompt injection), reject
         if len(text) > max(300, len(raw_input) * 4):
             return None
+
+        # Strip unwanted trailing dot from URLs, domains, and email addresses
+        text = re.sub(
+            r"(\b(?:https?://\S+|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*\.[a-zA-Z]{2,}(?:/[^\s]*)?))\.$",
+            r"\1",
+            text,
+        )
+
+        # If the entire output is solely a single domain/URL/email, format in lowercase without trailing dot
+        if re.match(
+            r"^(?:https?://\S+|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|(?:www\.)?[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+(?:/[^\s]*)?)\.?$",
+            text,
+            re.IGNORECASE,
+        ):
+            text = text.rstrip(".")
+            if not text.startswith("http"):
+                text = text.lower()
 
         return text
 

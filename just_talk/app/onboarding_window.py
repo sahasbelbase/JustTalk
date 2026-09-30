@@ -723,8 +723,9 @@ class OnboardingWindow(QDialog):
                 self.sample_phrase.setText('"Hello Just Talk, this is my first voice test."')
 
     def _update_model_status_display(self) -> None:
-        tier_id = getattr(self.config, "model_tier", "balanced")
+        tier_id = getattr(self.config, "model_tier", "quality")
         is_dl = self.model_manager.is_model_downloaded(tier_id)
+        info = self.model_manager.get_tier_info(tier_id)
         if is_dl:
             self.model_status_badge.setText("✓ Ready Locally")
             self.model_status_badge.setStyleSheet("color: #30D158;")
@@ -740,7 +741,7 @@ class OnboardingWindow(QDialog):
             self.model_status_badge.setText("Not Downloaded")
             self.model_status_badge.setStyleSheet("color: #FF9F0A;")
             self.model_progress_bar.setValue(0)
-            self.model_detail_lbl.setText("Click below to download the model (~466 MB) for offline speech recognition.")
+            self.model_detail_lbl.setText(f"Click below to download {info.display_name} (~{info.disk_size_mb} MB) for offline speech recognition.")
             self.download_model_btn.show()
             self.download_model_btn.setEnabled(True)
             self.download_model_btn.setText("Download Speech Model")
@@ -758,7 +759,7 @@ class OnboardingWindow(QDialog):
             def progress(pct: float, msg: str):
                 self.model_progress_signal.emit(pct, msg)
 
-            tier_id = getattr(self.config, "model_tier", "balanced")
+            tier_id = getattr(self.config, "model_tier", "quality")
             success = self.model_manager.download_model(tier_id, progress_callback=progress)
             if success:
                 self.model_progress_signal.emit(100.0, "✓ Model ready!")

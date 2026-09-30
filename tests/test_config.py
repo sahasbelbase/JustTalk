@@ -7,7 +7,8 @@ from just_talk.config import AppConfig
 
 def test_default_config():
     config = AppConfig()
-    assert config.model_tier == "balanced"
+    assert config.model_tier == "quality"
+    assert config.custom_vocabulary == ""
     assert config.gemini_enabled is True
     assert config.offline_mode is False
     assert config.history_retention_days == 30

@@ -19,6 +19,16 @@ def test_fallback_light_local_cleanup():
     cleaned2 = GeminiFormatter.light_local_cleanup(raw2)
     assert cleaned2 == "This is ready."
 
+    # Verify URLs and domains never receive trailing periods or improper capitalization
+    url_raw = "github.com"
+    assert GeminiFormatter.light_local_cleanup(url_raw) == "github.com"
+
+    url_raw_dot = "github.com."
+    assert GeminiFormatter.light_local_cleanup(url_raw_dot) == "github.com"
+
+    sentence_url = "Please visit github.com."
+    assert GeminiFormatter.light_local_cleanup(sentence_url) == "Please visit github.com"
+
 
 def test_formatting_fallback_inserts_raw_and_saves_history():
     """When Gemini formatting fails, fallback text is used and history records 'inserted (offline)'."""

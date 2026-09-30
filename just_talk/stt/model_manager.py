@@ -25,35 +25,45 @@ class ModelTierInfo:
 
 
 TIERS: Dict[str, ModelTierInfo] = {
-    "fast": ModelTierInfo(
-        tier_id="fast",
-        display_name="Fast (Multilingual)",
-        model_name="base",
-        disk_size_mb=142,
-        ram_mb=200,
-        speed_factor="~250ms latency",
-        accuracy_rating="Good",
-        description="Instantaneous inference. Supports Nepali, English, German, French, Italian, Mandarin + 90 languages.",
-    ),
-    "balanced": ModelTierInfo(
-        tier_id="balanced",
-        display_name="Balanced (Multilingual - Recommended)",
-        model_name="small",
-        disk_size_mb=466,
-        ram_mb=450,
-        speed_factor="~400ms latency",
-        accuracy_rating="High",
-        description="Exceptional accuracy across Nepali, English, German, French, Italian, and Mandarin with robust punctuation.",
-    ),
     "quality": ModelTierInfo(
         tier_id="quality",
-        display_name="High Quality (Multilingual Turbo)",
+        display_name="Large V3 Turbo (Recommended - Best Accuracy & Speed)",
         model_name="large-v3-turbo",
         disk_size_mb=809,
         ram_mb=850,
-        speed_factor="~650ms latency",
-        accuracy_rating="Maximum",
-        description="State-of-the-art multilingual recognition across 99+ languages with maximum nuance.",
+        speed_factor="~450ms latency",
+        accuracy_rating="State-of-the-Art",
+        description="OpenAI's latest 809M flagship turbo model. 8x faster than large-v3 with virtually zero word mismatches.",
+    ),
+    "max": ModelTierInfo(
+        tier_id="max",
+        display_name="Large V3 (Maximum Depth)",
+        model_name="large-v3",
+        disk_size_mb=1550,
+        ram_mb=1600,
+        speed_factor="~1.4s latency",
+        accuracy_rating="Deepest",
+        description="Full 32-decoder-layer 1.55GB model for maximum deep-context multilingual audio.",
+    ),
+    "balanced": ModelTierInfo(
+        tier_id="balanced",
+        display_name="Balanced (Small - Lightweight)",
+        model_name="small",
+        disk_size_mb=466,
+        ram_mb=450,
+        speed_factor="~350ms latency",
+        accuracy_rating="Standard",
+        description="Lightweight 244M model for low-resource or battery-saving systems.",
+    ),
+    "fast": ModelTierInfo(
+        tier_id="fast",
+        display_name="Fast (Base - Legacy Low Spec)",
+        model_name="base",
+        disk_size_mb=142,
+        ram_mb=200,
+        speed_factor="~200ms latency",
+        accuracy_rating="Basic",
+        description="Minimal 74M model for legacy hardware with low RAM.",
     ),
 }
 
@@ -69,7 +79,7 @@ class ModelManager:
         self.models_dir.mkdir(parents=True, exist_ok=True)
 
     def get_tier_info(self, tier_id: str) -> ModelTierInfo:
-        return TIERS.get(tier_id, TIERS["balanced"])
+        return TIERS.get(tier_id, TIERS["quality"])
 
     def get_model_path(self, tier_id: str) -> Path:
         info = self.get_tier_info(tier_id)

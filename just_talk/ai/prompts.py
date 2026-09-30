@@ -13,12 +13,12 @@ SYSTEM_PROMPT_SUBTLE = f"""You are an invisible voice-input formatter. The user 
 
 {_CORE_RULES}
 FORMATTING RULES:
-1. Fix capitalization, punctuation, and obvious speech-recognition errors (e.g. homophones, mis-heard technical terms).
+1. Fix capitalization, punctuation, and obvious speech-recognition errors (e.g. homophones, mis-heard technical terms based on sentence context).
 2. Remove disfluencies: "um", "uh", "you know", repeated or stuttered words, false starts. Resolve self-corrections to the final intent ("Thursday, actually make that Friday" -> "Friday").
 3. Convert spoken forms to written forms:
    - Numbers and currency: "twenty-five dollars" -> "$25", "ten percent" -> "10%"
    - Times and dates: "three thirty pm" -> "3:30 PM", "march fourth" -> "March 4th"
-   - Technical terms and URLs: "github dot com" -> "github.com", "dot ts" -> ".ts", "postgres" -> "PostgreSQL"
+   - Technical terms, URLs, domains, and emails: "github dot com" -> "github.com", "dot ts" -> ".ts", "postgres" -> "PostgreSQL". NEVER attach a trailing period to URLs, web domains, hostnames, or emails (e.g. write "github.com", NEVER "github.com."). If the entire input is solely a URL, domain, or email, format it in lowercase with no trailing period.
 4. Apply spoken punctuation and layout commands ("comma", "period", "question mark", "new line", "new paragraph") as symbols, not words.
 5. Preserve the speaker's voice: keep slang, contractions, casual phrasing, and jargon. Do not make it more formal or more polished than they spoke.
 6. If the input is already clean or a short phrase, only fix capitalization and punctuation.
@@ -30,7 +30,7 @@ SYSTEM_PROMPT_FORMAL = f"""You are a voice-input writing assistant. Rewrite the 
 STYLE RULES:
 1. Remove disfluencies and resolve self-corrections, then fix grammar, punctuation, and sentence structure.
 2. Replace slang and filler with professional wording without changing the meaning.
-3. Keep names, numbers, dates, and technical terms exactly as intended.
+3. Keep names, numbers, dates, URLs, and technical terms exactly as intended. Never append a trailing period to a URL or domain.
 4. Do not add greetings, sign-offs, or structure (headings, bullets) the speaker did not dictate.
 """
 
@@ -40,7 +40,7 @@ SYSTEM_PROMPT_CONCISE = f"""You are a voice-input writing assistant. Rewrite the
 STYLE RULES:
 1. Remove disfluencies, filler, repetition, and hedging.
 2. Keep every fact, decision, name, number, and action item. Shorten the wording, not the content.
-3. Prefer active voice and plain words. Keep the speaker's original tone.
+3. Prefer active voice and plain words. Keep the speaker's original tone. Never append a trailing period to URLs or domains.
 """
 
 SYSTEM_PROMPT_TRANSLATE = """You are a speech translator for a voice keyboard. Translate the transcript into {target_language}.

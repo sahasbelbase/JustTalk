@@ -27,6 +27,7 @@ class STTEngine(ABC):
         audio: np.ndarray,
         language: Optional[str] = None,
         task: str = "transcribe",
+        initial_prompt: Optional[str] = None,
     ) -> str:
         """
         Transcribe or translate a 16kHz 1D float32 audio array into raw text.
@@ -34,6 +35,7 @@ class STTEngine(ABC):
             audio: 16kHz float32 audio samples.
             language: ISO-639-1 code (e.g. "ne", "en", "de") or None for auto-detect.
             task: "transcribe" (speech to text in spoken language) or "translate" (speech to English).
+            initial_prompt: Optional context or vocabulary prompt to bias acoustic decoding.
         Returns the transcribed/translated text or an empty string on silence/error.
         """
         pass

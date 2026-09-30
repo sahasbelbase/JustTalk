@@ -46,11 +46,14 @@ class AppConfig:
     """User-configurable desktop application settings."""
 
     # STT Model
-    model_tier: str = "balanced"  # "fast", "balanced", "quality"
+    model_tier: str = "quality"  # Default: "quality" (large-v3-turbo), "max" (large-v3), "balanced" (small), "fast" (base)
     language: str = "auto"  # "auto", "ne", "en", "de", "fr", "it", "zh"
     speech_mode: str = "transcribe"  # "transcribe" (write what I say) or "translate" (translate speech to English)
     audio_device_index: Optional[int] = None
     push_to_talk: bool = True  # True: hold to speak, False: toggle on/off
+
+    # Custom Vocabulary (comma-separated words, personal names, product terms)
+    custom_vocabulary: str = ""
 
     # AI Formatting Layer & Resilience
     gemini_enabled: bool = True

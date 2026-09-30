@@ -549,10 +549,32 @@ class JustTalkApp:
             else:
                 self.bridge.state_processing.emit("Transcribing...")
 
-            raw_text = self.stt_engine.transcribe(audio, language=lang, task=task)
+            # Construct context prompt (active app name + custom vocabulary) to prevent word mismatches
+            app_name = self.inserter.get_active_app_name()
+            custom_vocab = getattr(self.config, "custom_vocabulary", "")
+            prompt_parts = []
+            if app_name and app_name != "Active Application":
+                prompt_parts.append(f"Dictation into {app_name}.")
+            if custom_vocab and custom_vocab.strip():
+                clean_terms = ", ".join(w.strip() for w in custom_vocab.split(",") if w.strip())
+                if clean_terms:
+                    prompt_parts.append(f"Custom vocabulary: {clean_terms}.")
+            initial_prompt = " ".join(prompt_parts) if prompt_parts else None
+
+            raw_text = self.stt_engine.transcribe(
+                audio,
+                language=lang,
+                task=task,
+                initial_prompt=initial_prompt,
+            )
             # Automatic fallback: if configured language yielded nothing, try auto-detection
             if (not raw_text or not raw_text.strip()) and lang:
-                raw_text = self.stt_engine.transcribe(audio, language=None, task=task)
+                raw_text = self.stt_engine.transcribe(
+                    audio,
+                    language=None,
+                    task=task,
+                    initial_prompt=initial_prompt,
+                )
 
             if not raw_text or not raw_text.strip():
                 print("[STT] Whisper returned empty transcription → 'No speech recognized'", file=sys.stderr)
@@ -750,7 +772,7 @@ def main() -> None:
 
             cfg = AppConfig.load()
             mgr = ModelManager()
-            tier = cfg.model_tier or "balanced"
+            tier = cfg.model_tier or "quality"
             if not mgr.is_model_downloaded(tier):
                 mgr.download_model(tier)
             print("[Setup] Whisper speech model is fully ready.", file=sys.stderr)

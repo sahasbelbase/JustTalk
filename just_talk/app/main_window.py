@@ -980,6 +980,17 @@ class MainWindow(QMainWindow):
         self.language_combo.currentIndexChanged.connect(self._on_language_setting_changed)
         s2_form.addRow("Spoken Language:", self.language_combo)
 
+        self.vocab_input = QLineEdit()
+        self.vocab_input.setPlaceholderText("e.g. JustTalk, Sahas, Belbase, Kubernetes, PyTorch, GraphQL")
+        self.vocab_input.setText(getattr(self.config, "custom_vocabulary", ""))
+        self.vocab_input.textChanged.connect(self._on_custom_vocabulary_changed)
+        s2_form.addRow("Custom Vocabulary:", self.vocab_input)
+
+        vocab_desc = QLabel("Personal names, brands, acronyms, or jargon (comma-separated). Primes Whisper's language decoder so these terms are never misheard.")
+        vocab_desc.setObjectName("mutedLabel")
+        vocab_desc.setWordWrap(True)
+        s2_form.addRow("", vocab_desc)
+
         sec2_layout.addLayout(s2_form)
         layout.addWidget(sec2)
 
@@ -1082,6 +1093,16 @@ class MainWindow(QMainWindow):
         t_idx = self.theme_combo.findData(self.config.appearance)
         if t_idx >= 0:
             self.theme_combo.setCurrentIndex(t_idx)
+
+        # Custom Vocabulary
+        if hasattr(self, "vocab_input"):
+            self.vocab_input.setText(getattr(self.config, "custom_vocabulary", ""))
+
+    def _on_custom_vocabulary_changed(self, text: str) -> None:
+        self.config.custom_vocabulary = text
+        self.config.save()
+        if self.on_config_changed_callback:
+            self.on_config_changed_callback(self.config)
 
     def _update_model_status(self) -> None:
         tier_id = self.tier_combo.currentData()

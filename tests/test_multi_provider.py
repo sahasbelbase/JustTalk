@@ -103,6 +103,22 @@ class TestMultiProvider(unittest.TestCase):
         self.assertEqual(config.ai_model, "")
         self.assertEqual(config.custom_api_base_url, "")
 
+    def test_sanitize_output_urls_no_trailing_dot(self):
+        formatter = MultiProviderFormatter(provider_id="gemini")
+        # Standalone domain with trailing dot
+        self.assertEqual(formatter._sanitize_output("github.com", "github.com."), "github.com")
+        self.assertEqual(formatter._sanitize_output("Github.com", "Github.com."), "github.com")
+        # Sentence ending with URL
+        self.assertEqual(
+            formatter._sanitize_output("visit github.com", "Visit github.com."),
+            "Visit github.com",
+        )
+        # Normal sentence still preserves period
+        self.assertEqual(
+            formatter._sanitize_output("hello world", "Hello world."),
+            "Hello world.",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

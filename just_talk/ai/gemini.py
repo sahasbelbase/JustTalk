@@ -158,9 +158,31 @@ class GeminiFormatter:
         # Remove mid-sentence stutter fillers
         text = re.sub(r"\b(?:um|uh)\b[,\s]*", "", text, flags=re.IGNORECASE)
 
+        # Check if the entire text is a standalone URL, domain, or email
+        is_url_or_domain = bool(
+            re.match(
+                r"^(?:https?://\S+|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|(?:www\.)?[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+(?:/[^\s]*)?)\.?$",
+                text,
+                re.IGNORECASE,
+            )
+        )
+
+        if is_url_or_domain:
+            # Strip trailing period and normalize to lowercase
+            text = text.rstrip(".")
+            if not text.startswith("http"):
+                text = text.lower()
+            return text
+
         # Capitalize first character
         if text:
             text = text[0].upper() + text[1:]
+
+        # If sentence ends with a domain/URL or email, strip trailing dot and do not append a period
+        if re.search(r"(?:https?://\S+|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*\.[a-zA-Z]{2,}(?:/[^\s]*)?)\.?$", text):
+            text = re.sub(r"(\b(?:https?://\S+|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*\.[a-zA-Z]{2,}(?:/[^\s]*)?))\.$", r"\1", text)
+            return text.strip()
+
         # Ensure punctuation at end if missing
         if text and text[-1] not in ".!?":
             text += "."

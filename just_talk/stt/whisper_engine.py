@@ -35,7 +35,7 @@ class WhisperSTTEngine(STTEngine):
     def loading_status(self) -> str:
         return self._loading_status
 
-    def load(self, tier_id: str = "balanced") -> bool:
+    def load(self, tier_id: str = "quality") -> bool:
         """Load and warm up the selected model tier."""
         with self._lock:
             if self._model is not None and self._current_tier == tier_id:
@@ -93,6 +93,7 @@ class WhisperSTTEngine(STTEngine):
         audio: np.ndarray,
         language: Optional[str] = None,
         task: str = "transcribe",
+        initial_prompt: Optional[str] = None,
     ) -> str:
         """
         Transcribe or translate audio array to text.
@@ -100,6 +101,7 @@ class WhisperSTTEngine(STTEngine):
             audio: 1D float32 NumPy array at 16000 Hz.
             language: ISO 639-1 language code (e.g. "ne", "en", "de", None or "auto" for auto-detect).
             task: "transcribe" (keep spoken language) or "translate" (translate speech to English).
+            initial_prompt: Context or custom vocabulary prompt to prime the decoder.
         """
         if audio is None or len(audio) == 0:
             return ""
@@ -121,7 +123,7 @@ class WhisperSTTEngine(STTEngine):
 
         with self._lock:
             if self._model is None:
-                if not self.load("balanced"):
+                if not self.load("quality"):
                     return ""
 
             try:
@@ -134,6 +136,7 @@ class WhisperSTTEngine(STTEngine):
                         language=lang_param,
                         task=task_param,
                         vad_filter=True,
+                        initial_prompt=initial_prompt,
                         condition_on_previous_text=False,
                     )
                     text_pieces = [segment.text.strip() for segment in segments]
@@ -150,6 +153,7 @@ class WhisperSTTEngine(STTEngine):
                         language=lang_param,
                         task=task_param,
                         vad_filter=False,
+                        initial_prompt=initial_prompt,
                         condition_on_previous_text=False,
                     )
                     fallback_pieces = [s.text.strip() for s in segments_raw]
