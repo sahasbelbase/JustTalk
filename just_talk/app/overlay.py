@@ -279,12 +279,12 @@ class FloatingPillOverlay(QWidget):
         self._press_start_time = time.time()
         self._state = self.STATE_LISTENING
         self._is_action_mode = is_action_mode
-        self._status_text = "Listening"
+        self._status_text = "Translating" if is_action_mode else "Listening"
         self._shake_offset = 0.0
         self._audio_level = 0.0
         self._target_audio_level = 0.0
         self._bars = [0.2] * 9
-        self._pill_width = 208.0
+        self._pill_width = 216.0 if is_action_mode else 208.0
 
         self._reposition()
         if not self.isVisible():

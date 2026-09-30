@@ -567,7 +567,7 @@ class JustTalkApp:
 
             # 3. Local Speech-to-Text with Multilingual & Dual-Task Support
             speech_mode = getattr(self.config, "speech_mode", "transcribe")
-            task = "translate" if speech_mode == "translate" else "transcribe"
+            task = "translate" if (speech_mode == "translate" or is_action_mode) else "transcribe"
             lang = self.config.language if self.config.language not in ("auto", "none", "", None) else None
 
             if task == "translate":
