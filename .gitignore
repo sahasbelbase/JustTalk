@@ -14,7 +14,16 @@ __pycache__/
 *.dylib
 *.dll
 build/
-dist/
+# Distributable installer packages (*.dmg, *.exe, *.pkg, *.zip) are tracked via Git LFS.
+# Uncompressed build trees (dist/JustTalk, dist/JustTalk.app) remain ignored.
+dist/*
+!dist/*.dmg
+!dist/*.exe
+!dist/*.zip
+!dist/*.pkg
+!dist/windows_installer/
+!dist/windows_installer/*.exe
+packaging/mac/*.dmg
 develop-eggs/
 downloads/
 eggs/
@@ -34,10 +43,7 @@ MANIFEST
 # --- PyInstaller / Executable Builds ---
 *.manifest
 *.spec.bak
-*.dmg
-*.pkg
 *.app/
-*.exe
 
 # --- Virtual Environments ---
 .venv/
