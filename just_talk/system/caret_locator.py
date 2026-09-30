@@ -202,15 +202,10 @@ class CaretLocator:
                         sz_val, ApplicationServices.kAXValueTypeCGSize, None
                     )
                     if ok_p and ok_s and sz.width > 50 and sz.height > 50:
-                        mouse = QCursor.pos()
-                        # If mouse is inside this active window, anchor beneath the mouse position
-                        if pt.x <= mouse.x() <= pt.x + sz.width and pt.y <= mouse.y() <= pt.y + sz.height:
-                            tx = float(mouse.x()) - (pill_width / 2.0)
-                            ty = float(mouse.y()) + 22.0
-                            return tx, ty, float(mouse.y())
+                        # Cleanly center at the bottom of the active target window (VS Code, Brave, Chrome, Antigravity)
                         tx = pt.x + (sz.width - pill_width) / 2.0
-                        ty = pt.y + sz.height - pill_height - 24.0
-                        return tx, ty, pt.y
+                        ty = pt.y + sz.height - pill_height - 32.0
+                        return tx, ty, None
 
         except Exception as e:
             print(f"[CaretLocator] Error resolving caret coordinates: {e}", file=sys.stderr)

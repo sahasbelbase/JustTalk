@@ -322,12 +322,14 @@ class MacHotkeyMonitor:
                     shift_is_active = bool(flags & self.SHIFT_FLAG_MASK)
 
                     is_down = False
-                    if self.trigger_key in ("fn", "globe"):
-                        is_down = bool(flags & self.FN_FLAG_MASK)
-                    elif self.trigger_key in ("right_alt", "alt_r", "right_option"):
-                        is_down = bool(flags & self.ALT_FLAG_MASK) and (
+                    if self.trigger_key in ("fn", "globe", "right_alt", "alt_r", "right_option"):
+                        # Universal push-to-talk: support BOTH Fn and Right Option (Right Alt)
+                        # This guarantees external PC keyboards, Mac built-in keyboards, and cross-platform muscle memory work out-of-the-box.
+                        is_fn_down = bool(flags & self.FN_FLAG_MASK)
+                        is_right_alt_down = bool(flags & self.ALT_FLAG_MASK) and (
                             keycode == self.KEYCODE_RIGHT_ALT or self._is_active
                         )
+                        is_down = is_fn_down or is_right_alt_down
                     elif self.trigger_key in ("right_cmd", "cmd_r", "right_command"):
                         is_down = bool(flags & self.CMD_FLAG_MASK) and (
                             keycode == self.KEYCODE_RIGHT_CMD or self._is_active

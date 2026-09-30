@@ -90,13 +90,12 @@ class PynputHotkeyMonitor:
             )
             has_space = any(k == keyboard.Key.space or getattr(k, "vk", None) == 32 for k in self._current_keys)
             return has_ctrl and has_shift and has_space
-        elif trigger in ("fn", "globe"):
-            if sys.platform == "win32":
-                # On Windows, Fn is a firmware key not reported to the OS.
-                # Automatically map 'fn' to Right Alt on Windows so cross-platform configs work out-of-the-box.
-                return any(self._is_right_alt(k) for k in self._current_keys)
+        elif trigger in ("fn", "globe", "right_alt", "alt_r", "right_option"):
+            # Universal push-to-talk: support either Right Alt or Fn
             return any(
-                getattr(k, "vk", None) in (63, 0xFF) or getattr(k, "char", "") == "fn"
+                self._is_right_alt(k)
+                or getattr(k, "vk", None) in (63, 0xFF)
+                or getattr(k, "char", "") == "fn"
                 for k in self._current_keys
             )
         return False

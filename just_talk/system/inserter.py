@@ -74,7 +74,13 @@ class TextInserter:
                 if self._target_app is not None and hasattr(self._target_app, "activateWithOptions_"):
                     # NSApplicationActivateIgnoringOtherApps = 1 << 1 (2)
                     self._target_app.activateWithOptions_(1 << 1)
-                    time.sleep(0.04)
+                    time.sleep(0.08)
+                else:
+                    from AppKit import NSWorkspace
+                    app = NSWorkspace.sharedWorkspace().frontmostApplication()
+                    if app and hasattr(app, "activateWithOptions_"):
+                        app.activateWithOptions_(1 << 1)
+                        time.sleep(0.08)
             except Exception as e:
                 print(f"[TextInserter] macOS target reactivation error: {e}", file=sys.stderr)
         elif sys.platform == "win32":
@@ -92,14 +98,14 @@ class TextInserter:
                 if self._target_hwnd:
                     user32.SetForegroundWindow(self._target_hwnd)
                     user32.BringWindowToTop(self._target_hwnd)
-                    time.sleep(0.04)
+                    time.sleep(0.05)
             except Exception as e:
                 print(f"[TextInserter] Windows target reactivation error: {e}", file=sys.stderr)
 
     def _synthesize_paste(self) -> bool:
         """Synthesize platform-native paste keystroke (Cmd+V on macOS, Ctrl+V on Windows)."""
         if sys.platform == "darwin":
-            # 1. Native CoreGraphics CGEvent (direct HID event tap injection)
+            # 1. Native CoreGraphics CGEvent (direct HID & PID event tap injection)
             try:
                 import Quartz
 
@@ -114,13 +120,27 @@ class TextInserter:
                 Quartz.CGEventSetFlags(v_up, Quartz.kCGEventFlagMaskCommand)
                 cmd_up = Quartz.CGEventCreateKeyboardEvent(source, cmd_code, False)
 
-                Quartz.CGEventPost(Quartz.kCGHIDEventTap, cmd_down)
-                time.sleep(0.01)
-                Quartz.CGEventPost(Quartz.kCGHIDEventTap, v_down)
-                time.sleep(0.025)
-                Quartz.CGEventPost(Quartz.kCGHIDEventTap, v_up)
-                time.sleep(0.01)
-                Quartz.CGEventPost(Quartz.kCGHIDEventTap, cmd_up)
+                target_pid = None
+                if self._target_app is not None and hasattr(self._target_app, "processIdentifier"):
+                    target_pid = self._target_app.processIdentifier()
+
+                if target_pid and hasattr(Quartz, "CGEventPostToPid"):
+                    # Direct PID-addressed event delivery directly into target app queue
+                    Quartz.CGEventPostToPid(target_pid, cmd_down)
+                    time.sleep(0.01)
+                    Quartz.CGEventPostToPid(target_pid, v_down)
+                    time.sleep(0.025)
+                    Quartz.CGEventPostToPid(target_pid, v_up)
+                    time.sleep(0.01)
+                    Quartz.CGEventPostToPid(target_pid, cmd_up)
+                else:
+                    Quartz.CGEventPost(Quartz.kCGHIDEventTap, cmd_down)
+                    time.sleep(0.01)
+                    Quartz.CGEventPost(Quartz.kCGHIDEventTap, v_down)
+                    time.sleep(0.025)
+                    Quartz.CGEventPost(Quartz.kCGHIDEventTap, v_up)
+                    time.sleep(0.01)
+                    Quartz.CGEventPost(Quartz.kCGHIDEventTap, cmd_up)
                 return True
             except Exception:
                 pass

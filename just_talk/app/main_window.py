@@ -1216,11 +1216,23 @@ class MainWindow(QMainWindow):
         tier_id = self.tier_combo.currentData() or self.config.model_tier
         info = self.model_manager.get_tier_info(tier_id)
         downloaded = self.model_manager.is_model_downloaded(tier_id)
-        if downloaded:
+        if hasattr(self.model_manager, "is_downloading") and self.model_manager.is_downloading(tier_id):
+            active_prog = self.model_manager.get_active_progress(tier_id)
+            pct = active_prog[0] if active_prog else 5.0
+            msg = active_prog[1] if active_prog else f"Downloading {info.display_name}..."
+            self.model_status_label.setText(msg)
+            self.model_status_label.setStyleSheet("color: #6C8EEF;")
+            self.model_progress_bar.show()
+            self.model_progress_bar.setValue(int(max(1, min(100, pct))))
+            self.download_btn.setText("Downloading...")
+            self.download_btn.setEnabled(False)
+            self.model_error_label.hide()
+        elif downloaded:
             self.model_status_label.setText(f"✓ {info.display_name} is downloaded and ready in cache (~{info.disk_size_mb} MB).")
             self.model_status_label.setStyleSheet("color: #30D158;")
             self.download_btn.setText("Re-download Model")
             self.download_btn.setStyleSheet("")
+            self.download_btn.setEnabled(True)
             self.model_progress_bar.hide()
             self.model_error_label.hide()
         else:
@@ -1228,6 +1240,7 @@ class MainWindow(QMainWindow):
             self.model_status_label.setStyleSheet("color: #8E8E93;")
             self.download_btn.setText(f"Download {info.model_name.upper()} ({info.disk_size_mb} MB)")
             self.download_btn.setStyleSheet("background-color: #6C8EEF; color: white; border: none; font-weight: bold; border-radius: 6px; padding: 6px 12px;")
+            self.download_btn.setEnabled(True)
             self.model_progress_bar.hide()
             self.model_error_label.hide()
 

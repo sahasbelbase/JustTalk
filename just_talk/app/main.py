@@ -773,11 +773,17 @@ def main() -> None:
             cfg = AppConfig.load()
             mgr = ModelManager()
             tier = cfg.model_tier or "quality"
+
+            def cli_progress(pct: float, msg: str):
+                if pct > 0:
+                    sys.stderr.write(f"\r[Setup] {msg}   ")
+                    sys.stderr.flush()
+
             if not mgr.is_model_downloaded(tier):
-                mgr.download_model(tier)
-            print("[Setup] Whisper speech model is fully ready.", file=sys.stderr)
+                mgr.download_model(tier, progress_callback=cli_progress)
+            print("\n[Setup] Whisper speech model is fully ready.", file=sys.stderr)
         except Exception as err:
-            print(f"[Setup] Model pre-download warning: {err}", file=sys.stderr)
+            print(f"\n[Setup] Model pre-download warning: {err}", file=sys.stderr)
         sys.exit(0)
 
     app = JustTalkApplication(sys.argv)
