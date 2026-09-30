@@ -78,10 +78,11 @@ class FloatingPillOverlay(QWidget):
         self._pill_width = 216.0
         self._pill_height = 48.0
 
-        # Window flags: Use Window type (not Tool) so Cocoa creates a persistent QNSWindow
-        # that does NOT automatically hide when other applications (VS Code, Brave, Teams, Antigravity) are active.
+        # Window flags: Tool type creates a Cocoa QNSPanel on macOS.
+        # Paired with hidesOnDeactivate=False and NSWindowStyleMaskNonactivatingPanel,
+        # this matches Floaty, Raycast, and Wispr Flow to float across all apps and spaces without stealing focus.
         self.setWindowFlags(
-            Qt.WindowType.Window
+            Qt.WindowType.Tool
             | Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
             | Qt.WindowType.WindowDoesNotAcceptFocus
@@ -127,7 +128,7 @@ class FloatingPillOverlay(QWidget):
     fadeOpacity = Property(float, _get_fade, _set_fade)
 
     def _apply_native_window_attributes(self) -> None:
-        """Allow overlay to appear over full-screen apps, VS Code, and across all macOS spaces without stealing focus."""
+        """Allow overlay to appear over full-screen apps, Brave, Teams, and across all macOS spaces without stealing focus."""
         if sys.platform == "darwin":
             try:
                 import ctypes
@@ -136,31 +137,40 @@ class FloatingPillOverlay(QWidget):
                     NSWindowCollectionBehaviorCanJoinAllSpaces,
                     NSWindowCollectionBehaviorFullScreenAuxiliary,
                     NSWindowCollectionBehaviorIgnoresCycle,
-                    NSScreenSaverWindowLevel,
+                    NSStatusWindowLevel,
+                    NSWindowStyleMaskNonactivatingPanel,
                 )
 
                 view_ptr = int(self.winId())
                 c_void_p = ctypes.c_void_p(view_ptr)
                 ns_view = objc.objc_object(c_void_p=c_void_p)
-                ns_window = ns_view.window()
-                if ns_window:
-                    # Do not accept key or main window focus
-                    if hasattr(ns_window, "setCanBecomeKeyWindow_"):
-                        ns_window.setCanBecomeKeyWindow_(False)
-                    if hasattr(ns_window, "setCanBecomeMainWindow_"):
-                        ns_window.setCanBecomeMainWindow_(False)
+                ns_panel = ns_view.window()
+                if ns_panel:
+                    # Critical for floating over other apps: prevent Cocoa from auto-hiding NSPanel on deactivate
+                    if hasattr(ns_panel, "setHidesOnDeactivate_"):
+                        ns_panel.setHidesOnDeactivate_(False)
+                    if hasattr(ns_panel, "setFloatingPanel_"):
+                        ns_panel.setFloatingPanel_(True)
+                    if hasattr(ns_panel, "setCanBecomeKeyWindow_"):
+                        ns_panel.setCanBecomeKeyWindow_(False)
+                    if hasattr(ns_panel, "setCanBecomeMainWindow_"):
+                        ns_panel.setCanBecomeMainWindow_(False)
 
-                    # Level 1001 (NSScreenSaverWindowLevel + 1) floats above ALL browser windows, popups, full-screen spaces, and dialogs
-                    ns_window.setLevel_(NSScreenSaverWindowLevel + 1)
+                    # Non-activating panel style mask prevents stealing focus from active app (Brave, Teams, etc.)
+                    mask = ns_panel.styleMask()
+                    ns_panel.setStyleMask_(mask | NSWindowStyleMaskNonactivatingPanel)
 
-                    # CanJoinAllSpaces allows the window to appear on any space (Desktop 1, 2, 3, 4) without switching spaces
+                    # Collection behavior: follow across all spaces, Mission Control, and full-screen windows
                     behavior = (
                         NSWindowCollectionBehaviorCanJoinAllSpaces
                         | NSWindowCollectionBehaviorFullScreenAuxiliary
                         | NSWindowCollectionBehaviorIgnoresCycle
                     )
-                    ns_window.setCollectionBehavior_(behavior)
-                    ns_window.orderFrontRegardless()
+                    ns_panel.setCollectionBehavior_(behavior)
+
+                    # Status window level (25) floats reliably above all normal windows and full-screen spaces
+                    ns_panel.setLevel_(NSStatusWindowLevel)
+                    ns_panel.orderFrontRegardless()
             except Exception as e:
                 print(f"[Overlay] Native window config error: {e}", file=sys.stderr)
         elif sys.platform == "win32":
@@ -221,22 +231,29 @@ class FloatingPillOverlay(QWidget):
                     NSWindowCollectionBehaviorCanJoinAllSpaces,
                     NSWindowCollectionBehaviorFullScreenAuxiliary,
                     NSWindowCollectionBehaviorIgnoresCycle,
-                    NSScreenSaverWindowLevel,
+                    NSStatusWindowLevel,
+                    NSWindowStyleMaskNonactivatingPanel,
                 )
 
                 view_ptr = int(self.winId())
                 c_void_p = ctypes.c_void_p(view_ptr)
                 ns_view = objc.objc_object(c_void_p=c_void_p)
-                ns_window = ns_view.window()
-                if ns_window:
+                ns_panel = ns_view.window()
+                if ns_panel:
+                    if hasattr(ns_panel, "setHidesOnDeactivate_"):
+                        ns_panel.setHidesOnDeactivate_(False)
+                    if hasattr(ns_panel, "setFloatingPanel_"):
+                        ns_panel.setFloatingPanel_(True)
+                    mask = ns_panel.styleMask()
+                    ns_panel.setStyleMask_(mask | NSWindowStyleMaskNonactivatingPanel)
                     behavior = (
                         NSWindowCollectionBehaviorCanJoinAllSpaces
                         | NSWindowCollectionBehaviorFullScreenAuxiliary
                         | NSWindowCollectionBehaviorIgnoresCycle
                     )
-                    ns_window.setCollectionBehavior_(behavior)
-                    ns_window.setLevel_(NSScreenSaverWindowLevel + 1)
-                    ns_window.orderFrontRegardless()
+                    ns_panel.setCollectionBehavior_(behavior)
+                    ns_panel.setLevel_(NSStatusWindowLevel)
+                    ns_panel.orderFrontRegardless()
             except Exception:
                 pass
 
@@ -321,7 +338,10 @@ class FloatingPillOverlay(QWidget):
         self._opacity = 1.0
         if not self.isVisible():
             self.show()
+        self._apply_native_window_attributes()
         self._bring_to_front()
+        if not self._anim_timer.isActive():
+            self._anim_timer.start()
         self.update()
 
     def show_inserted(self) -> None:
@@ -378,6 +398,12 @@ class FloatingPillOverlay(QWidget):
         if self._state == self.STATE_IDLE:
             return
 
+        if hasattr(self, "_fade_anim") and self._fade_anim is not None:
+            try:
+                self._fade_anim.stop()
+            except Exception:
+                pass
+
         self._fade_anim = QPropertyAnimation(self, b"fadeOpacity")
         self._fade_anim.setDuration(160)
         self._fade_anim.setStartValue(self._opacity)
@@ -406,19 +432,18 @@ class FloatingPillOverlay(QWidget):
         else:
             self._audio_level += (self._target_audio_level - self._audio_level) * 0.18
 
-        # 2. Update 9 Waveform Bars (Fluid undulating harmonic ripple like Typeless)
-        breath = 0.16 + 0.06 * math.sin(now * 3.8)
+        # 2. Update 9 Waveform Bars (Fluid undulating harmonic ripple like Wispr Flow / Typeless / Floaty)
         for i, weight in enumerate(self.BAR_WEIGHTS):
             dist_from_center = abs(i - 4)  # 0 to 4
-            phase = now * 13.0 - dist_from_center * 0.44
+            # Dynamic harmonic phase wave for vocal articulation
+            phase = now * 11.0 - dist_from_center * 0.48
             harmonic = 0.40 + 0.60 * (0.5 + 0.5 * math.sin(phase))
-            dynamic_speech = self._audio_level * harmonic * weight
-            # Only show full breathing animation when real audio is present;
-            # otherwise keep bars nearly flat so silence looks like silence.
-            if self._audio_level > 0.001:
-                target_h = max(breath * weight, dynamic_speech)
-            else:
-                target_h = breath * weight * 0.2
+            dynamic_speech = self._audio_level * harmonic * weight * 1.5
+
+            # Ambient undulating breath ripple so the user always sees the float animation is active
+            ambient_wave = (0.20 + 0.10 * math.sin(now * 5.0 - dist_from_center * 0.55)) * weight
+            target_h = max(ambient_wave, dynamic_speech)
+            target_h = min(1.0, max(0.12, target_h))
 
             if target_h > self._bars[i]:
                 self._bars[i] += (target_h - self._bars[i]) * 0.55
