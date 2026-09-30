@@ -33,9 +33,22 @@ class ClipboardManager:
             except Exception:
                 pass
 
+        # Windows: pyperclip uses Win32 OpenClipboard directly, which is thread-safe
+        # unlike QClipboard which must be called from the main GUI thread.
+        if sys.platform == "win32":
+            try:
+                import pyperclip
+
+                return pyperclip.paste() or ""
+            except Exception:
+                pass
+
         if HAS_PYSIDE and QGuiApplication.instance():
-            cb = QGuiApplication.clipboard()
-            return cb.text() or ""
+            try:
+                cb = QGuiApplication.clipboard()
+                return cb.text() or ""
+            except Exception:
+                pass
 
         try:
             import pyperclip
@@ -47,6 +60,7 @@ class ClipboardManager:
     @staticmethod
     def set_text(text: str) -> bool:
         """Put text onto system clipboard."""
+        # macOS native pasteboard
         if sys.platform == "darwin":
             try:
                 from AppKit import NSPasteboard, NSPasteboardTypeString
@@ -58,10 +72,23 @@ class ClipboardManager:
             except Exception:
                 pass
 
+        # Windows: Win32 API via pyperclip is thread-safe and handles clipboard contention
+        if sys.platform == "win32":
+            try:
+                import pyperclip
+
+                pyperclip.copy(text)
+                return True
+            except Exception:
+                pass
+
         if HAS_PYSIDE and QGuiApplication.instance():
-            cb = QGuiApplication.clipboard()
-            cb.setText(text)
-            return True
+            try:
+                cb = QGuiApplication.clipboard()
+                cb.setText(text)
+                return True
+            except Exception:
+                pass
 
         try:
             import pyperclip

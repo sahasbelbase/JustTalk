@@ -64,19 +64,15 @@ class TextInserter:
 
         # Step 2: Synthesize simulated paste keystroke
         try:
-            time.sleep(0.02)  # Tiny pause to ensure clipboard is ready in OS
-            if sys.platform == "darwin":
-                # Cmd + V on macOS
-                self._keyboard.press(Key.cmd)
-                self._keyboard.press('v')
-                self._keyboard.release('v')
-                self._keyboard.release(Key.cmd)
-            else:
-                # Ctrl + V on Windows / Linux
-                self._keyboard.press(Key.ctrl)
-                self._keyboard.press('v')
-                self._keyboard.release('v')
-                self._keyboard.release(Key.ctrl)
+            time.sleep(0.025)  # Pause to ensure clipboard is committed in OS
+            modifier = Key.cmd if sys.platform == "darwin" else Key.ctrl
+            self._keyboard.press(modifier)
+            time.sleep(0.015)
+            self._keyboard.press('v')
+            time.sleep(0.025)
+            self._keyboard.release('v')
+            time.sleep(0.015)
+            self._keyboard.release(modifier)
 
             # Step 3: Restore prior clipboard in background thread after app consumes paste
             if restore_clipboard and original_clipboard != text:
