@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMainWindow,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -76,7 +77,7 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle("Just Talk")
         self.resize(960, 650)
-        self.setMinimumSize(860, 560)
+        self.setMinimumSize(680, 460)
 
         # Center on screen
         screen = QApplication.primaryScreen()
@@ -120,6 +121,8 @@ class MainWindow(QMainWindow):
         Intercept close: keep background push-to-talk listener and tray alive.
         Switches macOS dock policy back to accessory.
         """
+        if getattr(self, "_is_testing_mic", False):
+            self._stop_mic_test()
         event.ignore()
         self.hide()
         self.update_activation_policy(is_visible=False)
@@ -519,13 +522,16 @@ class MainWindow(QMainWindow):
         title_lbl = QLabel(title)
         title_lbl.setObjectName("cardTitle")
         title_lbl.setFont(ThemeManager.get_ui_font(13, weight=QFont.Weight.DemiBold))
+        title_lbl.setWordWrap(True)
         layout.addWidget(title_lbl)
 
         status_lbl = QLabel(status)
         status_lbl.setObjectName("cardStatus")
         status_lbl.setFont(ThemeManager.get_ui_font(11))
+        status_lbl.setWordWrap(True)
         layout.addWidget(status_lbl)
 
+        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         card.status_label = status_lbl
         card.title_label = title_lbl
         return card
@@ -534,10 +540,10 @@ class MainWindow(QMainWindow):
         """Update live status labels and recent history on Home screen."""
         # 1. Speech engine
         tier_info = TIERS.get(self.config.model_tier)
-        tier_name = tier_info.display_name if tier_info else self.config.model_tier
+        short_name = tier_info.model_name.upper() if tier_info else "QUALITY"
         is_dl = self.model_manager.is_model_downloaded(self.config.model_tier)
-        self.model_card.title_label.setText(f"Whisper {tier_name}")
-        self.model_card.status_label.setText("Ready Locally" if is_dl else "Downloading / Not Cached")
+        self.model_card.title_label.setText(f"Whisper {short_name}")
+        self.model_card.status_label.setText("Ready Locally" if is_dl else "Not Downloaded")
 
         # Update macOS Fn Key and global permissions status if banner is present
         if sys.platform == "darwin" and hasattr(self, "home_fn_alert_card"):
@@ -877,6 +883,8 @@ class MainWindow(QMainWindow):
         sec1, sec1_layout = self._create_settings_section("Trigger & General")
         s1_form = QFormLayout()
         s1_form.setSpacing(12)
+        s1_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        s1_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
 
         self.shortcut_combo = QComboBox()
         if sys.platform == "darwin":
@@ -896,6 +904,7 @@ class MainWindow(QMainWindow):
             kb_row = QHBoxLayout()
             self.fn_fix_status = QLabel("")
             self.fn_fix_status.setFont(ThemeManager.get_ui_font(12))
+            self.fn_fix_status.setWordWrap(True)
             self.fn_fix_btn = QPushButton("1-Click Fix (Stop Emoji Popup)")
             self.fn_fix_btn.setObjectName("secondaryBtn")
             self.fn_fix_btn.setStyleSheet("background-color: #6C8EEF; color: white; border: none; font-weight: bold; padding: 4px 10px;")
@@ -936,24 +945,113 @@ class MainWindow(QMainWindow):
         sec2, sec2_layout = self._create_settings_section("Voice & Speech Recognition")
         s2_form = QFormLayout()
         s2_form.setSpacing(12)
+        s2_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        s2_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
 
+        # Microphone selection and live testing row
+        mic_row = QHBoxLayout()
+        mic_row.setSpacing(8)
         self.device_combo = QComboBox()
+        self.device_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._populate_audio_devices()
-        s2_form.addRow("Microphone:", self.device_combo)
+        mic_row.addWidget(self.device_combo, 1)
+
+        self.mic_test_btn = QPushButton("🎤 Test Mic")
+        self.mic_test_btn.setObjectName("secondaryBtn")
+        self.mic_test_btn.setMinimumHeight(32)
+        self.mic_test_btn.clicked.connect(self._toggle_mic_test)
+        mic_row.addWidget(self.mic_test_btn)
+        s2_form.addRow("Microphone:", mic_row)
+
+        # Microphone live test meter and status
+        self.mic_test_container = QWidget()
+        mic_test_layout = QVBoxLayout(self.mic_test_container)
+        mic_test_layout.setContentsMargins(0, 4, 0, 4)
+        mic_test_layout.setSpacing(6)
+
+        self.mic_level_bar = QProgressBar()
+        self.mic_level_bar.setRange(0, 100)
+        self.mic_level_bar.setValue(0)
+        self.mic_level_bar.setTextVisible(False)
+        self.mic_level_bar.setFixedHeight(8)
+        self.mic_level_bar.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 4px;
+                background-color: rgba(255, 255, 255, 0.06);
+            }
+            QProgressBar::chunk {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #30D158, stop:0.8 #FFD60A, stop:1 #FF453A);
+                border-radius: 3px;
+            }
+        """)
+        mic_test_layout.addWidget(self.mic_level_bar)
+
+        self.mic_test_status = QLabel("")
+        self.mic_test_status.setObjectName("mutedLabel")
+        self.mic_test_status.setWordWrap(True)
+        mic_test_layout.addWidget(self.mic_test_status)
+
+        self.mic_test_container.hide()
+        s2_form.addRow("", self.mic_test_container)
 
         self.tier_combo = QComboBox()
         for tier_id, info in TIERS.items():
             self.tier_combo.addItem(f"{info.display_name} — {info.speed_factor} ({info.disk_size_mb} MB)", tier_id)
+        self.tier_combo.currentIndexChanged.connect(self._on_tier_selection_changed)
         s2_form.addRow("Model Quality:", self.tier_combo)
 
-        self.model_status_label = QLabel("")
-        self.model_status_label.setObjectName("mutedLabel")
-        s2_form.addRow("", self.model_status_label)
+        # Responsive Model Storage & Download Card
+        storage_row = QVBoxLayout()
+        storage_row.setSpacing(8)
 
         self.download_btn = QPushButton("Download Model")
         self.download_btn.setObjectName("secondaryBtn")
+        self.download_btn.setMinimumHeight(34)
+        self.download_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.download_btn.clicked.connect(self._on_download_model)
-        s2_form.addRow("Model Storage:", self.download_btn)
+        storage_row.addWidget(self.download_btn)
+
+        self.model_progress_bar = QProgressBar()
+        self.model_progress_bar.setRange(0, 100)
+        self.model_progress_bar.setValue(0)
+        self.model_progress_bar.setTextVisible(False)
+        self.model_progress_bar.setFixedHeight(8)
+        self.model_progress_bar.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 4px;
+                background-color: rgba(255, 255, 255, 0.06);
+            }
+            QProgressBar::chunk {
+                background-color: #6C8EEF;
+                border-radius: 3px;
+            }
+        """)
+        self.model_progress_bar.hide()
+        storage_row.addWidget(self.model_progress_bar)
+
+        self.model_status_label = QLabel("")
+        self.model_status_label.setObjectName("mutedLabel")
+        self.model_status_label.setWordWrap(True)
+        self.model_status_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        storage_row.addWidget(self.model_status_label)
+
+        self.model_error_label = QLabel("")
+        self.model_error_label.setStyleSheet("""
+            background-color: rgba(255, 69, 58, 0.15);
+            color: #FF453A;
+            border: 1px solid rgba(255, 69, 58, 0.3);
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 12px;
+            font-weight: 500;
+        """)
+        self.model_error_label.setWordWrap(True)
+        self.model_error_label.hide()
+        storage_row.addWidget(self.model_error_label)
+
+        s2_form.addRow("Model Storage:", storage_row)
 
         self.speech_mode_combo = QComboBox()
         self.speech_mode_combo.addItem("✍️ Write in My Language (Transcribe)", "transcribe")
@@ -1104,39 +1202,192 @@ class MainWindow(QMainWindow):
         if self.on_config_changed_callback:
             self.on_config_changed_callback(self.config)
 
-    def _update_model_status(self) -> None:
+    def _on_tier_selection_changed(self) -> None:
         tier_id = self.tier_combo.currentData()
+        if tier_id:
+            self.config.model_tier = tier_id
+            self.config.save()
+            self._update_model_status()
+            self._refresh_home_status()
+            if self.on_config_changed_callback:
+                self.on_config_changed_callback(self.config)
+
+    def _update_model_status(self) -> None:
+        tier_id = self.tier_combo.currentData() or self.config.model_tier
+        info = self.model_manager.get_tier_info(tier_id)
         downloaded = self.model_manager.is_model_downloaded(tier_id)
         if downloaded:
-            self.model_status_label.setText("Status: Model downloaded and ready in cache.")
+            self.model_status_label.setText(f"✓ {info.display_name} is downloaded and ready in cache (~{info.disk_size_mb} MB).")
+            self.model_status_label.setStyleSheet("color: #30D158;")
             self.download_btn.setText("Re-download Model")
+            self.download_btn.setStyleSheet("")
+            self.model_progress_bar.hide()
+            self.model_error_label.hide()
         else:
-            self.model_status_label.setText("Status: Not downloaded yet. Downloads automatically on first voice input.")
-            self.download_btn.setText("Download Now")
+            self.model_status_label.setText(f"Not downloaded yet (~{info.disk_size_mb} MB required). Downloads automatically on first voice input or click below.")
+            self.model_status_label.setStyleSheet("color: #8E8E93;")
+            self.download_btn.setText(f"Download {info.model_name.upper()} ({info.disk_size_mb} MB)")
+            self.download_btn.setStyleSheet("background-color: #6C8EEF; color: white; border: none; font-weight: bold; border-radius: 6px; padding: 6px 12px;")
+            self.model_progress_bar.hide()
+            self.model_error_label.hide()
 
     def _on_download_model(self) -> None:
-        tier_id = self.tier_combo.currentData()
-        self.model_status_label.setText("Downloading model weights... please wait.")
+        tier_id = self.tier_combo.currentData() or self.config.model_tier
+        info = self.model_manager.get_tier_info(tier_id)
+
+        self.model_error_label.hide()
+        self.model_progress_bar.show()
+        self.model_progress_bar.setValue(4)
+        self.model_progress_bar.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 4px;
+                background-color: rgba(255, 255, 255, 0.06);
+            }
+            QProgressBar::chunk {
+                background-color: #6C8EEF;
+                border-radius: 3px;
+            }
+        """)
+        self.model_status_label.setText(f"Connecting to download {info.display_name} (~{info.disk_size_mb} MB)...")
+        self.model_status_label.setStyleSheet("color: #6C8EEF;")
         self.download_btn.setEnabled(False)
+        self.download_btn.setText("Downloading...")
 
         def worker():
-            def progress(pct, msg):
-                QTimer.singleShot(0, lambda: self.model_status_label.setText(f"{msg} ({int(pct)}%)"))
+            last_err = ""
+
+            def progress(pct: float, msg: str):
+                nonlocal last_err
+                if pct < 0:
+                    last_err = msg
+                    QTimer.singleShot(0, lambda m=msg: self._on_download_failed(m))
+                else:
+                    QTimer.singleShot(0, lambda p=pct, m=msg: self._on_download_progress(p, m))
 
             success = self.model_manager.download_model(tier_id, progress_callback=progress)
 
             def done():
                 self.download_btn.setEnabled(True)
                 if success:
-                    QMessageBox.information(self, "Download Complete", "Speech model downloaded successfully!")
-                    self._update_model_status()
-                    self._refresh_home_status()
-                else:
-                    QMessageBox.warning(self, "Download Failed", "Failed to download model. Check your internet connection.")
+                    self._on_download_succeeded(info)
+                elif not last_err:
+                    self._on_download_failed("Download interrupted. Check internet connection.")
+
             QTimer.singleShot(0, done)
 
         import threading
         threading.Thread(target=worker, daemon=True).start()
+
+    def _on_download_progress(self, pct: float, msg: str) -> None:
+        self.model_progress_bar.show()
+        self.model_progress_bar.setValue(int(max(0, min(100, pct))))
+        self.model_status_label.setText(msg)
+        self.model_status_label.setStyleSheet("color: #6C8EEF;")
+
+    def _on_download_succeeded(self, info) -> None:
+        self.model_progress_bar.setValue(100)
+        self.model_progress_bar.hide()
+        self.model_error_label.hide()
+        self.model_status_label.setText(f"✓ {info.display_name} is fully downloaded and verified ({info.disk_size_mb} MB).")
+        self.model_status_label.setStyleSheet("color: #30D158;")
+        self.download_btn.setText("Re-download Model")
+        self.download_btn.setStyleSheet("")
+        self.download_btn.setEnabled(True)
+        self._refresh_home_status()
+        QMessageBox.information(self, "Download Complete", f"{info.display_name} downloaded successfully and is ready for use!")
+
+    def _on_download_failed(self, error_msg: str) -> None:
+        self.model_progress_bar.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid rgba(255, 69, 58, 0.3);
+                border-radius: 4px;
+                background-color: rgba(255, 255, 255, 0.06);
+            }
+            QProgressBar::chunk {
+                background-color: #FF453A;
+                border-radius: 3px;
+            }
+        """)
+        clean_err = error_msg.replace("Download failed:", "").strip()
+        self.model_error_label.setText(f"⚠️ Download Failed: {clean_err}\nCheck your internet connection and click Retry Download.")
+        self.model_error_label.show()
+        self.model_status_label.setText("Download interrupted.")
+        self.model_status_label.setStyleSheet("color: #FF453A;")
+        self.download_btn.setText("Retry Download")
+        self.download_btn.setStyleSheet("background-color: #FF453A; color: white; border: none; font-weight: bold; border-radius: 6px; padding: 6px 12px;")
+        self.download_btn.setEnabled(True)
+
+    # -------------------------------------------------------------------------
+    # Live Microphone Testing
+    # -------------------------------------------------------------------------
+
+    def _toggle_mic_test(self) -> None:
+        if getattr(self, "_is_testing_mic", False):
+            self._stop_mic_test()
+        else:
+            self._start_mic_test()
+
+    def _start_mic_test(self) -> None:
+        self._is_testing_mic = True
+        self.mic_test_btn.setText("⏹️ Stop Test")
+        self.mic_test_btn.setStyleSheet("background-color: rgba(255, 69, 58, 0.2); color: #FF453A; border: 1px solid #FF453A;")
+        self.mic_test_container.show()
+        self.mic_level_bar.setValue(0)
+        self.mic_test_status.setText("Listening... Speak into your microphone to verify capture.")
+        self.mic_test_status.setStyleSheet("color: #6C8EEF;")
+
+        dev_idx = self.device_combo.currentData()
+        self._mic_test_detected_voice = False
+
+        def on_level(rms: float):
+            pct = min(100, int(rms * 450))
+            if pct > 4:
+                self._mic_test_detected_voice = True
+            QTimer.singleShot(0, lambda p=pct: self._on_mic_test_level(p))
+
+        self._mic_test_recorder = AudioRecorder(
+            device_index=dev_idx,
+            level_callback=on_level,
+        )
+        started = self._mic_test_recorder.start()
+        if not started:
+            self.mic_test_status.setText("⚠️ Failed to open microphone. Check device permissions or reconnect hardware.")
+            self.mic_test_status.setStyleSheet("color: #FF453A;")
+            self._stop_mic_test(reset_status=False)
+            return
+
+        # Auto stop after 10 seconds of testing
+        if not hasattr(self, "_mic_test_timer"):
+            self._mic_test_timer = QTimer(self)
+            self._mic_test_timer.setSingleShot(True)
+            self._mic_test_timer.timeout.connect(self._stop_mic_test)
+        self._mic_test_timer.start(10000)
+
+    def _on_mic_test_level(self, level: int) -> None:
+        if not getattr(self, "_is_testing_mic", False):
+            return
+        self.mic_level_bar.setValue(level)
+        if getattr(self, "_mic_test_detected_voice", False):
+            self.mic_test_status.setText("✓ Sound detected! Microphone is receiving audio clearly.")
+            self.mic_test_status.setStyleSheet("color: #30D158;")
+
+    def _stop_mic_test(self, reset_status: bool = True) -> None:
+        self._is_testing_mic = False
+        self.mic_test_btn.setText("🎤 Test Mic")
+        self.mic_test_btn.setStyleSheet("")
+        if hasattr(self, "_mic_test_timer"):
+            self._mic_test_timer.stop()
+        if hasattr(self, "_mic_test_recorder") and self._mic_test_recorder is not None:
+            try:
+                self._mic_test_recorder.stop()
+            except Exception:
+                pass
+            self._mic_test_recorder = None
+        self.mic_level_bar.setValue(0)
+        if reset_status and not getattr(self, "_mic_test_detected_voice", False):
+            self.mic_test_status.setText("⚠️ Test finished: No voice/audio detected. Ensure microphone is not muted.")
+            self.mic_test_status.setStyleSheet("color: #FF9F0A;")
 
     def _on_theme_changed(self) -> None:
         app = QApplication.instance()

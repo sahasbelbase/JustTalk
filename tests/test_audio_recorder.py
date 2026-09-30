@@ -49,3 +49,16 @@ def test_audio_recorder_soft_speech_agc():
     # AGC should have boosted it above the initial 0.05
     assert boosted_peak > 0.05
     assert boosted_peak <= 1.0
+
+
+def test_audio_recorder_level_callback():
+    levels = []
+    rec = AudioRecorder(level_callback=lambda rms: levels.append(rms))
+    rec._is_recording = True
+
+    fake_input = np.ones((1024, 1), dtype=np.float32) * 0.1
+    rec._audio_callback(fake_input, 1024, {}, None)
+
+    assert len(levels) == 1
+    assert levels[0] > 0.0
+    assert rec.get_audio_level() == levels[0]

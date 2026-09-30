@@ -170,18 +170,51 @@ class ModelManager:
             # Custom progress hook using huggingface_hub snapshot_download
             tqdm_cls = None
             if progress_callback:
+                import time
                 from tqdm.auto import tqdm
+
+                download_start_time = time.time()
+                last_callback_time = 0.0
 
                 class ProgressTqdm(tqdm):
                     def __init__(self, *args, **kwargs):
                         kwargs.pop("name", None)
                         super().__init__(*args, **kwargs)
-                        self._callback_total = kwargs.get("total") or 1
+                        self._expected_total = kwargs.get("total") or (info.disk_size_mb * 1024 * 1024)
 
                     def update(self, n=1):
                         super().update(n)
-                        pct = min(98.0, max(5.0, (self.n / max(1, self.total or self._callback_total)) * 100.0))
-                        progress_callback(pct, f"Downloading {info.display_name} ({pct:.0f}%)...")
+                        nonlocal last_callback_time
+                        now = time.time()
+                        # Throttle UI callback to max 10 updates/sec for smooth rendering
+                        if now - last_callback_time < 0.1 and self.n < (self.total or self._expected_total):
+                            return
+                        last_callback_time = now
+
+                        total_bytes = self.total if (self.total and self.total > 1_000_000) else self._expected_total
+                        current_bytes = min(total_bytes, self.n)
+                        pct = min(99.0, max(2.0, (current_bytes / max(1, total_bytes)) * 100.0))
+
+                        current_mb = current_bytes / (1024 * 1024)
+                        total_mb = total_bytes / (1024 * 1024)
+                        elapsed = max(0.4, now - download_start_time)
+                        rate_mb = current_mb / elapsed if current_mb > 0 else 0.0
+
+                        speed_str = f"{rate_mb:.1f} MB/s" if rate_mb >= 1.0 else f"{int(rate_mb * 1024)} KB/s"
+                        remaining_mb = max(0.0, total_mb - current_mb)
+                        if rate_mb > 0.05 and remaining_mb > 0:
+                            rem_sec = int(remaining_mb / rate_mb)
+                            if rem_sec >= 60:
+                                eta_str = f"~{rem_sec // 60}m {rem_sec % 60}s remaining"
+                            else:
+                                eta_str = f"~{rem_sec}s remaining"
+                        else:
+                            eta_str = "calculating time..."
+
+                        progress_callback(
+                            pct,
+                            f"Downloading {info.display_name}: {current_mb:.1f} MB / {total_mb:.0f} MB ({pct:.0f}%) • {speed_str} • {eta_str}",
+                        )
 
                 tqdm_cls = ProgressTqdm
 
