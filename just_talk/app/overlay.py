@@ -147,14 +147,10 @@ class FloatingPillOverlay(QWidget):
                 ns_panel = ns_view.window()
                 if ns_panel:
                     # Critical for floating over other apps: prevent Cocoa from auto-hiding NSPanel on deactivate
-                    if hasattr(ns_panel, "setHidesOnDeactivate_"):
-                        ns_panel.setHidesOnDeactivate_(False)
-                    if hasattr(ns_panel, "setFloatingPanel_"):
-                        ns_panel.setFloatingPanel_(True)
-                    if hasattr(ns_panel, "setCanBecomeKeyWindow_"):
-                        ns_panel.setCanBecomeKeyWindow_(False)
-                    if hasattr(ns_panel, "setCanBecomeMainWindow_"):
-                        ns_panel.setCanBecomeMainWindow_(False)
+                    ns_panel.setHidesOnDeactivate_(False)
+                    ns_panel.setFloatingPanel_(True)
+                    # QNSPanel doesn't support setCanBecomeKeyWindow_; use setBecomesKeyOnlyIfNeeded_ instead
+                    ns_panel.setBecomesKeyOnlyIfNeeded_(True)
 
                     # Non-activating panel style mask prevents stealing focus from active app (Brave, Teams, etc.)
                     mask = ns_panel.styleMask()
@@ -240,10 +236,9 @@ class FloatingPillOverlay(QWidget):
                 ns_view = objc.objc_object(c_void_p=c_void_p)
                 ns_panel = ns_view.window()
                 if ns_panel:
-                    if hasattr(ns_panel, "setHidesOnDeactivate_"):
-                        ns_panel.setHidesOnDeactivate_(False)
-                    if hasattr(ns_panel, "setFloatingPanel_"):
-                        ns_panel.setFloatingPanel_(True)
+                    ns_panel.setHidesOnDeactivate_(False)
+                    ns_panel.setFloatingPanel_(True)
+                    ns_panel.setBecomesKeyOnlyIfNeeded_(True)
                     mask = ns_panel.styleMask()
                     ns_panel.setStyleMask_(mask | NSWindowStyleMaskNonactivatingPanel)
                     behavior = (
