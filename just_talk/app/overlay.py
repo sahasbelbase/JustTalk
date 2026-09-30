@@ -296,8 +296,8 @@ class FloatingPillOverlay(QWidget):
         self._pill_width = 208.0
 
         self._reposition()
-        self.show()
-        self.raise_()
+        if not self.isVisible():
+            self.show()
         self._apply_native_window_attributes()
         self._bring_to_front()
 
@@ -328,8 +328,8 @@ class FloatingPillOverlay(QWidget):
         self._status_text = text
         self._pill_width = 175.0
         self._opacity = 1.0
-        self.show()
-        self.raise_()
+        if not self.isVisible():
+            self.show()
         self._bring_to_front()
         self.update()
 
@@ -339,8 +339,8 @@ class FloatingPillOverlay(QWidget):
         self._status_text = "Inserted"
         self._pill_width = 150.0
         self._opacity = 1.0
-        self.show()
-        self.raise_()
+        if not self.isVisible():
+            self.show()
         self._bring_to_front()
         self.update()
         self._auto_hide_timer.start(1100)
@@ -351,8 +351,8 @@ class FloatingPillOverlay(QWidget):
         self._status_text = "Inserted (offline)"
         self._pill_width = 190.0
         self._opacity = 1.0
-        self.show()
-        self.raise_()
+        if not self.isVisible():
+            self.show()
         self._bring_to_front()
         self.update()
         self._auto_hide_timer.start(1400)
@@ -363,8 +363,8 @@ class FloatingPillOverlay(QWidget):
         self._status_text = "Copied"
         self._pill_width = 145.0
         self._opacity = 1.0
-        self.show()
-        self.raise_()
+        if not self.isVisible():
+            self.show()
         self._bring_to_front()
         self.update()
         self._auto_hide_timer.start(1300)
@@ -376,8 +376,8 @@ class FloatingPillOverlay(QWidget):
         self._pill_width = 200.0
         self._shake_start = time.time()
         self._opacity = 1.0
-        self.show()
-        self.raise_()
+        if not self.isVisible():
+            self.show()
         self._bring_to_front()
         self.update()
         self._auto_hide_timer.start(1500)

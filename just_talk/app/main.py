@@ -427,6 +427,7 @@ class JustTalkApp:
         """Triggered on the main Qt thread when push-to-talk shortcut is pressed."""
         self._is_action_mode = is_action_mode
         self._record_start_time = time.time()
+        self.inserter.capture_active_target()
         print(f"[Record] START recording (action_mode={is_action_mode})", file=sys.stderr)
         self.bridge.state_listening.emit(is_action_mode)
         started = self.recorder.start()
