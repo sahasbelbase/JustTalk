@@ -37,6 +37,7 @@ MANIFEST
 *.dmg
 *.pkg
 *.app/
+*.exe
 
 # --- Virtual Environments ---
 .venv/
