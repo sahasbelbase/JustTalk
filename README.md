@@ -59,71 +59,61 @@ Choose the speed and accuracy profile that matches your hardware:
 * Python 3.11+
 * [uv](https://github.com/astral-sh/uv) (recommended package manager)
 
-### macOS Setup
+### 🍏 macOS Installation & Setup
+For detailed, step-by-step instructions, see **[macOS Installation Guide](packaging/mac/INSTALL_MAC.md)**.
 
-```bash
-# Clone the repository
-git clone https://github.com/sahas/JustTalk.git
-cd JustTalk
+1. **Pre-Built DMG**: Open `dist/JustTalk-macOS.dmg` and drag `Just Talk` into `/Applications`.
+2. **Clear Quarantine (if prompted by Gatekeeper)**:
+   ```bash
+   xattr -cr /Applications/JustTalk.app
+   ```
+3. **Grant Permissions** (*System Settings > Privacy & Security*):
+   - **Microphone**: Enabled for voice recording.
+   - **Accessibility**: Enabled for global hotkey and text caret insertion.
+4. **Xcode Developer Tools (if building from source)**:
+   ```bash
+   xcode-select --install
+   ./packaging/mac/setup_mac.sh
+   ```
 
-# Run the desktop application
-uv run python main.py
-```
+### 🪟 Windows Installation & Setup
+For detailed, step-by-step instructions, see **[Windows Installation Guide](packaging/windows/INSTALL_WINDOWS.md)**.
 
-### Windows Setup
-
-You can launch Just Talk instantly with zero manual installation by running the one-click launcher:
-```cmd
-# Double-click or run from command prompt
-JustTalk-Launch-Windows.bat
-```
-*(The launcher automatically bootstraps `uv` and dependencies if not already present).*
-
-Alternatively, run via standard command line:
-```cmd
-uv run python main.py
-```
-
-### Initial Configuration
-1. Click the **Just Talk** icon in your macOS menu bar or Windows taskbar.
-2. Select **Open Just Talk** or **Settings...**
-3. Navigate to **AI Formatting** and paste your free Google AI Studio API key.
-4. Test the connection and customize your formatting preset.
+1. **Pre-Built Installer**: Run `JustTalk-Setup-1.0.0.exe` (found in `dist/windows_installer/` or GitHub Releases).
+   - Installs to `%LOCALAPPDATA%\Programs\Just Talk` with **no admin UAC prompt needed**.
+   - Creates Start Menu, Desktop, and Windows Startup shortcuts.
+   - Configures `AppUserModelID` for native Windows 10/11 taskbar pinning.
+2. **Dedicated Uninstaller**:
+   - Easily uninstall via Windows Settings -> *Installed apps* or double-click `uninstall.exe` in the application folder.
 
 ---
 
 ## 📦 Building Standalone Packages & Installers
 
 ### macOS (`.app` Bundle & `.dmg` Installer)
-To build a standalone macOS application that includes custom icons and Info.plist permissions:
-
+To compile and package the standalone macOS app:
 ```bash
+chmod +x packaging/mac/build_app.sh
 ./packaging/mac/build_app.sh
 ```
-
-This creates:
-* `dist/JustTalk.app`: Double-clickable standalone macOS application.
-* `dist/JustTalk-macOS.dmg`: Drag-and-drop installer disk image.
-
-#### macOS Permissions Required:
-* **Microphone Access:** Prompted on first voice trigger (`NSMicrophoneUsageDescription`).
-* **Accessibility Access:** Required for global hotkeys and frontmost window detection (*System Settings > Privacy & Security > Accessibility*).
+This produces:
+* `dist/JustTalk.app`: Signed standalone macOS application bundle.
+* `dist/JustTalk-macOS.dmg` & `packaging/mac/JustTalk-macOS.dmg`: Drag-and-drop installer disk image.
 
 ---
 
-### Windows (`.exe` Binary & Inno Setup Installer)
-On Windows, Just Talk explicitly sets its `AppUserModelID` (`justtalk.desktop.voiceinput.1.0`) on launch. When pinned to the taskbar, Windows permanently binds to the application and displays the custom multi-resolution microphone icon, completely preventing the common bug where pinned Python utilities revert to the generic Python snake logo.
+### Windows (`.exe` Binary & Inno Setup / NSIS Installers)
+To compile and package the standalone Windows executable and setup installer:
+```powershell
+# Automated PowerShell build script:
+powershell -ExecutionPolicy Bypass -File packaging\windows\build_exe.ps1
 
-To compile:
-```cmd
-# 1. Compile standalone binary with PyInstaller
-uv run pyinstaller --clean -y packaging\justtalk.spec
-
-# 2. Build Inno Setup Installer
-"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" packaging\windows\installer.iss
+# Or via Command Prompt:
+packaging\windows\build_exe.bat
 ```
-
-This generates `dist\windows_installer\JustTalk-Setup-1.0.0.exe`.
+This produces:
+* `dist\JustTalk\JustTalk.exe`: Standalone portable application.
+* `dist\windows_installer\JustTalk-Setup-1.0.0.exe`: Modern setup installer with custom branding and standalone `uninstall.exe`.
 
 ---
 
