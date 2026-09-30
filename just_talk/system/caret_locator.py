@@ -1,7 +1,7 @@
 """Dynamic Caret and Input Field Locator for macOS and desktop platforms.
 
 Finds the real-time screen coordinates of the active text caret or focused input field
-across any application (VS Code, Chrome, Safari, Slack, Terminal, Notes, etc.) so that
+across any application (VS Code, Chrome, Brave, Safari, Slack, Terminal, Notes, etc.) so that
 the voice pill can float directly beneath the text insertion point, exactly like Wispr Flow and Typeless.
 """
 
@@ -29,8 +29,9 @@ class CaretLocator:
         Prioritizes:
           1. Exact text caret screen position (AXSelectedTextRange + AXBoundsForRange).
           2. Focused input box bounding box (AXPosition + AXSize).
-          3. Mouse cursor position (QCursor.pos()).
-          4. Bottom-center of the active screen (fallback).
+          3. Frontmost active window + Mouse cursor position (where user clicked).
+          4. Mouse cursor position (QCursor.pos()).
+          5. Center of active screen (fallback).
         """
         target_x: Optional[float] = None
         target_y: Optional[float] = None
@@ -58,29 +59,29 @@ class CaretLocator:
 
         if screen:
             avail = screen.availableGeometry()
-            # Horizontal bounds clamping
-            min_x = float(avail.x() + 12)
-            max_x = float(avail.x() + avail.width() - pill_width - 12)
+            # Horizontal bounds clamping with comfortable padding
+            min_x = float(avail.x() + 16)
+            max_x = float(avail.x() + avail.width() - pill_width - 16)
             target_x = max(min_x, min(target_x, max_x))
 
             # Vertical bounds clamping & flipping
-            min_y = float(avail.y() + 12)
-            max_y = float(avail.y() + avail.height() - pill_height - 12)
+            min_y = float(avail.y() + 16)
+            max_y = float(avail.y() + avail.height() - pill_height - 16)
 
             if target_y > max_y:
                 # Caret or input box is near the bottom edge of the screen or Dock.
                 # Flip the pill to float ABOVE the input box / caret!
-                if top_anchor is not None:
-                    flipped_y = top_anchor - pill_height - offset_y - 2.0
-                    target_y = flipped_y if flipped_y >= min_y else max_y
+                if top_anchor is not None and top_anchor > min_y:
+                    flipped_y = top_anchor - pill_height - offset_y - 4.0
+                    target_y = flipped_y if flipped_y >= min_y else (max_y - 20.0)
                 else:
-                    target_y = max_y
+                    target_y = max_y - 20.0
             elif target_y < min_y:
                 target_y = min_y
         else:
             # Absolute fallback
-            target_x = 100.0
-            target_y = 100.0
+            target_x = 400.0
+            target_y = 400.0
 
         return int(target_x), int(target_y)
 
@@ -121,13 +122,9 @@ class CaretLocator:
                     win, ApplicationServices.kAXFocusedUIElementAttribute, None
                 )
 
-            if not focused:
-                # Try system-wide focused element
-                system_wide = ApplicationServices.AXUIElementCreateSystemWide()
-                if system_wide:
-                    err_sys, focused = ApplicationServices.AXUIElementCopyAttributeValue(
-                        system_wide, ApplicationServices.kAXFocusedUIElementAttribute, None
-                    )
+            # NOTE: DO NOT query AXUIElementCreateSystemWide() when focused is None!
+            # On macOS, SystemWide element returns the entire desktop background,
+            # which misidentifies as an input field and pushes coordinates off screen.
 
             if focused:
                 # --- Attempt 1: Exact text selection / caret bounds ---
@@ -145,7 +142,8 @@ class CaretLocator:
                         ok, rect = ApplicationServices.AXValueGetValue(
                             bounds_val, ApplicationServices.kAXValueTypeCGRect, None
                         )
-                        if ok and (rect.size.height > 0 or rect.origin.x > 0):
+                        # Ensure rect is within realistic caret bounds
+                        if ok and rect.origin.x > 0 and 0 < rect.size.height <= 80:
                             cx = rect.origin.x + (rect.size.width / 2.0)
                             caret_h = max(rect.size.height, 16.0)
                             cy = rect.origin.y + caret_h + offset_y
@@ -156,32 +154,31 @@ class CaretLocator:
                 err_p, pos_val = ApplicationServices.AXUIElementCopyAttributeValue(
                     focused, ApplicationServices.kAXPositionAttribute, None
                 )
-                if err_p == 0 and pos_val:
+                err_s, sz_val = ApplicationServices.AXUIElementCopyAttributeValue(
+                    focused, ApplicationServices.kAXSizeAttribute, None
+                )
+                if err_p == 0 and pos_val and err_s == 0 and sz_val:
                     ok_p, pt = ApplicationServices.AXValueGetValue(
                         pos_val, ApplicationServices.kAXValueTypeCGPoint, None
                     )
-                    err_s, sz_val = ApplicationServices.AXUIElementCopyAttributeValue(
-                        focused, ApplicationServices.kAXSizeAttribute, None
+                    ok_s, sz = ApplicationServices.AXValueGetValue(
+                        sz_val, ApplicationServices.kAXValueTypeCGSize, None
                     )
-                    if err_s == 0 and sz_val:
-                        ok_s, sz = ApplicationServices.AXValueGetValue(
-                            sz_val, ApplicationServices.kAXValueTypeCGSize, None
-                        )
-                        # Require a realistic input box dimension (>= 20px wide, >= 14px tall)
-                        # to filter out dummy 1x0 or 1x1 elements from browsers like Brave/Chrome
-                        if ok_p and ok_s and sz.width >= 20.0 and sz.height >= 14.0:
-                            bw = sz.width
-                            bh = sz.height
-                            mouse = QCursor.pos()
-                            # For large multi-line editors (e.g. VS Code, TextEdit) where mouse was used to position focus
-                            if bh > 100.0 and (pt.x <= mouse.x() <= pt.x + bw) and (pt.y <= mouse.y() <= pt.y + bh):
-                                tx = float(mouse.x()) - (pill_width / 2.0)
-                                ty = float(mouse.y()) + 22.0
-                                return tx, ty, float(mouse.y())
-                            else:
-                                tx = pt.x + (bw - pill_width) / 2.0
-                                ty = pt.y + bh + offset_y
-                                return tx, ty, pt.y
+                    # Real input elements are larger than 20x14, but NEVER larger than 1200x500
+                    # (which would be an entire window or web viewport, not an input box!)
+                    if ok_p and ok_s and 20.0 <= sz.width <= 1200.0 and 14.0 <= sz.height <= 500.0:
+                        bw = sz.width
+                        bh = sz.height
+                        mouse = QCursor.pos()
+                        # If mouse is inside this multi-line input box (e.g. textarea, chat box)
+                        if (pt.x <= mouse.x() <= pt.x + bw) and (pt.y <= mouse.y() <= pt.y + bh):
+                            tx = float(mouse.x()) - (pill_width / 2.0)
+                            ty = float(mouse.y()) + 22.0
+                            return tx, ty, float(mouse.y())
+                        else:
+                            tx = pt.x + (bw - pill_width) / 2.0
+                            ty = pt.y + bh + offset_y
+                            return tx, ty, pt.y
 
             # --- Attempt 3: Focused Window Bounds (Frontmost App Window) ---
             if win:
@@ -203,7 +200,7 @@ class CaretLocator:
                         # If mouse is inside this active window, anchor beneath the mouse position
                         if pt.x <= mouse.x() <= pt.x + sz.width and pt.y <= mouse.y() <= pt.y + sz.height:
                             tx = float(mouse.x()) - (pill_width / 2.0)
-                            ty = float(mouse.y()) + 20.0
+                            ty = float(mouse.y()) + 22.0
                             return tx, ty, float(mouse.y())
                         tx = pt.x + (sz.width - pill_width) / 2.0
                         ty = pt.y + sz.height - pill_height - 24.0

@@ -78,9 +78,10 @@ class FloatingPillOverlay(QWidget):
         self._pill_width = 216.0
         self._pill_height = 48.0
 
-        # Window flags: Frameless, Always on Top, Non-activating (No Tool flag to prevent macOS deactivation auto-hide)
+        # Window flags: Tool panel creates an NSPanel on macOS which stays floating over external apps
         self.setWindowFlags(
-            Qt.WindowType.FramelessWindowHint
+            Qt.WindowType.Tool
+            | Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
             | Qt.WindowType.WindowDoesNotAcceptFocus
         )
@@ -156,8 +157,13 @@ class FloatingPillOverlay(QWidget):
                     if hasattr(ns_window, "setCanBecomeMainWindow_"):
                         ns_window.setCanBecomeMainWindow_(False)
 
-                    # Crucial: Prevent macOS from automatically hiding panel when other apps gain focus!
-                    ns_window.setHidesOnDeactivate_(False)
+                    # Crucial: Configure NSPanel to float above all applications and never hide on deactivate
+                    if hasattr(ns_window, "setFloatingPanel_"):
+                        ns_window.setFloatingPanel_(True)
+                    if hasattr(ns_window, "setHidesOnDeactivate_"):
+                        ns_window.setHidesOnDeactivate_(False)
+                    if hasattr(ns_window, "setBecomesKeyOnlyIfNeeded_"):
+                        ns_window.setBecomesKeyOnlyIfNeeded_(True)
 
                     # Level 1001 (NSScreenSaverWindowLevel + 1) floats above ALL browser windows, popups, full-screen spaces, and dialogs
                     ns_window.setLevel_(NSScreenSaverWindowLevel + 1)
@@ -187,7 +193,10 @@ class FloatingPillOverlay(QWidget):
                 ns_view = objc.objc_object(c_void_p=c_void_p)
                 ns_window = ns_view.window()
                 if ns_window:
-                    ns_window.setHidesOnDeactivate_(False)
+                    if hasattr(ns_window, "setFloatingPanel_"):
+                        ns_window.setFloatingPanel_(True)
+                    if hasattr(ns_window, "setHidesOnDeactivate_"):
+                        ns_window.setHidesOnDeactivate_(False)
                     ns_window.setLevel_(NSScreenSaverWindowLevel + 1)
                     ns_window.orderFrontRegardless()
             except Exception:
@@ -238,21 +247,19 @@ class FloatingPillOverlay(QWidget):
         self._apply_native_window_attributes()
         self._bring_to_front_mac()
 
-        # Pop in animation
+        self._opacity = 1.0
+        self._morph_progress = 1.0
+
+        # Snappy physical scale pop-in animation
         self._anim = QPropertyAnimation(self, b"morphProgress")
-        self._anim.setDuration(160)
-        self._anim.setStartValue(0.0)
+        self._anim.setDuration(120)
+        self._anim.setStartValue(0.88)
         self._anim.setEndValue(1.0)
         self._anim.setEasingCurve(QEasingCurve.Type.OutBack)
         self._anim.start()
 
-        self._fade_anim = QPropertyAnimation(self, b"fadeOpacity")
-        self._fade_anim.setDuration(140)
-        self._fade_anim.setStartValue(self._opacity if self._opacity > 0.0 else 0.0)
-        self._fade_anim.setEndValue(1.0)
-        self._fade_anim.start()
-
         self._anim_timer.start()
+        self.update()
 
     def update_audio_level(self, rms: float) -> None:
         """Live microphone volume callback (RMS 0.0 - 1.0) with non-linear boost."""
@@ -495,9 +502,6 @@ class FloatingPillOverlay(QWidget):
         border_pen = QPen(QColor(255, 255, 255, 34), 1.0)
         painter.setPen(border_pen)
         painter.drawPath(capsule_path)
-
-        if self._morph_progress < 0.6:
-            return
 
         # ---------------------------------------------------------------------
         # State: LISTENING (Exact replica of user's screenshot)
