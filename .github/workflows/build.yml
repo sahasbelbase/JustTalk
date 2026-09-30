@@ -75,3 +75,29 @@ jobs:
           name: JustTalk-Windows-Setup-EXE
           path: dist/windows_installer/*.exe
           if-no-files-found: error
+
+  release:
+    name: Publish Release Packages
+    needs: [build-macos, build-windows]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download macOS DMG
+        uses: actions/download-artifact@v4
+        with:
+          name: JustTalk-macOS-DMG
+          path: release_assets/
+
+      - name: Download Windows Setup
+        uses: actions/download-artifact@v4
+        with:
+          name: JustTalk-Windows-Setup-EXE
+          path: release_assets/
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release_assets/*
+          generate_release_notes: true

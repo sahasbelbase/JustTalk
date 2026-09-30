@@ -142,25 +142,26 @@ class ModelManager:
             repo_id = _MODELS.get(info.model_name, f"Systran/faster-whisper-{info.model_name}")
 
             # Custom progress hook using huggingface_hub snapshot_download
-            class ProgressTqdm:
-                def __init__(self, *args, **kwargs):
-                    self.total = kwargs.get("total") or 1
-                    self.n = 0
-                    self.desc = kwargs.get("desc") or ""
+            tqdm_cls = None
+            if progress_callback:
+                from tqdm.auto import tqdm
 
-                def update(self, n=1):
-                    self.n += n
-                    pct = min(98.0, max(5.0, (self.n / self.total) * 100.0))
-                    if progress_callback:
+                class ProgressTqdm(tqdm):
+                    def __init__(self, *args, **kwargs):
+                        kwargs.pop("name", None)
+                        super().__init__(*args, **kwargs)
+                        self._callback_total = kwargs.get("total") or 1
+
+                    def update(self, n=1):
+                        super().update(n)
+                        pct = min(98.0, max(5.0, (self.n / max(1, self.total or self._callback_total)) * 100.0))
                         progress_callback(pct, f"Downloading {info.display_name} ({pct:.0f}%)...")
 
-                def close(self):
-                    pass
+                tqdm_cls = ProgressTqdm
 
             huggingface_hub.snapshot_download(
                 repo_id,
                 local_dir=str(target_dir),
-                local_dir_use_symlinks=False,
                 allow_patterns=[
                     "config.json",
                     "preprocessor_config.json",
@@ -168,7 +169,7 @@ class ModelManager:
                     "tokenizer.json",
                     "vocabulary.*",
                 ],
-                tqdm_class=ProgressTqdm,
+                tqdm_class=tqdm_cls,
             )
 
             # Verify the downloaded files
