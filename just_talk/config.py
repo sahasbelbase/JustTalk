@@ -26,18 +26,27 @@ def get_default_action_shortcut() -> str:
 
 def get_app_data_dir() -> Path:
     """Return platform-appropriate configuration and data directory."""
+    try:
+        home = Path.home()
+    except Exception:
+        home = Path(os.environ.get("USERPROFILE") or os.environ.get("HOME") or ".")
+
     if sys.platform == "win32":
         base = os.environ.get("APPDATA")
         if base:
             path = Path(base) / "JustTalk"
         else:
-            path = Path.home() / ".justtalk"
+            path = home / ".justtalk"
     elif sys.platform == "darwin":
-        path = Path.home() / "Library" / "Application Support" / "JustTalk"
+        path = home / "Library" / "Application Support" / "JustTalk"
     else:
-        path = Path.home() / ".config" / "justtalk"
+        path = home / ".config" / "justtalk"
 
-    path.mkdir(parents=True, exist_ok=True)
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        path = Path(".") / ".justtalk"
+        path.mkdir(parents=True, exist_ok=True)
     return path
 
 

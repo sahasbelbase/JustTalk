@@ -7,7 +7,8 @@ from just_talk.security import CredentialManager
 
 def test_default_key_security():
     """Ensure no hardcoded API keys are bundled or returned by default."""
-    with patch.dict(os.environ, {}, clear=True):
+    env_clean = {k: v for k, v in os.environ.items() if not k.endswith("_API_KEY")}
+    with patch.dict(os.environ, env_clean, clear=True):
         # Clear in-memory cache if any
         CredentialManager.delete_provider_api_key("gemini")
         assert CredentialManager.get_provider_api_key("gemini") is None
