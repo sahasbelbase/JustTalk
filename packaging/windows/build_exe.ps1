@@ -2,7 +2,7 @@
 # Automated Windows PowerShell Build Script for Just Talk
 # Builds standalone executable and high-resolution setup installer
 # =========================================================================
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 
 Write-Host "=== Building Just Talk for Windows ===" -ForegroundColor Cyan
 $ProjectRoot = (Get-Item $PSScriptRoot).Parent.Parent.FullName
@@ -14,6 +14,10 @@ if (Get-Command "uv" -ErrorAction SilentlyContinue) {
     uv sync
 } else {
     python -m pip install -e .
+}
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Dependency installation failed with exit code $LASTEXITCODE"
+    exit $LASTEXITCODE
 }
 
 # 2. Generate icons and installer branding assets
@@ -33,36 +37,60 @@ if (Get-Command "uv" -ErrorAction SilentlyContinue) {
 } else {
     pyinstaller --noconfirm --clean packaging/justtalk.spec
 }
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "PyInstaller compilation failed with exit code $LASTEXITCODE"
+    exit $LASTEXITCODE
+}
 
 if (-not (Test-Path "dist\JustTalk\JustTalk.exe")) {
     Write-Error "PyInstaller failed to build dist\JustTalk\JustTalk.exe"
+    exit 1
 }
 
 Write-Host "--> Standalone executable built: dist\JustTalk\JustTalk.exe" -ForegroundColor Green
 
 # 4. Inno Setup Compiler
-$isccPath = Get-Command "iscc" -ErrorAction SilentlyContinue
-if (-not $isccPath) {
-    # Check default Inno Setup installation directory
-    if (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe") {
-        $isccPath = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-    } elseif (Test-Path "C:\Program Files\Inno Setup 6\ISCC.exe") {
-        $isccPath = "C:\Program Files\Inno Setup 6\ISCC.exe"
-    }
-}
-
-if ($isccPath) {
-    Write-Host "--> Compiling modern branded installer with Inno Setup..." -ForegroundColor Yellow
-    & $isccPath packaging\windows\installer.iss
-
-    $InstallerExe = Get-ChildItem -Path "dist\windows_installer\*.exe" | Select-Object -Last 1
-    if ($InstallerExe) {
-        Copy-Item $InstallerExe.FullName -Destination "packaging\windows\JustTalk-Setup-1.0.0.exe" -Force
-        Write-Host "=== Windows Installer ready at: $($InstallerExe.FullName) and packaging\windows\JustTalk-Setup-1.0.0.exe ===" -ForegroundColor Green
-    }
+$isccCmd = Get-Command "iscc" -ErrorAction SilentlyContinue
+$isccPath = $null
+if ($isccCmd) {
+    $isccPath = $isccCmd.Source
 } else {
-    Write-Host "[NOTE] Inno Setup compiler (iscc) not found in PATH." -ForegroundColor DarkYellow
-    Write-Host "To build installer: choco install innosetup or download from jrsoftware.org" -ForegroundColor DarkYellow
+    $searchCandidates = @(
+        "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+        "C:\Program Files\Inno Setup 6\ISCC.exe",
+        "C:\ProgramData\chocolatey\bin\iscc.exe",
+        "C:\ProgramData\chocolatey\lib\innosetup\tools\ISCC.exe"
+    )
+    foreach ($candidate in $searchCandidates) {
+        if (Test-Path $candidate) {
+            $isccPath = $candidate
+            break
+        }
+    }
 }
 
-Write-Host "=== Windows Build Workflow Finished! ===" -ForegroundColor Cyan
+if (-not $isccPath) {
+    Write-Error "Inno Setup compiler (iscc.exe) was not found in PATH or standard installation locations!"
+    exit 1
+}
+
+Write-Host "--> Using Inno Setup compiler: $isccPath" -ForegroundColor Green
+Write-Host "--> Compiling modern branded installer with Inno Setup..." -ForegroundColor Yellow
+& "$isccPath" "packaging\windows\installer.iss"
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Inno Setup compilation failed with exit code $LASTEXITCODE"
+    exit $LASTEXITCODE
+}
+
+$InstallerExe = Get-ChildItem -Path "dist\windows_installer\*.exe" | Select-Object -Last 1
+if ($InstallerExe) {
+    # Ensure packaging/windows and dist root both have the latest installer
+    Copy-Item $InstallerExe.FullName -Destination "packaging\windows\JustTalk-Setup-1.0.0.exe" -Force
+    Copy-Item $InstallerExe.FullName -Destination "dist\JustTalk-Setup-1.0.0.exe" -Force
+    Write-Host "=== Windows Installer ready at: $($InstallerExe.FullName) ===" -ForegroundColor Green
+} else {
+    Write-Error "Inno Setup completed but no installer executable was found in dist\windows_installer\"
+    exit 1
+}
+
+Write-Host "=== Windows Build Workflow Finished Successfully! ===" -ForegroundColor Cyan

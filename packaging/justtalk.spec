@@ -42,12 +42,16 @@ hidden_imports = [
     "PySide6.QtCore",
     "PySide6.QtGui",
     "PySide6.QtWidgets",
-    "objc",
-    "Foundation",
-    "AppKit",
-    "Quartz",
-    "AVFoundation",
 ]
+
+if sys.platform == "darwin":
+    hidden_imports += [
+        "objc",
+        "Foundation",
+        "AppKit",
+        "Quartz",
+        "AVFoundation",
+    ]
 
 a = Analysis(
     [str(project_root / "main.py")],
