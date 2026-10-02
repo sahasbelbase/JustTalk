@@ -219,9 +219,86 @@ class TextInserter:
             except Exception:
                 return False
 
-    def insert(self, text: str, restore_clipboard: bool = True) -> Tuple[bool, str, str]:
+    def undo_last_paste(self) -> None:
+        """Synthesize Cmd+Z on macOS or Ctrl+Z on Windows to undo prior draft paste."""
+        if sys.platform == "darwin":
+            try:
+                import Quartz
+
+                source = Quartz.CGEventSourceCreate(Quartz.kCGEventSourceStateHIDSystemState)
+                z_code = 0x06  # virtual keycode for 'z'
+                cmd_code = 0x37  # virtual keycode for Command
+
+                cmd_down = Quartz.CGEventCreateKeyboardEvent(source, cmd_code, True)
+                z_down = Quartz.CGEventCreateKeyboardEvent(source, z_code, True)
+                Quartz.CGEventSetFlags(z_down, Quartz.kCGEventFlagMaskCommand)
+                z_up = Quartz.CGEventCreateKeyboardEvent(source, z_code, False)
+                Quartz.CGEventSetFlags(z_up, Quartz.kCGEventFlagMaskCommand)
+                cmd_up = Quartz.CGEventCreateKeyboardEvent(source, cmd_code, False)
+
+                target_pid = None
+                if self._target_app is not None and hasattr(self._target_app, "processIdentifier"):
+                    target_pid = self._target_app.processIdentifier()
+
+                if target_pid and hasattr(Quartz, "CGEventPostToPid"):
+                    Quartz.CGEventPostToPid(target_pid, cmd_down)
+                    time.sleep(0.01)
+                    Quartz.CGEventPostToPid(target_pid, z_down)
+                    time.sleep(0.02)
+                    Quartz.CGEventPostToPid(target_pid, z_up)
+                    time.sleep(0.01)
+                    Quartz.CGEventPostToPid(target_pid, cmd_up)
+                else:
+                    Quartz.CGEventPost(Quartz.kCGHIDEventTap, cmd_down)
+                    time.sleep(0.01)
+                    Quartz.CGEventPost(Quartz.kCGHIDEventTap, z_down)
+                    time.sleep(0.02)
+                    Quartz.CGEventPost(Quartz.kCGHIDEventTap, z_up)
+                    time.sleep(0.01)
+                    Quartz.CGEventPost(Quartz.kCGHIDEventTap, cmd_up)
+            except Exception:
+                try:
+                    self._keyboard.press(Key.cmd)
+                    time.sleep(0.01)
+                    self._keyboard.press('z')
+                    time.sleep(0.02)
+                    self._keyboard.release('z')
+                    time.sleep(0.01)
+                    self._keyboard.release(Key.cmd)
+                except Exception:
+                    pass
+        elif sys.platform == "win32":
+            try:
+                import ctypes
+
+                user32 = ctypes.windll.user32
+                VK_CONTROL = 0x11
+                VK_Z = 0x5A
+                KEYEVENTF_KEYUP = 0x0002
+                user32.keybd_event(VK_CONTROL, 0, 0, 0)
+                time.sleep(0.01)
+                user32.keybd_event(VK_Z, 0, 0, 0)
+                time.sleep(0.02)
+                user32.keybd_event(VK_Z, 0, KEYEVENTF_KEYUP, 0)
+                time.sleep(0.01)
+                user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
+            except Exception:
+                try:
+                    self._keyboard.press(Key.ctrl)
+                    self._keyboard.press('z')
+                    self._keyboard.release('z')
+                    self._keyboard.release(Key.ctrl)
+                except Exception:
+                    pass
+
+    def insert(
+        self,
+        text: str,
+        restore_clipboard: bool = True,
+        replace_previous: bool = False,
+    ) -> Tuple[bool, str, str]:
         """
-        Insert final text into the currently active input field.
+        Insert final text into the currently active target application.
         Returns:
             Tuple[success: bool, status: str ("inserted" | "clipboard"), active_app: str]
         """
@@ -236,14 +313,19 @@ class TextInserter:
         if not set_ok:
             return False, "failed", active_app
 
-        # Step 2: Check if an active text target is present
+        # Step 2: Check if an active text target or application window is present
         from .caret_locator import CaretLocator
         if CaretLocator._last_has_text_target is False:
-            print("[TextInserter] No active text area detected. Text copied to clipboard safely without typing.", file=sys.stderr)
+            print("[TextInserter] No active text target detected. Text copied to clipboard safely.", file=sys.stderr)
             return True, "clipboard", active_app
 
         # Step 3: Reactivate the original target application
         self._reactivate_target_window()
+
+        # Step 3: If in-place replacement (Phase 2), undo previous draft first
+        if replace_previous:
+            self.undo_last_paste()
+            time.sleep(0.03)
 
         # Step 4: Synthesize simulated paste keystroke
         try:
@@ -251,7 +333,7 @@ class TextInserter:
             if not paste_ok:
                 raise RuntimeError("All paste mechanisms failed")
 
-            # Step 4: Restore prior clipboard in background thread after target app consumes paste
+            # Step 5: Restore prior clipboard in background thread after target app consumes paste
             if restore_clipboard and original_clipboard != text:
                 restore_delay = max(1.0, min(2.5, 1.0 + len(text) * 0.001))
                 threading.Thread(

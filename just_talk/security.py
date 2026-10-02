@@ -13,8 +13,6 @@ SERVICE_NAME = "JustTalkVoiceInput"
 KEY_ACCOUNT = "gemini_api_key"
 NVIDIA_KEY_ACCOUNT = "nvidia_api_key"
 
-# Optional fallback key (None by default for security; configure via UI or GEMINI_API_KEY env var)
-DEFAULT_TESTED_KEY: Optional[str] = None
 
 # Provider-specific credential keys
 PROVIDER_KEY_ACCOUNTS = {
@@ -147,11 +145,6 @@ class CredentialManager:
             _IN_MEMORY_PROVIDER_KEYS[provider_id] = str(creds[account_key]).strip()
             return _IN_MEMORY_PROVIDER_KEYS[provider_id]
 
-        if provider_id == 'gemini':
-            if DEFAULT_TESTED_KEY and DEFAULT_TESTED_KEY.strip():
-                _IN_MEMORY_PROVIDER_KEYS[provider_id] = DEFAULT_TESTED_KEY.strip()
-                cls.set_provider_api_key(provider_id, _IN_MEMORY_PROVIDER_KEYS[provider_id])
-                return _IN_MEMORY_PROVIDER_KEYS[provider_id]
 
         cls._purge_legacy_keychain_silently()
         return None

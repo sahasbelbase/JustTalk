@@ -669,6 +669,7 @@ class JustTalkApp:
                 inserted_ok, status, active_app = self.inserter.insert(
                     final_text,
                     restore_clipboard=self.config.restore_clipboard,
+                    replace_previous=True,
                 )
             elif not draft_emitted:
                 inserted_ok, status, active_app = self.inserter.insert(

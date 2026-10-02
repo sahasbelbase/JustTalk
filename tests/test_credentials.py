@@ -2,12 +2,15 @@
 
 import os
 from unittest.mock import patch
-from just_talk.security import CredentialManager, DEFAULT_TESTED_KEY
+from just_talk.security import CredentialManager
 
 
 def test_default_key_security():
-    """Ensure no hardcoded API keys are bundled by default for security."""
-    assert DEFAULT_TESTED_KEY is None
+    """Ensure no hardcoded API keys are bundled or returned by default."""
+    with patch.dict(os.environ, {}, clear=True):
+        # Clear in-memory cache if any
+        CredentialManager.delete_provider_api_key("gemini")
+        assert CredentialManager.get_provider_api_key("gemini") is None
 
 
 def test_set_and_get_key():

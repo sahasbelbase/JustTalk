@@ -161,7 +161,15 @@ class CaretLocator:
                 err_role, role = ApplicationServices.AXUIElementCopyAttributeValue(
                     focused, ApplicationServices.kAXRoleAttribute, None
                 )
-                is_text_role = role in ("AXTextArea", "AXTextField", "AXSearchField", "AXComboBox")
+                desc = None
+                err_desc, desc = ApplicationServices.AXUIElementCopyAttributeValue(
+                    focused, ApplicationServices.kAXRoleDescriptionAttribute, None
+                )
+                desc_str = str(desc).lower() if desc else ""
+                is_text_role = (
+                    role in ("AXTextArea", "AXTextField", "AXSearchField", "AXComboBox", "AXWebArea")
+                    or any(k in desc_str for k in ("text", "edit", "search", "editor"))
+                )
 
                 # --- Attempt 1: Exact text selection / caret bounds ---
                 err_r, range_val = ApplicationServices.AXUIElementCopyAttributeValue(
@@ -212,11 +220,11 @@ class CaretLocator:
                         if (pt.x <= mouse.x() <= pt.x + bw) and (pt.y <= mouse.y() <= pt.y + bh):
                             tx = float(mouse.x()) - (pill_width / 2.0)
                             ty = float(mouse.y()) + 22.0
-                            return tx, ty, float(mouse.y()), has_text
+                            return tx, ty, float(mouse.y()), True
                         else:
                             tx = pt.x + (bw - pill_width) / 2.0
                             ty = pt.y + bh + offset_y
-                            return tx, ty, pt.y, has_text
+                            return tx, ty, pt.y, True
 
             # --- Attempt 3: Focused Window Bounds (Frontmost App Window) ---
             if win:
@@ -237,7 +245,7 @@ class CaretLocator:
                         # Cleanly center at the bottom of the active target window (VS Code, Brave, Chrome, Antigravity)
                         tx = pt.x + (sz.width - pill_width) / 2.0
                         ty = pt.y + sz.height - pill_height - 32.0
-                        return tx, ty, None, False
+                        return tx, ty, None, True
 
         except Exception as e:
             print(f"[CaretLocator] Error resolving caret coordinates: {e}", file=sys.stderr)

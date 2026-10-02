@@ -166,6 +166,7 @@ class FloatingPillOverlay(QWidget):
 
                     # Status window level (25) floats reliably above all normal windows and full-screen spaces
                     ns_panel.setLevel_(NSStatusWindowLevel)
+                    ns_panel.orderWindow_relativeTo_(1, 0)
                     ns_panel.orderFrontRegardless()
             except Exception as e:
                 print(f"[Overlay] Native window config error: {e}", file=sys.stderr)
@@ -248,6 +249,7 @@ class FloatingPillOverlay(QWidget):
                     )
                     ns_panel.setCollectionBehavior_(behavior)
                     ns_panel.setLevel_(NSStatusWindowLevel)
+                    ns_panel.orderWindow_relativeTo_(1, 0)
                     ns_panel.orderFrontRegardless()
             except Exception:
                 pass

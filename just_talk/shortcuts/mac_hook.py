@@ -1,4 +1,4 @@
-"""macOS native Quartz Event Tap global hotkey monitor."""
+"""macOS native dual-engine global hotkey and hold-to-talk monitor."""
 
 from __future__ import annotations
 
@@ -10,12 +10,17 @@ from typing import Callable, Optional
 
 class MacHotkeyMonitor:
     """
-    Production-grade macOS system-wide hotkey and hold-to-talk monitor using
-    Quartz CGEventTap with dedicated CFRunLoop.
+    Production-grade macOS system-wide hotkey and hold-to-talk monitor.
     
-    Captures Fn/Globe (via flagsChanged and SecondaryFn flag transitions),
-    Right Option, Right Command, and Control+Space across all applications,
-    spaces, and full-screen windows (Wispr Flow / Typeless behavior).
+    Uses a resilient DUAL-ENGINE architecture:
+    1. AppKit NSEvent Global + Local Monitors: Intercepts modifier transitions
+       (Fn/Globe, Right Option, Right Command) across ALL applications and spaces
+       via macOS Input Monitoring.
+    2. Quartz CGEventTap: Low-level HID/Session event tap with dedicated CFRunLoop
+       for rock-solid hardware-level interception.
+
+    This ensures Fn / push-to-talk works seamlessly across third-party apps
+    (Brave, Teams, Antigravity, VS Code, Notes, etc.) without losing focus.
     """
 
     # Quartz / CoreGraphics Modifier Flag Masks
@@ -69,6 +74,10 @@ class MacHotkeyMonitor:
         self._cancelled_by_combination = False
         self._debounce_timer: Optional[threading.Timer] = None
 
+        # AppKit Monitor references
+        self._global_monitor = None
+        self._local_monitor = None
+
         # Quartz Tap references
         self._tap = None
         self._run_loop_source = None
@@ -77,9 +86,9 @@ class MacHotkeyMonitor:
         self._running = False
 
     def is_tap_active(self) -> bool:
-        """Check whether the Quartz CGEventTap is currently created and running."""
+        """Check whether at least one monitor engine is currently running."""
         with self._lock:
-            return bool(self._running and self._tap is not None)
+            return bool(self._running and (self._tap is not None or self._global_monitor is not None))
 
     def reset_state(self) -> None:
         """Reset internal active flags to idle and cancel any pending debounce timers."""
@@ -93,13 +102,17 @@ class MacHotkeyMonitor:
                 self._debounce_timer = None
 
     def start(self) -> bool:
-        """Start Quartz CGEventTap on a dedicated background thread with CFRunLoop."""
+        """Start dual-engine global hotkey monitoring on macOS."""
         if sys.platform != "darwin":
             return False
 
         self.stop()
         self._running = True
 
+        # Engine 1: Install AppKit NSEvent global & local monitors (requires Input Monitoring)
+        ns_ok = self._install_ns_monitors()
+
+        # Engine 2: Install Quartz CGEventTap on dedicated background thread (requires Accessibility)
         ready_event = threading.Event()
         success_container = [False]
 
@@ -111,28 +124,93 @@ class MacHotkeyMonitor:
         )
         self._thread.start()
 
-        # Wait for run loop initialization
         ready_event.wait(timeout=2.0)
         tap_ok = success_container[0]
 
-        if not tap_ok:
+        is_active = ns_ok or tap_ok
+        if not is_active:
             print(
-                "[MacHotkeyMonitor] Quartz EventTap creation failed. "
-                "Ensure Accessibility and Input Monitoring permissions are granted.",
+                "[MacHotkeyMonitor] Both NSEvent and CGEventTap monitors failed. "
+                "Ensure Input Monitoring and Accessibility permissions are enabled.",
                 file=sys.stderr,
             )
             self._running = False
         else:
             print(
-                f"[MacHotkeyMonitor] System-wide Quartz EventTap active for trigger '{self.trigger_key}'.",
+                f"[MacHotkeyMonitor] Global monitoring active for '{self.trigger_key}' "
+                f"(NSEvent={ns_ok}, QuartzTap={tap_ok}).",
                 file=sys.stderr,
             )
-            self._start_keepalive_watchdog()
+            if tap_ok:
+                self._start_keepalive_watchdog()
 
-        return tap_ok
+        return is_active
+
+    def _install_ns_monitors(self) -> bool:
+        """Install AppKit global & local event monitors for seamless cross-app modifier detection."""
+        try:
+            import AppKit
+
+            def ns_event_callback(event):
+                try:
+                    event_type = event.type()
+                    # KeyDown for space shortcuts
+                    if event_type == AppKit.NSEventTypeKeyDown:
+                        if self.trigger_key in ("ctrl_space", "ctrl+space", "alt_space", "alt+space"):
+                            keycode = event.keyCode()
+                            if keycode == self.KEYCODE_SPACE:
+                                flags = event.modifierFlags()
+                                is_shift = bool(flags & AppKit.NSEventModifierFlagShift)
+                                if self.trigger_key in ("ctrl_space", "ctrl+space") and bool(flags & AppKit.NSEventModifierFlagControl):
+                                    self._handle_trigger_state(True, is_shift)
+                                elif self.trigger_key in ("alt_space", "alt+space") and bool(flags & AppKit.NSEventModifierFlagOption):
+                                    self._handle_trigger_state(True, is_shift)
+                        return event
+
+                    # FlagsChanged (Fn, Option, Cmd)
+                    if event_type == AppKit.NSEventTypeFlagsChanged:
+                        flags = event.modifierFlags()
+                        keycode = event.keyCode()
+                        shift_is_active = bool(flags & AppKit.NSEventModifierFlagShift)
+
+                        is_down = False
+                        if self.trigger_key in ("fn", "globe", "right_alt", "alt_r", "right_option"):
+                            # Support both Fn/Globe and Right Option
+                            is_fn_down = bool(flags & AppKit.NSEventModifierFlagFunction)
+                            is_right_alt_down = bool(flags & AppKit.NSEventModifierFlagOption) and (
+                                keycode == self.KEYCODE_RIGHT_ALT or self._is_active
+                            )
+                            is_down = is_fn_down or is_right_alt_down
+                        elif self.trigger_key in ("right_cmd", "cmd_r", "right_command"):
+                            is_down = bool(flags & AppKit.NSEventModifierFlagCommand) and (
+                                keycode == self.KEYCODE_RIGHT_CMD or self._is_active
+                            )
+                        elif self.trigger_key in ("alt", "option"):
+                            is_down = bool(flags & AppKit.NSEventModifierFlagOption)
+
+                        if is_down != self._prev_trigger_down:
+                            self._handle_trigger_state(is_down, shift_is_active)
+                except Exception:
+                    pass
+                return event
+
+            mask = AppKit.NSEventMaskFlagsChanged
+            if self.trigger_key in ("ctrl_space", "ctrl+space", "alt_space", "alt+space"):
+                mask |= AppKit.NSEventMaskKeyDown
+
+            self._global_monitor = AppKit.NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(
+                mask, ns_event_callback
+            )
+            self._local_monitor = AppKit.NSEvent.addLocalMonitorForEventsMatchingMask_handler_(
+                mask, ns_event_callback
+            )
+            return self._global_monitor is not None or self._local_monitor is not None
+        except Exception as e:
+            print(f"[MacHotkeyMonitor] NSEvent monitor error: {e}", file=sys.stderr)
+            return False
 
     def _start_keepalive_watchdog(self) -> None:
-        """Periodic watchdog to ensure event tap stays enabled across macOS space switches and app transitions."""
+        """Periodic watchdog to ensure event tap stays enabled across macOS space switches."""
         def watchdog():
             while self._running:
                 time.sleep(2.0)
@@ -215,7 +293,6 @@ class MacHotkeyMonitor:
                     self._cancel_debounce()
 
                     if self._cancelled_by_combination:
-                        # Key was released after being used in a combination (e.g. Fn+F1)
                         self._cancelled_by_combination = False
                         if self._is_active:
                             self._is_active = False
@@ -236,8 +313,7 @@ class MacHotkeyMonitor:
     def _handle_other_key_down(self, keycode: int) -> None:
         """
         Called when another key is pressed while the trigger key is held.
-        Only treats verified system combination keys (Fn+arrows, Fn+delete, Fn+F1-F12)
-        as combinations to cancel voice recording, ignoring regular app keys.
+        Cancels voice recording only on legitimate system combinations (Fn+F1-F12, Fn+arrows, Fn+delete).
         """
         if keycode not in self.FN_COMBINATION_KEYS:
             return
@@ -261,7 +337,6 @@ class MacHotkeyMonitor:
                 self.on_stop_recording()
             except Exception as e:
                 print(f"[MacHotkeyMonitor] on_stop error on combination cancel: {e}", file=sys.stderr)
-
 
     def _run_tap_thread(self, ready_event: threading.Event, success_container: list[bool]) -> None:
         """Entry point for background thread running Quartz CFRunLoop."""
@@ -287,10 +362,11 @@ class MacHotkeyMonitor:
                 kCGHeadInsertEventTap,
                 kCGKeyboardEventKeycode,
                 kCGSessionEventTap,
+                kCGHIDEventTap,
             )
 
             def event_callback(proxy, event_type, event, refcon):
-                # 1. Auto-recover if macOS temporarily disables tap under high CPU load
+                # 1. Auto-recover if macOS temporarily disables tap under high load
                 if event_type in (kCGEventTapDisabledByTimeout, kCGEventTapDisabledByUserInput):
                     if self._tap is not None:
                         try:
@@ -323,8 +399,6 @@ class MacHotkeyMonitor:
 
                     is_down = False
                     if self.trigger_key in ("fn", "globe", "right_alt", "alt_r", "right_option"):
-                        # Universal push-to-talk: support BOTH Fn and Right Option (Right Alt)
-                        # This guarantees external PC keyboards, Mac built-in keyboards, and cross-platform muscle memory work out-of-the-box.
                         is_fn_down = bool(flags & self.FN_FLAG_MASK)
                         is_right_alt_down = bool(flags & self.ALT_FLAG_MASK) and (
                             keycode == self.KEYCODE_RIGHT_ALT or self._is_active
@@ -337,27 +411,34 @@ class MacHotkeyMonitor:
                     elif self.trigger_key in ("alt", "option"):
                         is_down = bool(flags & self.ALT_FLAG_MASK)
 
-                    # Only process when the trigger flag state has actually changed
                     if is_down != self._prev_trigger_down:
                         self._handle_trigger_state(is_down, shift_is_active)
 
                 return event
 
-            # Create event tap: ONLY intercept modifier changes for modifier keys (Fn, Globe, Option, Cmd)
-            # This completely avoids intercepting regular user typing, preventing macOS from disabling the tap.
             if self.trigger_key in ("ctrl_space", "ctrl+space", "alt_space", "alt+space"):
                 mask = CGEventMaskBit(kCGEventFlagsChanged) | CGEventMaskBit(kCGEventKeyDown)
             else:
                 mask = CGEventMaskBit(kCGEventFlagsChanged)
 
+            # Try HID event tap first (system-wide hardware level), fallback to session tap
             self._tap = CGEventTapCreate(
-                kCGSessionEventTap,
+                kCGHIDEventTap,
                 kCGHeadInsertEventTap,
                 kCGEventTapOptionListenOnly,
                 mask,
                 event_callback,
                 None,
             )
+            if not self._tap:
+                self._tap = CGEventTapCreate(
+                    kCGSessionEventTap,
+                    kCGHeadInsertEventTap,
+                    kCGEventTapOptionListenOnly,
+                    mask,
+                    event_callback,
+                    None,
+                )
 
             if not self._tap:
                 success_container[0] = False
@@ -381,14 +462,31 @@ class MacHotkeyMonitor:
             ready_event.set()
 
     def stop(self) -> None:
-        """Stop event tap and terminate run loop cleanly."""
+        """Stop event monitors and terminate run loops cleanly."""
         self._running = False
         self._cancel_debounce()
 
+        # Clean up AppKit monitors
+        if self._global_monitor:
+            try:
+                import AppKit
+                AppKit.NSEvent.removeMonitor_(self._global_monitor)
+            except Exception:
+                pass
+            self._global_monitor = None
+
+        if self._local_monitor:
+            try:
+                import AppKit
+                AppKit.NSEvent.removeMonitor_(self._local_monitor)
+            except Exception:
+                pass
+            self._local_monitor = None
+
+        # Clean up Quartz CFRunLoop
         if self._run_loop:
             try:
                 from Quartz import CFRunLoopStop
-
                 CFRunLoopStop(self._run_loop)
             except Exception:
                 pass
