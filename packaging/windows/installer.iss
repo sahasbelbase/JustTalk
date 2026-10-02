@@ -21,11 +21,15 @@ AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
 
-; Default installation location: Per-user AppData\Programs without requiring admin UAC prompt
-DefaultDirName={autopf}\Just Talk
+; Default installation location: Per-user AppData\Programs (prevents CreateFile Code 5 Access Denied)
+DefaultDirName={localappdata}\Programs\Just Talk
 DefaultGroupName=Just Talk
 DisableProgramGroupPage=yes
 AllowNoIcons=yes
+
+; 64-bit architecture
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
 
 ; Output settings
 OutputDir=..\..\dist\windows_installer
@@ -49,8 +53,9 @@ SolidCompression=yes
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 
-; Clean update handling
-CloseApplications=yes
+; Clean update handling: force close running JustTalk process to avoid locked file errors
+CloseApplications=force
+CloseApplicationsFilter=*JustTalk*
 RestartApplications=no
 CreateUninstallRegKey=yes
 
