@@ -277,7 +277,13 @@
     }, 16); // High-speed typing matching realistic paste insertion
   }
 
-  // --- 4. Event Handlers ---
+  // Track mouse hover and focus on playground
+  let isHoveringPlayground = false;
+  if (playgroundCard) {
+    playgroundCard.addEventListener('mouseenter', () => { isHoveringPlayground = true; });
+    playgroundCard.addEventListener('mouseleave', () => { isHoveringPlayground = false; });
+    playgroundCard.addEventListener('click', () => { playgroundCard.focus(); });
+  }
 
   // Mouse & Touch on 3D Keycap
   if (keycapBtn) {
@@ -298,7 +304,7 @@
     window.addEventListener('touchend', onPointerUp, { passive: false });
   }
 
-  // Keyboard Navigation: Space key triggers simulation when playground or keycap is focused
+  // Keyboard Navigation: Space key triggers simulation without scrolling the page
   window.addEventListener('keydown', (e) => {
     // Detect Shift for Action Mode toggle
     if (e.key === 'Shift') {
@@ -313,13 +319,24 @@
       }
     }
 
-    // Trigger push-to-talk simulation with Space if focused on playground or keycap
-    if (e.code === 'Space' && !e.repeat) {
-      const activeEl = document.activeElement;
-      if (activeEl === keycapBtn || activeEl === playgroundCard || (playgroundCard && playgroundCard.contains(activeEl))) {
-        e.preventDefault();
-        isSpaceActive = true;
-        startRecording(isShiftActive || currentPreset === 'action');
+    // Trigger push-to-talk simulation with Space
+    if (e.code === 'Space' || e.key === ' ') {
+      const targetTag = e.target ? e.target.tagName : '';
+      const isInput = targetTag === 'INPUT' || targetTag === 'TEXTAREA' || (e.target && e.target.isContentEditable);
+      if (isInput) return;
+
+      const rect = playgroundCard ? playgroundCard.getBoundingClientRect() : null;
+      // In view if the playground card is anywhere in the viewport
+      const isPlaygroundInView = rect && (rect.top < window.innerHeight && rect.bottom > 0);
+      const isFocused = document.activeElement === keycapBtn || 
+                        (playgroundCard && (playgroundCard.contains(document.activeElement) || document.activeElement === playgroundCard));
+
+      if (isHoveringPlayground || isFocused || isPlaygroundInView) {
+        e.preventDefault(); // Prevents browser from scrolling down the page!
+        if (!e.repeat && !isSpaceActive) {
+          isSpaceActive = true;
+          startRecording(isShiftActive || currentPreset === 'action');
+        }
       }
     }
   });
@@ -337,9 +354,12 @@
       }
     }
 
-    if (e.code === 'Space' && isSpaceActive) {
-      isSpaceActive = false;
-      stopRecording();
+    if (e.code === 'Space' || e.key === ' ') {
+      if (isSpaceActive) {
+        e.preventDefault();
+        isSpaceActive = false;
+        stopRecording();
+      }
     }
   });
 
