@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
     QComboBox,
-    QDialog,
+    QFileDialog,
     QFormLayout,
     QFrame,
     QGridLayout,
@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QRadioButton,
     QScrollArea,
     QSizePolicy,
     QSplitter,
@@ -564,11 +565,18 @@ class MainWindow(QMainWindow):
     def _refresh_home_status(self) -> None:
         """Update live status labels and recent history on Home screen."""
         # 1. Speech engine
-        tier_info = TIERS.get(self.config.model_tier)
-        short_name = tier_info.model_name.upper() if tier_info else "QUALITY"
-        is_dl = self.model_manager.is_model_downloaded(self.config.model_tier)
-        self.model_card.title_label.setText(f"Whisper {short_name}")
-        self.model_card.status_label.setText("Ready Locally" if is_dl else "Not Downloaded")
+        stt_src = getattr(self.config, "stt_model_source", "bundled")
+        if stt_src == "custom":
+            custom_path = getattr(self.config, "custom_stt_model_path", "")
+            display_model = Path(custom_path).name if custom_path else "Custom BYOM"
+            self.model_card.title_label.setText(f"BYOM: {display_model[:18]}")
+            self.model_card.status_label.setText("Active (Custom)" if custom_path else "Unconfigured")
+        else:
+            tier_info = TIERS.get(self.config.model_tier)
+            short_name = tier_info.model_name.upper() if tier_info else "QUALITY"
+            is_dl = self.model_manager.is_model_downloaded(self.config.model_tier)
+            self.model_card.title_label.setText(f"Whisper {short_name}")
+            self.model_card.status_label.setText("Ready Locally" if is_dl else "Not Downloaded")
 
         # Update macOS Fn Key and global permissions status if banner is present
         if sys.platform == "darwin" and hasattr(self, "home_fn_alert_card"):
@@ -1065,6 +1073,74 @@ class MainWindow(QMainWindow):
 
         s2_form.addRow("Spoken Languages:", spoken_langs_container)
 
+        # Model Source (Bundled vs Bring Your Own Model)
+        source_row = QHBoxLayout()
+        self.source_bundled_radio = QRadioButton("Bundled Tiers (Recommended)")
+        self.source_custom_radio = QRadioButton("Bring Your Own Model (BYOM)")
+        stt_source = getattr(self.config, "stt_model_source", "bundled")
+        if stt_source == "custom":
+            self.source_custom_radio.setChecked(True)
+        else:
+            self.source_bundled_radio.setChecked(True)
+        self.source_bundled_radio.toggled.connect(self._on_stt_source_toggled)
+        source_row.addWidget(self.source_bundled_radio)
+        source_row.addWidget(self.source_custom_radio)
+        source_row.addStretch()
+        s2_form.addRow("Speech Model Source:", source_row)
+
+        # 1. Custom BYOM STT Container
+        self.custom_stt_container = QWidget()
+        custom_layout = QVBoxLayout(self.custom_stt_container)
+        custom_layout.setContentsMargins(0, 4, 0, 4)
+        custom_layout.setSpacing(8)
+
+        custom_input_row = QHBoxLayout()
+        self.custom_stt_input = QLineEdit()
+        self.custom_stt_input.setPlaceholderText("Hugging Face repo (e.g. Systran/faster-whisper-small) or local folder...")
+        self.custom_stt_input.setText(getattr(self.config, "custom_stt_model_path", ""))
+        self.custom_stt_input.editingFinished.connect(self._on_custom_stt_path_changed)
+        self.custom_stt_input.returnPressed.connect(self._on_custom_stt_path_changed)
+        custom_input_row.addWidget(self.custom_stt_input, 1)
+
+        self.custom_browse_btn = QPushButton("Browse Folder...")
+        self.custom_browse_btn.setObjectName("secondaryBtn")
+        self.custom_browse_btn.clicked.connect(self._on_browse_custom_stt_folder)
+        custom_input_row.addWidget(self.custom_browse_btn)
+
+        self.custom_test_btn = QPushButton("Validate & Test")
+        self.custom_test_btn.setObjectName("primaryBtn")
+        self.custom_test_btn.clicked.connect(self._on_validate_custom_stt)
+        custom_input_row.addWidget(self.custom_test_btn)
+        custom_layout.addLayout(custom_input_row)
+
+        presets_row = QHBoxLayout()
+        presets_lbl = QLabel("Quick Presets:")
+        presets_lbl.setObjectName("mutedLabel")
+        presets_row.addWidget(presets_lbl)
+
+        self.custom_presets_combo = QComboBox()
+        self.custom_presets_combo.addItem("Select a preset...", "")
+        self.custom_presets_combo.addItem("Systran/faster-whisper-small (Balanced · 244M)", "Systran/faster-whisper-small")
+        self.custom_presets_combo.addItem("Systran/faster-whisper-medium (High Accuracy · 769M)", "Systran/faster-whisper-medium")
+        self.custom_presets_combo.addItem("deepdml/faster-whisper-large-v3-turbo-ct2 (Flagship Turbo · 809M)", "deepdml/faster-whisper-large-v3-turbo-ct2")
+        self.custom_presets_combo.addItem("Systran/faster-whisper-tiny (Ultralight · 39M)", "Systran/faster-whisper-tiny")
+        self.custom_presets_combo.currentIndexChanged.connect(self._on_custom_preset_selected)
+        presets_row.addWidget(self.custom_presets_combo, 1)
+        custom_layout.addLayout(presets_row)
+
+        self.custom_stt_status = QLabel("")
+        self.custom_stt_status.setWordWrap(True)
+        self.custom_stt_status.hide()
+        custom_layout.addWidget(self.custom_stt_status)
+
+        s2_form.addRow("Custom Model Target:", self.custom_stt_container)
+
+        # 2. Bundled Models Container
+        self.bundled_model_container = QWidget()
+        bundled_layout = QVBoxLayout(self.bundled_model_container)
+        bundled_layout.setContentsMargins(0, 0, 0, 0)
+        bundled_layout.setSpacing(10)
+
         # Nepali ASR Engine Option
         self.nepali_engine_combo = QComboBox()
         self.nepali_engine_combo.addItem("Ampixa NepaliConformer (Recommended · 33.8% WER)", "conformer")
@@ -1074,14 +1150,25 @@ class MainWindow(QMainWindow):
         if n_idx >= 0:
             self.nepali_engine_combo.setCurrentIndex(n_idx)
         self.nepali_engine_combo.currentIndexChanged.connect(self._on_nepali_engine_changed)
-        s2_form.addRow("Nepali ASR Engine:", self.nepali_engine_combo)
+
+        nepali_row = QHBoxLayout()
+        nepali_lbl = QLabel("Nepali Engine:")
+        nepali_lbl.setFixedWidth(110)
+        nepali_row.addWidget(nepali_lbl)
+        nepali_row.addWidget(self.nepali_engine_combo, 1)
+        bundled_layout.addLayout(nepali_row)
 
         self.tier_combo = QComboBox()
         for tier_id, info in TIERS.items():
             self.tier_combo.addItem(f"{info.display_name} — {info.speed_factor} ({info.disk_size_mb} MB)", tier_id)
         self.tier_combo.currentIndexChanged.connect(self._on_tier_selection_changed)
-        s2_form.addRow("Model Quality:", self.tier_combo)
 
+        tier_row = QHBoxLayout()
+        tier_lbl = QLabel("Model Quality:")
+        tier_lbl.setFixedWidth(110)
+        tier_row.addWidget(tier_lbl)
+        tier_row.addWidget(self.tier_combo, 1)
+        bundled_layout.addLayout(tier_row)
 
         # Responsive Model Storage & Download Card
         storage_row = QVBoxLayout()
@@ -1133,7 +1220,16 @@ class MainWindow(QMainWindow):
         self.model_error_label.hide()
         storage_row.addWidget(self.model_error_label)
 
-        s2_form.addRow("Model Storage:", storage_row)
+        bundled_layout.addLayout(storage_row)
+        s2_form.addRow("Bundled Models:", self.bundled_model_container)
+
+        # Initial visibility toggle
+        if stt_source == "custom":
+            self.bundled_model_container.hide()
+            self.custom_stt_container.show()
+        else:
+            self.bundled_model_container.show()
+            self.custom_stt_container.hide()
 
         self.speech_mode_combo = QComboBox()
         self.speech_mode_combo.addItem("✍️ Write in My Language (Transcribe)", "transcribe")
@@ -1344,6 +1440,21 @@ class MainWindow(QMainWindow):
             self.tier_combo.setCurrentIndex(tier_idx)
         self._update_model_status()
 
+        # Model source (Bundled vs BYOM)
+        stt_src = getattr(self.config, "stt_model_source", "bundled")
+        if hasattr(self, "source_custom_radio") and hasattr(self, "source_bundled_radio"):
+            if stt_src == "custom":
+                self.source_custom_radio.setChecked(True)
+                self.bundled_model_container.hide()
+                self.custom_stt_container.show()
+            else:
+                self.source_bundled_radio.setChecked(True)
+                self.bundled_model_container.show()
+                self.custom_stt_container.hide()
+
+        if hasattr(self, "custom_stt_input"):
+            self.custom_stt_input.setText(getattr(self.config, "custom_stt_model_path", ""))
+
         # Theme
         t_idx = self.theme_combo.findData(self.config.appearance)
         if t_idx >= 0:
@@ -1496,6 +1607,84 @@ class MainWindow(QMainWindow):
             self.settings_lang_checkboxes[code] = chk
             self._on_settings_spoken_languages_changed()
         self.settings_add_lang_combo.setCurrentIndex(0)
+
+    def _on_stt_source_toggled(self, checked: bool) -> None:
+        is_custom = self.source_custom_radio.isChecked()
+        self.config.stt_model_source = "custom" if is_custom else "bundled"
+        if is_custom:
+            self.bundled_model_container.hide()
+            self.custom_stt_container.show()
+        else:
+            self.bundled_model_container.show()
+            self.custom_stt_container.hide()
+        self.config.save()
+        if self.on_config_changed_callback:
+            self.on_config_changed_callback(self.config)
+
+    def _on_custom_stt_path_changed(self) -> None:
+        path = self.custom_stt_input.text().strip()
+        self.config.custom_stt_model_path = path
+        self.config.save()
+        if self.on_config_changed_callback:
+            self.on_config_changed_callback(self.config)
+
+    def _on_custom_preset_selected(self, index: int) -> None:
+        target = self.custom_presets_combo.currentData()
+        if target:
+            self.custom_stt_input.setText(target)
+            self._on_custom_stt_path_changed()
+
+    def _on_browse_custom_stt_folder(self) -> None:
+        folder = QFileDialog.getExistingDirectory(self, "Select CTranslate2 Model Directory")
+        if folder:
+            self.custom_stt_input.setText(folder)
+            self._on_custom_stt_path_changed()
+
+    def _on_validate_custom_stt(self) -> None:
+        target = self.custom_stt_input.text().strip()
+        if not target:
+            self.custom_stt_status.setText("⚠️ Please enter a Hugging Face repo ID or select a local model directory.")
+            self.custom_stt_status.setStyleSheet("color: #FF9F0A; font-size: 12px;")
+            self.custom_stt_status.show()
+            return
+
+        self.custom_test_btn.setEnabled(False)
+        self.custom_test_btn.setText("Validating...")
+        self.custom_stt_status.setText(f"Checking model '{target}'...")
+        self.custom_stt_status.setStyleSheet("color: #6C8EEF; font-size: 12px;")
+        self.custom_stt_status.show()
+
+        def worker():
+            is_valid, reason = self.model_manager.validate_custom_model_target(target)
+            elapsed_ms = 0.0
+            if is_valid:
+                try:
+                    import time
+                    import numpy as np
+                    from faster_whisper import WhisperModel
+                    t0 = time.time()
+                    m = WhisperModel(target, device="auto", compute_type="int8", download_root=str(self.model_manager.models_dir))
+                    dummy = np.zeros(1600, dtype=np.float32)
+                    list(m.transcribe(dummy, beam_size=1)[0])
+                    elapsed_ms = (time.time() - t0) * 1000.0
+                    reason = f"Model verified successfully (~{elapsed_ms:.0f}ms test latency)"
+                except Exception as e:
+                    is_valid = False
+                    reason = f"Inference test failed: {e}"
+
+            def done():
+                self.custom_test_btn.setEnabled(True)
+                self.custom_test_btn.setText("Validate & Test")
+                if is_valid:
+                    self.custom_stt_status.setText(f"✓ {reason}")
+                    self.custom_stt_status.setStyleSheet("color: #30D158; font-size: 12px;")
+                else:
+                    self.custom_stt_status.setText(f"✗ {reason}")
+                    self.custom_stt_status.setStyleSheet("color: #FF453A; font-size: 12px;")
+
+            QTimer.singleShot(0, done)
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _on_nepali_engine_changed(self, index: int) -> None:
         engine = self.nepali_engine_combo.currentData()

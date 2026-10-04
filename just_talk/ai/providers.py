@@ -105,6 +105,17 @@ PROVIDER_REGISTRY: dict[str, AIProvider] = {
         key_prefix_hint="sk-...",
         website_url="https://platform.deepseek.com/api_keys",
     ),
+    "ollama": AIProvider(
+        id="ollama",
+        display_name="Ollama (Local Offline · 100% On-Device)",
+        base_url="http://localhost:11434/v1",
+        api_format="openai_compatible",
+        default_model="qwen2.5-coder:7b",
+        popular_models=['qwen2.5-coder:7b', 'llama3.2:3b', 'llama3.1:8b', 'mistral:7b', 'deepseek-r1:8b', 'gemma2:9b'],
+        env_var="",
+        key_prefix_hint="No API key required",
+        website_url="https://ollama.com",
+    ),
     "custom": AIProvider(
         id="custom",
         display_name="Custom OpenAI-Compatible API",
@@ -127,6 +138,72 @@ def get_provider(provider_id: str) -> Optional[AIProvider]:
 def get_provider_list() -> list[AIProvider]:
     """Returns all providers in order."""
     return list(PROVIDER_REGISTRY.values())
+
+
+def clean_llm_response(text: str) -> str:
+    """Strip preambles, chatty headers, and enclosing quotes common in local models."""
+    if not text:
+        return ""
+    cleaned = text.strip()
+
+    # 1. Remove markdown code fences if wrapped in ```...```
+    if cleaned.startswith("```") and cleaned.endswith("```"):
+        lines = cleaned.splitlines()
+        if len(lines) >= 2:
+            cleaned = "\n".join(lines[1:-1]).strip()
+
+    # 2. Common local LLM chatty preambles
+    preamble_patterns = [
+        r"^Here(?:'s| is)\s+(?:the\s+|your\s+)?(?:clean(?:ed)?|formatted|corrected|edited|revised)?\s*(?:text|transcript|sentence|version|output)?:\s*",
+        r"^Clean(?:ed)?\s+(?:text|transcript|version|output)?:\s*",
+        r"^Formatted\s+(?:text|transcript|output|version)?:\s*",
+        r"^Output:\s*",
+        r"^Result:\s*",
+    ]
+    for pattern in preamble_patterns:
+        cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE).strip()
+
+    # 3. Strip enclosing quotation marks if output is wrapped
+    if len(cleaned) >= 2 and cleaned[0] == '"' and cleaned[-1] == '"' and cleaned.count('"') == 2:
+        cleaned = cleaned[1:-1].strip()
+    elif len(cleaned) >= 2 and cleaned[0] == "'" and cleaned[-1] == "'" and cleaned.count("'") == 2:
+        cleaned = cleaned[1:-1].strip()
+
+    return cleaned
+
+
+def scan_ollama_models(host_url: str = "http://localhost:11434") -> list[str]:
+    """Connect to local Ollama instance and fetch names of all installed models."""
+    clean_host = host_url.rstrip("/")
+    if clean_host.endswith("/v1"):
+        clean_host = clean_host[:-3]
+
+    # Try native /api/tags
+    try:
+        with httpx.Client(timeout=2.0) as client:
+            resp = client.get(f"{clean_host}/api/tags")
+            if resp.status_code == 200:
+                data = resp.json()
+                models = [m.get("name") for m in data.get("models", []) if m.get("name")]
+                if models:
+                    return sorted(models)
+    except Exception:
+        pass
+
+    # Try OpenAI-compatible /v1/models fallback
+    try:
+        with httpx.Client(timeout=2.0) as client:
+            resp = client.get(f"{clean_host}/v1/models")
+            if resp.status_code == 200:
+                data = resp.json()
+                models = [m.get("id") for m in data.get("data", []) if m.get("id")]
+                if models:
+                    return sorted(models)
+    except Exception:
+        pass
+
+    return []
+
 
 
 class MultiProviderFormatter:
@@ -202,7 +279,7 @@ class MultiProviderFormatter:
 
         key = self.api_key or CredentialManager.get_provider_api_key(self.provider_id)
 
-        if not key and self.provider.id != 'custom':
+        if not key and self.provider.id not in ('custom', 'ollama'):
             fallback = GeminiFormatter.light_local_cleanup(raw_text)
             return fallback, False, f"{self.provider.display_name} API key missing. Cleaned locally."
 
@@ -324,9 +401,13 @@ class MultiProviderFormatter:
     def _format_openai_compatible(self, raw_text: str, wrapped_instruction: str, key: str) -> Tuple[str, bool, str]:
         url = f"{self.base_url}/chat/completions"
         headers = {
-            "Authorization": f"Bearer {key}",
             "Content-Type": "application/json"
         }
+        if key:
+            headers["Authorization"] = f"Bearer {key}"
+        elif self.provider_id == "ollama":
+            headers["Authorization"] = "Bearer ollama"
+
         if self.provider_id == "openrouter":
             headers["HTTP-Referer"] = "https://justtalk.app"
             headers["X-Title"] = "Just Talk"
@@ -472,11 +553,11 @@ class MultiProviderFormatter:
         return fallback, False, "Timeout budget exceeded. Cleaned locally."
 
     def _sanitize_output(self, raw_input: str, formatted_output: str) -> Optional[str]:
-        """Validate and sanitize AI output to prevent hallucinations or markdown insertion."""
+        """Validate and sanitize AI output to prevent hallucinations, preambles, or markdown insertion."""
         if not formatted_output:
             return None
 
-        text = formatted_output.strip()
+        text = clean_llm_response(formatted_output)
 
         # Remove surrounding quotes if the model wrapped the output
         if text.startswith('"') and text.endswith('"'):
@@ -542,7 +623,7 @@ class MultiProviderFormatter:
         base_url = custom_base_url or self.base_url or self.provider.base_url
         start_time = self.time_func()
 
-        if not key and self.provider.id != 'custom':
+        if not key and self.provider.id not in ('custom', 'ollama'):
             return ConnectionTestResult(
                 success=False,
                 status_code=0,
@@ -577,6 +658,9 @@ class MultiProviderFormatter:
                     headers = {"Content-Type": "application/json"}
                     if key:
                         headers["Authorization"] = f"Bearer {key.strip()}"
+                    elif self.provider_id == "ollama":
+                        headers["Authorization"] = "Bearer ollama"
+
                     if self.provider_id == "openrouter":
                         headers["HTTP-Referer"] = "https://justtalk.app"
                         headers["X-Title"] = "Just Talk"
@@ -680,7 +764,13 @@ class MultiProviderFormatter:
         key = api_key or self.api_key or CredentialManager.get_provider_api_key(self.provider_id)
         base_url = custom_base_url or self.base_url or self.provider.base_url
 
-        if not base_url or (not key and self.provider.id != 'custom'):
+        if self.provider_id == "ollama":
+            found = scan_ollama_models(base_url)
+            if found:
+                return found
+            return self.provider.popular_models or []
+
+        if not base_url or (not key and self.provider.id not in ('custom', 'ollama')):
             return self.provider.popular_models or []
 
         try:

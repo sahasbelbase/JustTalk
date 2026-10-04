@@ -219,7 +219,11 @@ class JustTalkApp:
         self.nepali_conformer = NepaliConformerEngine(self.model_manager)
         provider_id = getattr(self.config, "ai_provider", "gemini") or "gemini"
         model = getattr(self.config, "ai_model", "") or self.config.gemini_model
-        custom_base = getattr(self.config, "custom_api_base_url", "")
+        if provider_id == "ollama":
+            custom_base = getattr(self.config, "ollama_base_url", "http://localhost:11434/v1") or "http://localhost:11434/v1"
+            model = getattr(self.config, "ollama_model", "") or "qwen2.5-coder:7b"
+        else:
+            custom_base = getattr(self.config, "custom_api_base_url", "")
         self.gemini = MultiProviderFormatter(
             provider_id=provider_id,
             api_key=CredentialManager.get_provider_api_key(provider_id),
@@ -347,8 +351,9 @@ class JustTalkApp:
                 PermissionsManager.request_microphone()
 
         # 7. Warm up Whisper model in background
+        custom_stt = self.config.custom_stt_model_path if getattr(self.config, "stt_model_source", "bundled") == "custom" else None
         threading.Thread(
-            target=lambda: self.stt_engine.load(self.config.model_tier),
+            target=lambda: self.stt_engine.load(self.config.model_tier, custom_target=custom_stt),
             daemon=True,
         ).start()
 
@@ -812,7 +817,11 @@ class JustTalkApp:
         self.config = new_config
         provider_id = getattr(self.config, "ai_provider", "gemini") or "gemini"
         model = getattr(self.config, "ai_model", "") or self.config.gemini_model
-        custom_base = getattr(self.config, "custom_api_base_url", "")
+        if provider_id == "ollama":
+            custom_base = getattr(self.config, "ollama_base_url", "http://localhost:11434/v1") or "http://localhost:11434/v1"
+            model = getattr(self.config, "ollama_model", "") or "qwen2.5-coder:7b"
+        else:
+            custom_base = getattr(self.config, "custom_api_base_url", "")
         if hasattr(self.gemini, "set_provider"):
             self.gemini.set_provider(
                 provider_id=provider_id,
@@ -833,9 +842,10 @@ class JustTalkApp:
         # Sync autostart
         AutostartManager.set_autostart(self.config.launch_at_startup)
 
-        # Reload model if tier changed
+        # Reload model if tier or custom model changed
+        custom_stt = self.config.custom_stt_model_path if getattr(self.config, "stt_model_source", "bundled") == "custom" else None
         threading.Thread(
-            target=lambda: self.stt_engine.load(self.config.model_tier),
+            target=lambda: self.stt_engine.load(self.config.model_tier, custom_target=custom_stt),
             daemon=True,
         ).start()
 

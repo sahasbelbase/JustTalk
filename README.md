@@ -54,6 +54,25 @@ Download the latest version of Just Talk directly for your operating system:
 
 ---
 
+## 🤖 Bring Your Own Model (BYOM)
+
+Just Talk gives you absolute freedom to choose both your **Speech Recognition Engine** and your **AI Formatting Model**:
+
+### 1. Local Offline AI Formatting with Ollama (100% On-Device)
+Run powerful open-weight LLMs locally with **zero API keys, zero cloud costs, and 100% offline privacy**:
+* **Supported Models**: `llama3.2:3b`, `qwen2.5-coder:7b`, `mistral:7b`, `deepseek-r1:8b`, etc.
+* **Auto-Scanner**: Detects all models installed in your local Ollama instance (`http://localhost:11434`) automatically.
+* **Smart Preamble Sanitization**: Strips conversational fluff (`"Here is the text:"`) so your cursor receives pure, formatted text at 160 wpm.
+* **Multi-Provider Cloud LLMs**: Also supports Google Gemini, OpenAI, Claude, xAI Grok, Groq, OpenRouter, and custom OpenAI-compatible endpoints.
+
+### 2. Custom Speech-to-Text (STT) Models
+Don't want to use standard bundled models? Point Just Talk to any:
+* **Hugging Face Repository**: e.g. `Systran/faster-whisper-small`, `deepdml/faster-whisper-large-v3-turbo-ct2`, or custom fine-tunes.
+* **Local CTranslate2 Directory**: Load pre-converted `.bin` or `.safetensors` model directories directly from your disk.
+* **Live Latency Benchmarking**: Built-in *"Validate & Test"* tool runs test audio and reports inference latency in milliseconds before saving.
+
+---
+
 ## 🧠 Model Tiers
 
 Choose the speed and accuracy profile that matches your hardware:
@@ -63,6 +82,8 @@ Choose the speed and accuracy profile that matches your hardware:
 | **Fast / Small** | `base.en` | ~140 MB | ~200 MB | ~250ms | Ultra-fast response on older laptops |
 | **Balanced (Recommended)** | `small.en` | ~460 MB | ~450 MB | ~400ms | Exceptional technical accuracy & punctuation |
 | **High Quality / Multilingual** | `large-v3-turbo`| ~800 MB | ~850 MB | ~650ms | Multilingual dictation across 99+ languages |
+| **Nepali Conformer** | `nepali_conformer`| ~462 MB | ~350 MB | ~180ms | Ampixa Labs' conversational Nepali (33.8% WER) |
+| **Custom BYOM** | User Specified | Any | Dynamic | Measured live | Any Hugging Face repo or local CTranslate2 folder |
 
 ---
 

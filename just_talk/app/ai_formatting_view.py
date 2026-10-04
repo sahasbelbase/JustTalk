@@ -277,16 +277,35 @@ class AIFormattingView(QWidget):
             provider_id = "gemini"
 
         # 1. Custom URL visibility
-        if provider_id == "custom":
+        if provider_id in ("custom", "ollama"):
             self.custom_url_widget.show()
-            custom_url = getattr(self.config, "custom_api_base_url", "") or CredentialManager.get_custom_base_url() or ""
+            if provider_id == "ollama":
+                custom_url = getattr(self.config, "ollama_base_url", "http://localhost:11434/v1") or "http://localhost:11434/v1"
+                self.custom_url_input.setPlaceholderText("http://localhost:11434/v1")
+            else:
+                custom_url = getattr(self.config, "custom_api_base_url", "") or CredentialManager.get_custom_base_url() or ""
+                self.custom_url_input.setPlaceholderText("https://api.openai.com/v1 or http://localhost:11434/v1")
             self.custom_url_input.setText(custom_url)
         else:
             self.custom_url_widget.hide()
 
         # 2. Header and Hint
-        self.key_header.setText(f"{provider.display_name} API Key")
-        self.key_input.setPlaceholderText(f"Paste your {provider.display_name} key ({provider.key_prefix_hint})...")
+        if provider_id == "ollama":
+            self.key_header.setText("Ollama Local Instance (Zero API Key Needed)")
+            self.key_input.setEnabled(False)
+            self.key_input.setPlaceholderText("Local offline model · 100% on-device · Zero internet required")
+            self.show_btn.hide()
+            self.paste_btn.hide()
+            self.clear_btn.hide()
+            self.storage_label.setText("Runs locally via Ollama. No tokens, no account, completely private.")
+        else:
+            self.key_header.setText(f"{provider.display_name} API Key")
+            self.key_input.setEnabled(True)
+            self.key_input.setPlaceholderText(f"Paste your {provider.display_name} key ({provider.key_prefix_hint})...")
+            self.show_btn.show()
+            self.paste_btn.show()
+            self.clear_btn.show()
+            self.storage_label.setText("Stored securely in private credentials (mode 0600).")
 
         # 3. Populate models
         self.model_combo.blockSignals(True)
@@ -298,6 +317,8 @@ class AIFormattingView(QWidget):
         saved_model = getattr(self.config, "ai_model", "")
         if not saved_model and provider_id == "gemini":
             saved_model = self.config.gemini_model
+        if not saved_model and provider_id == "ollama":
+            saved_model = getattr(self.config, "ollama_model", "")
         if not saved_model:
             saved_model = provider.default_model
 
@@ -319,13 +340,16 @@ class AIFormattingView(QWidget):
         # 5. Link button
         if provider.website_url:
             self.get_key_link_btn.show()
-            self.get_key_link_btn.setText(f"Get {provider.display_name} Key ↗")
+            if provider_id == "ollama":
+                self.get_key_link_btn.setText("Download Ollama ↗")
+            else:
+                self.get_key_link_btn.setText(f"Get {provider.display_name} Key ↗")
         else:
             self.get_key_link_btn.hide()
 
         # 6. Synchronize formatter instance
         if hasattr(self.formatter, "set_provider"):
-            custom_url = self.custom_url_input.text().strip() if provider_id == "custom" else None
+            custom_url = self.custom_url_input.text().strip() if provider_id in ("custom", "ollama") else None
             self.formatter.set_provider(
                 provider_id=provider_id,
                 api_key=key,
@@ -352,8 +376,12 @@ class AIFormattingView(QWidget):
 
     def _on_custom_url_changed(self) -> None:
         url = self.custom_url_input.text().strip()
-        self.config.custom_api_base_url = url
-        CredentialManager.set_custom_base_url(url)
+        pid = self.provider_combo.currentData()
+        if pid == "ollama":
+            self.config.ollama_base_url = url
+        else:
+            self.config.custom_api_base_url = url
+            CredentialManager.set_custom_base_url(url)
         if hasattr(self.formatter, "set_custom_base_url"):
             self.formatter.set_custom_base_url(url)
         self.config.save()
@@ -414,8 +442,11 @@ class AIFormattingView(QWidget):
         model = text.strip()
         if model:
             self.config.ai_model = model
-            if self._get_active_provider_id() == "gemini":
+            active_pid = self._get_active_provider_id()
+            if active_pid == "gemini":
                 self.config.gemini_model = model
+            elif active_pid == "ollama":
+                self.config.ollama_model = model
             if hasattr(self.formatter, "set_model"):
                 self.formatter.set_model(model)
             self.config.save()
@@ -433,7 +464,7 @@ class AIFormattingView(QWidget):
         self._save_key_from_input()
         pid = self.provider_combo.currentData()
         current_key = self.key_input.text().strip()
-        custom_url = self.custom_url_input.text().strip() if pid == "custom" else None
+        custom_url = self.custom_url_input.text().strip() if pid in ("custom", "ollama") else None
 
         self._fetching_models = True
         self.fetch_models_btn.setEnabled(False)
@@ -475,7 +506,7 @@ class AIFormattingView(QWidget):
         pid = self.provider_combo.currentData()
         current_key = self.key_input.text().strip()
         current_model = self.model_combo.currentText().strip()
-        custom_url = self.custom_url_input.text().strip() if pid == "custom" else None
+        custom_url = self.custom_url_input.text().strip() if pid in ("custom", "ollama") else None
 
         self._testing_connection = True
         self.test_btn.setEnabled(False)

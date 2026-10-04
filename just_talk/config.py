@@ -142,10 +142,16 @@ class AppConfig:
     formatting_budget_sec: float = 6.0  # Max time budget before raw text fallback
 
     # Multi-Provider AI Configuration
-    ai_provider: str = "gemini"  # Active provider ID: 'gemini', 'openai', 'anthropic', 'grok', 'groq', 'openrouter', 'deepseek', 'custom'
+    ai_provider: str = "gemini"  # Active provider ID: 'gemini', 'ollama', 'openai', 'anthropic', 'grok', 'groq', 'openrouter', 'deepseek', 'custom'
     ai_model: str = ""  # Model override (empty = use provider default)
-    custom_api_base_url: str = ""  # Base URL for 'custom' provider
+    custom_api_base_url: str = ""  # Base URL for 'custom' or 'ollama' provider
     custom_model_name: str = ""  # Model name for 'custom' provider
+
+    # Bring Your Own Model (BYOM) Configuration
+    stt_model_source: str = "bundled"  # "bundled" or "custom"
+    custom_stt_model_path: str = ""    # Hugging Face repo ID (e.g. Systran/faster-whisper-small) or local path
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_model: str = ""             # e.g. "qwen2.5-coder:7b", "llama3.2:3b"
 
     # Shortcuts
     shortcut: str = field(default_factory=get_default_shortcut)

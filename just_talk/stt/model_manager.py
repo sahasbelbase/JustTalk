@@ -267,6 +267,27 @@ class ModelManager:
         valid_weights = any(w.stat().st_size > 15_000_000 for w in weight_files)
         return has_config and valid_weights
 
+    def validate_custom_model_target(self, target: str) -> tuple[bool, str]:
+        """
+        Validate whether target is a valid local CTranslate2 directory or syntactically valid Hugging Face repo ID.
+        """
+        if not target or not target.strip():
+            return False, "Model path or repo ID is empty."
+        clean = target.strip()
+        local_p = Path(clean)
+        if local_p.exists():
+            if not local_p.is_dir():
+                return False, f"Path '{clean}' is a file, but a model directory is required."
+            if not self._verify_directory_integrity(local_p):
+                return False, f"Directory '{clean}' is missing config.json or valid model weights (model.bin / model.safetensors)."
+            return True, f"Valid local model directory ({local_p.name})"
+
+        # If not a local path, verify it matches standard Hugging Face repo pattern (e.g. org/repo or repo-name)
+        if "/" in clean or len(clean.split()) == 1:
+            return True, f"Hugging Face repository: {clean}"
+
+        return False, f"Target '{clean}' is neither an existing directory nor a valid Hugging Face repository."
+
     def get_models_for_languages(self, spoken_languages: list[str], tier_preference: str = "quality") -> list[str]:
         """Return the minimal list of model tier IDs required for the selected spoken languages."""
         langs = set(spoken_languages or ["en"])
