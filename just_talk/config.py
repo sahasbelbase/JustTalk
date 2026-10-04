@@ -63,7 +63,7 @@ SUPPORTED_LANGUAGES: list[tuple[str, str]] = [
 
 CORE_SPOKEN_LANGUAGES: list[dict[str, str]] = [
     {"code": "en", "name": "English", "native": "English", "flag": "🇬🇧 / 🇺🇸", "desc": "Default · Fast & lightweight"},
-    {"code": "ne", "name": "Nepali & Nepglish", "native": "नेपाली", "flag": "🇳🇵", "desc": "Ampixa Conformer engine (33.8% WER)"},
+    {"code": "ne", "name": "Nepali & Nepglish", "native": "नेपाली", "flag": "🇳🇵", "desc": "Multilingual Whisper (100% Offline & Free)"},
     {"code": "de", "name": "German", "native": "Deutsch", "flag": "🇩🇪", "desc": "Multilingual model"},
     {"code": "fr", "name": "French", "native": "Français", "flag": "🇫🇷", "desc": "Multilingual model"},
     {"code": "es", "name": "Spanish", "native": "Español", "flag": "🇪🇸", "desc": "Multilingual model"},
@@ -94,7 +94,7 @@ class AppConfig:
     model_tier: str = "quality"  # Default: "quality" (large-v3-turbo), "max" (large-v3), "balanced" (small), "fast" (base)
     language: str = "en"  # Active language: "en", "ne_en", "ne", "es", "fr", "de", "zh", "auto"
     spoken_languages: list[str] = field(default_factory=lambda: ["en"])  # Languages the user actively speaks
-    nepali_asr_engine: str = "conformer"  # "conformer" (Ampixa Labs 33.8% WER) or "whisper"
+    nepali_asr_engine: str = "whisper"  # Default: "whisper" (100% out-of-the-box, no tokens needed) or "conformer"
     speech_mode: str = "transcribe"  # "transcribe" (write what I say) or "translate" (translate speech to English)
     audio_device_index: Optional[int] = None
     push_to_talk: bool = True  # True: hold to speak, False: toggle on/off

@@ -322,7 +322,7 @@ class ModelManager:
         self,
         spoken_languages: list[str],
         tier_preference: str = "quality",
-        nepali_engine: str = "conformer",
+        nepali_engine: str = "whisper",
     ) -> list[str]:
         """Return the minimal list of model tier IDs required for the selected spoken languages."""
         langs = set(spoken_languages or ["en"])
@@ -352,7 +352,7 @@ class ModelManager:
         self,
         spoken_languages: list[str],
         tier_preference: str = "quality",
-        nepali_engine: str = "conformer",
+        nepali_engine: str = "whisper",
     ) -> tuple[bool, list[str]]:
         """Check if all models needed for the spoken languages are downloaded."""
         required = self.get_models_for_languages(spoken_languages, tier_preference, nepali_engine=nepali_engine)

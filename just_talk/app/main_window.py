@@ -1274,9 +1274,9 @@ class MainWindow(QMainWindow):
 
         # Nepali ASR Engine Option
         self.nepali_engine_combo = QComboBox()
-        self.nepali_engine_combo.addItem("Ampixa NepaliConformer (Recommended · 33.8% WER)", "conformer")
-        self.nepali_engine_combo.addItem("OpenAI Whisper Large / Multilingual", "whisper")
-        cur_nep_eng = getattr(self.config, "nepali_asr_engine", "conformer")
+        self.nepali_engine_combo.addItem("OpenAI Whisper (Default · Out-of-the-Box · 100% Offline)", "whisper")
+        self.nepali_engine_combo.addItem("Ampixa NepaliConformer (Experimental · Requires Hugging Face Access)", "conformer")
+        cur_nep_eng = getattr(self.config, "nepali_asr_engine", "whisper")
         n_idx = self.nepali_engine_combo.findData(cur_nep_eng)
         if n_idx >= 0:
             self.nepali_engine_combo.setCurrentIndex(n_idx)
@@ -1872,8 +1872,24 @@ class MainWindow(QMainWindow):
 
     def _on_download_model(self) -> None:
         tier_id = self.tier_combo.currentData() or self.config.model_tier
-        info = self.model_manager.get_tier_info(tier_id)
         is_redownload = "Re-download" in self.download_btn.text()
+
+        # Check if specific required models are missing for spoken languages
+        all_ready, missing = self.model_manager.are_required_models_downloaded(
+            self.config.spoken_languages,
+            tier_id,
+            nepali_engine=getattr(self.config, "nepali_asr_engine", "whisper"),
+        )
+
+        if not is_redownload and all_ready:
+            self.model_progress_bar.hide()
+            self._update_model_status()
+            self._refresh_home_status()
+            return
+
+        targets = [tier_id] if is_redownload or not missing else missing
+        first_target = targets[0]
+        info = self.model_manager.get_tier_info(first_target)
 
         self.model_error_label.hide()
         self.model_progress_bar.show()
@@ -1906,15 +1922,20 @@ class MainWindow(QMainWindow):
                 else:
                     QTimer.singleShot(0, lambda p=pct, m=msg: self._on_download_progress(p, m))
 
-            success = self.model_manager.download_model(
-                tier_id,
-                progress_callback=progress,
-                force_redownload=is_redownload,
-            )
+            all_ok = True
+            for tid in targets:
+                ok = self.model_manager.download_model(
+                    tid,
+                    progress_callback=progress,
+                    force_redownload=is_redownload,
+                )
+                if not ok:
+                    all_ok = False
+                    break
 
             def done():
                 self.download_btn.setEnabled(True)
-                if success:
+                if all_ok:
                     self._on_download_succeeded(info)
                 elif not last_err:
                     self._on_download_failed("Download interrupted. Check internet connection.")
@@ -1940,6 +1961,7 @@ class MainWindow(QMainWindow):
         self.download_btn.setStyleSheet("")
         self.download_btn.setEnabled(True)
         self._refresh_home_status()
+        self._update_model_status()
         QMessageBox.information(self, "Download Complete", f"{info.display_name} downloaded successfully and is ready for use!")
 
     def _on_download_failed(self, error_msg: str) -> None:
