@@ -50,13 +50,25 @@ def get_app_data_dir() -> Path:
     return path
 
 
+SUPPORTED_LANGUAGES: list[tuple[str, str]] = [
+    ("English (Default)", "en"),
+    ("Mixed Nepali + English (Nepglish)", "ne_en"),
+    ("Nepali (नेपाली)", "ne"),
+    ("Spanish (Español)", "es"),
+    ("French (Français)", "fr"),
+    ("German (Deutsch)", "de"),
+    ("Mandarin Chinese (中文)", "zh"),
+    ("Auto-Detect All Languages", "auto"),
+]
+
+
 @dataclass
 class AppConfig:
     """User-configurable desktop application settings."""
 
     # STT Model
     model_tier: str = "quality"  # Default: "quality" (large-v3-turbo), "max" (large-v3), "balanced" (small), "fast" (base)
-    language: str = "auto"  # "auto", "ne", "en", "de", "fr", "it", "zh"
+    language: str = "en"  # "en", "ne_en", "ne", "es", "fr", "de", "zh", "auto"
     speech_mode: str = "transcribe"  # "transcribe" (write what I say) or "translate" (translate speech to English)
     audio_device_index: Optional[int] = None
     push_to_talk: bool = True  # True: hold to speak, False: toggle on/off

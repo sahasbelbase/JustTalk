@@ -577,12 +577,16 @@ class JustTalkApp:
             # When offline without AI, Whisper must fall back to built-in task="translate"
             task = "translate" if (is_translation_mode and not use_gemini) else "transcribe"
 
+            cur_lang = getattr(self.config, "language", "en")
             if is_translation_mode:
                 # In translation mode, input speech is multilingual (Nepali, English, or mixed).
                 # Never constrain Whisper to English acoustic models when translating into English!
-                lang = None if self.config.language in ("auto", "none", "en", "", None) else self.config.language
+                lang = None if cur_lang in ("auto", "none", "en", "ne_en", "", None) else cur_lang
+            elif cur_lang in ("ne_en", "auto", "none", "", None):
+                # In transcribe mode with Mixed Nepali + English or auto, let Whisper decode both languages
+                lang = None
             else:
-                lang = self.config.language if self.config.language not in ("auto", "none", "", None) else None
+                lang = cur_lang
 
             if is_translation_mode or is_action_mode:
                 self.bridge.state_processing.emit("Translating speech to English...")
@@ -593,7 +597,7 @@ class JustTalkApp:
             app_name = self.inserter.get_active_app_name()
             custom_vocab = getattr(self.config, "custom_vocabulary", "")
             prompt_parts = []
-            if is_translation_mode or lang in (None, "auto", "ne"):
+            if is_translation_mode or cur_lang in ("ne_en", "ne", "auto", None):
                 # Priming Whisper with bilingual context prevents acoustic hallucinations on code-switched / Nepali speech
                 prompt_parts.append("Namaste, yo meeting ma we will discuss code, features, bug fixes, ra testing: आजको काम र भोलिको अपडेट।")
             if app_name and app_name != "Active Application":

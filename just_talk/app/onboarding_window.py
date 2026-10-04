@@ -34,6 +34,7 @@ from ..security import CredentialManager
 from ..stt.model_manager import TIERS, ModelManager
 from ..system.autostart import AutostartManager
 from ..system.permissions import PermissionsManager
+from .language_selector import SearchableLanguageComboBox
 from .theme import ThemeManager
 
 
@@ -67,8 +68,8 @@ class OnboardingWindow(QDialog):
         self.model_progress_signal.connect(self._on_model_progress_update)
 
         self.setWindowTitle("Welcome to Just Talk")
-        self.resize(680, 540)
-        self.setMinimumSize(600, 480)
+        self.resize(860, 680)
+        self.setMinimumSize(740, 580)
 
         # Center on screen
         screen = QApplication.primaryScreen()
@@ -187,6 +188,11 @@ class OnboardingWindow(QDialog):
     # -------------------------------------------------------------------------
 
     def _create_step1_checklist(self) -> QWidget:
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
         container = QWidget()
         layout = QVBoxLayout(container)
         layout.setContentsMargins(16, 8, 16, 16)
@@ -367,7 +373,8 @@ class OnboardingWindow(QDialog):
         layout.addStretch()
 
         self._check_permissions_status()
-        return container
+        scroll.setWidget(container)
+        return scroll
 
     def _check_permissions_status(self) -> None:
         # Check Microphone
@@ -609,21 +616,10 @@ class OnboardingWindow(QDialog):
         lang_lbl.setFont(ThemeManager.get_ui_font(13, weight=QFont.Weight.DemiBold))
         lang_row.addWidget(lang_lbl)
 
-        self.onboarding_lang_combo = QComboBox()
-        self.onboarding_lang_combo.addItem("Auto-Detect Language (Recommended)", "auto")
-        self.onboarding_lang_combo.addItem("Nepali (नेपाली)", "ne")
-        self.onboarding_lang_combo.addItem("English", "en")
-        self.onboarding_lang_combo.addItem("German (Deutsch)", "de")
-        self.onboarding_lang_combo.addItem("French (Français)", "fr")
-        self.onboarding_lang_combo.addItem("Italian (Italiano)", "it")
-        self.onboarding_lang_combo.addItem("Mandarin Chinese (中文)", "zh")
-
-        # Select matching item
-        cur_lang = getattr(self.config, "language", "auto")
-        idx = self.onboarding_lang_combo.findData(cur_lang)
-        if idx >= 0:
-            self.onboarding_lang_combo.setCurrentIndex(idx)
-        self.onboarding_lang_combo.currentIndexChanged.connect(self._on_lang_combo_changed)
+        self.onboarding_lang_combo = SearchableLanguageComboBox()
+        cur_lang = getattr(self.config, "language", "en")
+        self.onboarding_lang_combo.set_current_language(cur_lang)
+        self.onboarding_lang_combo.language_changed.connect(self._on_lang_combo_changed)
         lang_row.addWidget(self.onboarding_lang_combo, 1)
         l_layout.addLayout(lang_row)
 
@@ -689,30 +685,47 @@ class OnboardingWindow(QDialog):
         self._style_mode_buttons()
         self._update_mode_explanation()
 
-    def _on_lang_combo_changed(self, idx: int) -> None:
-        val = self.onboarding_lang_combo.itemData(idx)
-        self.config.language = val
+    def _on_lang_combo_changed(self, code: str) -> None:
+        self.config.language = code
         self.config.save()
         self._update_mode_explanation()
+        tier_id = getattr(self.config, "model_tier", "quality")
+        if not self.model_manager.is_model_downloaded(tier_id) and not self._is_downloading_model:
+            self._start_model_download()
 
     def _update_mode_explanation(self) -> None:
-        lang_code = self.onboarding_lang_combo.currentData()
+        lang_code = self.onboarding_lang_combo.get_current_language()
         mode = getattr(self.config, "speech_mode", "transcribe")
 
         if mode == "translate":
-            self.mode_explanation_lbl.setText(
-                "Speech will automatically be translated into clear English text, regardless of whether you speak in Nepali, German, French, Italian, or Mandarin."
-            )
-            if lang_code == "ne":
+            if lang_code == "ne_en":
+                self.mode_explanation_lbl.setText(
+                    "Speech in mixed Nepali and English (Nepglish) will automatically be translated into clean, fluent English."
+                )
+                self.sample_phrase.setText('"yo meeting ma we will discuss project code" → (types clean English)')
+            elif lang_code == "ne":
+                self.mode_explanation_lbl.setText(
+                    "Nepali speech will automatically be translated into clear English text."
+                )
                 self.sample_phrase.setText('"नमस्ते, मलाई अंग्रेजी सिक्न मन छ।" → (types in English)')
             else:
+                self.mode_explanation_lbl.setText(
+                    "Speech will automatically be translated into clear English text, regardless of your spoken language."
+                )
                 self.sample_phrase.setText('"Hello Just Talk, translate this into English."')
         else:
-            self.mode_explanation_lbl.setText(
-                "Speech will be transcribed directly in the spoken language (e.g. Nepali is typed in Devanagari script: नेपाली)."
-            )
-            if lang_code == "ne":
+            if lang_code == "ne_en":
+                self.mode_explanation_lbl.setText(
+                    "Mixed Nepali and English speech is transcribed naturally without language locking."
+                )
+                self.sample_phrase.setText('"Namaste, aaja ko kaam sakiyo let\'s push to git."')
+            elif lang_code == "ne":
+                self.mode_explanation_lbl.setText(
+                    "Speech will be transcribed directly in the spoken language (e.g. Nepali is typed in Devanagari script: नेपाली)."
+                )
                 self.sample_phrase.setText('"नमस्ते Just Talk, यो मेरो पहिलो आवाज परीक्षण हो।"')
+            elif lang_code == "es":
+                self.sample_phrase.setText('"Hola Just Talk, esta es mi primera prueba de voz."')
             elif lang_code == "de":
                 self.sample_phrase.setText('"Hallo Just Talk, das ist mein erster Sprachtest."')
             elif lang_code == "fr":

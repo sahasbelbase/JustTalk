@@ -46,6 +46,7 @@ from ..system.autostart import AutostartManager
 from ..system.clipboard import ClipboardManager
 from ..system.permissions import PermissionsManager
 from .ai_formatting_view import AIFormattingView
+from .language_selector import SearchableLanguageComboBox
 from .theme import ThemeManager
 
 
@@ -76,8 +77,8 @@ class MainWindow(QMainWindow):
         self.on_config_changed_callback = on_config_changed
 
         self.setWindowTitle("Just Talk")
-        self.resize(960, 650)
-        self.setMinimumSize(680, 460)
+        self.resize(1160, 760)
+        self.setMinimumSize(920, 580)
 
         # Center on screen
         screen = QApplication.primaryScreen()
@@ -408,20 +409,10 @@ class MainWindow(QMainWindow):
         lang_lbl.setFont(ThemeManager.get_ui_font(13, weight=QFont.Weight.Medium))
         lang_row.addWidget(lang_lbl)
 
-        self.home_lang_combo = QComboBox()
-        self.home_lang_combo.addItem("Auto-Detect Language (Recommended)", "auto")
-        self.home_lang_combo.addItem("Nepali (नेपाली)", "ne")
-        self.home_lang_combo.addItem("English", "en")
-        self.home_lang_combo.addItem("German (Deutsch)", "de")
-        self.home_lang_combo.addItem("French (Français)", "fr")
-        self.home_lang_combo.addItem("Italian (Italiano)", "it")
-        self.home_lang_combo.addItem("Mandarin Chinese (中文)", "zh")
-
-        cur_lang = getattr(self.config, "language", "auto")
-        idx = self.home_lang_combo.findData(cur_lang)
-        if idx >= 0:
-            self.home_lang_combo.setCurrentIndex(idx)
-        self.home_lang_combo.currentIndexChanged.connect(self._on_home_lang_changed)
+        self.home_lang_combo = SearchableLanguageComboBox()
+        cur_lang = getattr(self.config, "language", "en")
+        self.home_lang_combo.set_current_language(cur_lang)
+        self.home_lang_combo.language_changed.connect(self._on_home_lang_changed)
         lang_row.addWidget(self.home_lang_combo, 1)
         mc_layout.addLayout(lang_row)
 
@@ -1063,19 +1054,10 @@ class MainWindow(QMainWindow):
         self.speech_mode_combo.currentIndexChanged.connect(self._on_speech_mode_setting_changed)
         s2_form.addRow("Speech Output Mode:", self.speech_mode_combo)
 
-        self.language_combo = QComboBox()
-        self.language_combo.addItem("Auto-Detect Language (Recommended)", "auto")
-        self.language_combo.addItem("Nepali (नेपाली)", "ne")
-        self.language_combo.addItem("English", "en")
-        self.language_combo.addItem("German (Deutsch)", "de")
-        self.language_combo.addItem("French (Français)", "fr")
-        self.language_combo.addItem("Italian (Italiano)", "it")
-        self.language_combo.addItem("Mandarin Chinese (中文)", "zh")
-        cur_lang = getattr(self.config, "language", "auto")
-        l_idx = self.language_combo.findData(cur_lang)
-        if l_idx >= 0:
-            self.language_combo.setCurrentIndex(l_idx)
-        self.language_combo.currentIndexChanged.connect(self._on_language_setting_changed)
+        self.language_combo = SearchableLanguageComboBox()
+        cur_lang = getattr(self.config, "language", "en")
+        self.language_combo.set_current_language(cur_lang)
+        self.language_combo.language_changed.connect(self._on_language_setting_changed)
         s2_form.addRow("Spoken Language:", self.language_combo)
 
         self.vocab_input = QLineEdit()
@@ -1584,28 +1566,30 @@ class MainWindow(QMainWindow):
                 self.speech_mode_combo.blockSignals(False)
         self.config_changed.emit(self.config)
 
-    def _on_home_lang_changed(self, idx: int) -> None:
-        val = self.home_lang_combo.itemData(idx)
-        self.config.language = val
+    def _on_home_lang_changed(self, code: str) -> None:
+        self.config.language = code
         self.config.save()
         self._update_home_mode_desc()
-        if hasattr(self, "language_combo"):
-            l_idx = self.language_combo.findData(val)
-            if l_idx >= 0:
-                self.language_combo.blockSignals(True)
-                self.language_combo.setCurrentIndex(l_idx)
-                self.language_combo.blockSignals(False)
+        if hasattr(self, "language_combo") and self.language_combo is not None:
+            self.language_combo.set_current_language(code)
         self.config_changed.emit(self.config)
 
     def _update_home_mode_desc(self) -> None:
-        lang_code = getattr(self.config, "language", "auto")
+        lang_code = getattr(self.config, "language", "en")
         mode = getattr(self.config, "speech_mode", "transcribe")
         if mode == "translate":
-            self.home_mode_desc.setText(
-                "🌐 Translate Mode: Whatever you speak (Nepali, German, French, etc.) is translated directly into English."
-            )
+            if lang_code == "ne_en":
+                self.home_mode_desc.setText(
+                    "🌐 Translate Mode: Mixed Nepali & English speech is translated seamlessly into clean, fluent English."
+                )
+            else:
+                self.home_mode_desc.setText(
+                    "🌐 Translate Mode: Whatever you speak (Nepali, Spanish, French, etc.) is translated directly into English."
+                )
         else:
-            if lang_code == "ne":
+            if lang_code == "ne_en":
+                self.home_mode_desc.setText("✍️ Transcribe Mode: Speak in conversational mixed Nepali & English; text is typed exactly as spoken.")
+            elif lang_code == "ne":
                 self.home_mode_desc.setText("✍️ Transcribe Mode: Speak in Nepali, and it types directly in Nepali Devanagari (नेपाली).")
             else:
                 self.home_mode_desc.setText("✍️ Transcribe Mode: Text is typed directly in the exact language you speak.")
@@ -1633,8 +1617,13 @@ class MainWindow(QMainWindow):
         mode = self.speech_mode_combo.itemData(idx)
         self._set_home_speech_mode(mode)
 
-    def _on_language_setting_changed(self, idx: int) -> None:
-        self._on_home_lang_changed(idx)
+    def _on_language_setting_changed(self, code: str) -> None:
+        self.config.language = code
+        self.config.save()
+        self._update_home_mode_desc()
+        if hasattr(self, "home_lang_combo") and self.home_lang_combo is not None:
+            self.home_lang_combo.set_current_language(code)
+        self.config_changed.emit(self.config)
 
     def _on_save_settings(self) -> None:
         self.config.shortcut = self.shortcut_combo.currentData()
@@ -1648,7 +1637,7 @@ class MainWindow(QMainWindow):
         if hasattr(self, "speech_mode_combo"):
             self.config.speech_mode = self.speech_mode_combo.currentData()
         if hasattr(self, "language_combo"):
-            self.config.language = self.language_combo.currentData()
+            self.config.language = self.language_combo.get_current_language()
         self.config.save()
 
         # Synchronize autostart with operating system
