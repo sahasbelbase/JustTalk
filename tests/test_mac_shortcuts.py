@@ -102,8 +102,10 @@ def test_mac_hotkey_monitor_dynamic_shift():
 
     # 1. Simulate Fn press down without shift
     monitor._handle_trigger_state(is_down=True, is_shift=False)
-    # Wait for debounce to fire
-    time.sleep(monitor.DEBOUNCE_DELAY_SEC + 0.05)
+    # Wait for debounce to fire safely on busy CI runners
+    start_time = time.time()
+    while not monitor._is_active and (time.time() - start_time) < 2.0:
+        time.sleep(0.01)
 
     assert monitor._is_active is True
     assert started == [False]
