@@ -31,8 +31,9 @@ from PySide6.QtCore import QEvent, QObject, Qt, Signal, Slot, QTimer
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import QApplication
 
-from ..ai.actions import ActionRouter
+from ..ai.actions import ActionIntent, ActionRouter
 from ..ai.gemini import GeminiFormatter
+from ..ai.prompts import build_prompt
 from ..ai.providers import MultiProviderFormatter
 from ..audio.noise_filter import NoiseFilter
 from ..audio.recorder import AudioRecorder
@@ -567,18 +568,34 @@ class JustTalkApp:
 
             # 3. Local Speech-to-Text with Multilingual & Dual-Task Support
             speech_mode = getattr(self.config, "speech_mode", "transcribe")
-            task = "translate" if (speech_mode == "translate" or is_action_mode) else "transcribe"
-            lang = self.config.language if self.config.language not in ("auto", "none", "", None) else None
+            use_gemini = self.config.gemini_enabled and not self.config.offline_mode
+            is_translation_mode = (speech_mode == "translate")
 
-            if task == "translate":
+            # High-fidelity 2-stage translation for mixed language / Nepglish code-switching:
+            # Stage 1: Whisper transcribes raw speech faithfully without translation distortion
+            # Stage 2: Gemini / LLM translates mixed speech into clean, idiomatic English
+            # When offline without AI, Whisper must fall back to built-in task="translate"
+            task = "translate" if (is_translation_mode and not use_gemini) else "transcribe"
+
+            if is_translation_mode:
+                # In translation mode, input speech is multilingual (Nepali, English, or mixed).
+                # Never constrain Whisper to English acoustic models when translating into English!
+                lang = None if self.config.language in ("auto", "none", "en", "", None) else self.config.language
+            else:
+                lang = self.config.language if self.config.language not in ("auto", "none", "", None) else None
+
+            if is_translation_mode or is_action_mode:
                 self.bridge.state_processing.emit("Translating speech to English...")
             else:
                 self.bridge.state_processing.emit("Transcribing...")
 
-            # Construct context prompt (active app name + custom vocabulary) to prevent word mismatches
+            # Construct context prompt (bilingual acoustic priming, active app name, custom vocabulary)
             app_name = self.inserter.get_active_app_name()
             custom_vocab = getattr(self.config, "custom_vocabulary", "")
             prompt_parts = []
+            if is_translation_mode or lang in (None, "auto", "ne"):
+                # Priming Whisper with bilingual context prevents acoustic hallucinations on code-switched / Nepali speech
+                prompt_parts.append("Namaste, yo meeting ma we will discuss code, features, bug fixes, ra testing: आजको काम र भोलिको अपडेट।")
             if app_name and app_name != "Active Application":
                 prompt_parts.append(f"Dictation into {app_name}.")
             if custom_vocab and custom_vocab.strip():
@@ -611,24 +628,33 @@ class JustTalkApp:
             print(f"[STT Raw (task={task}, lang={lang})]: {raw_text}")
 
             # 4. Action Routing & Intent Detection
-            if task == "translate":
-                # Speech already translated into English by Whisper
-                intent = ActionRouter.parse_intent(raw_text, is_action_mode=False)
+            if is_action_mode:
+                intent = ActionRouter.parse_intent(raw_text, is_action_mode=True)
+                action_name = intent.action_type
+                final_text = intent.target_payload
+            elif is_translation_mode:
+                intent = ActionIntent(
+                    action_type="translate",
+                    target_payload=raw_text,
+                    target_language="English",
+                    system_instruction=build_prompt("translate", target_language="English"),
+                )
                 action_name = "translate"
                 final_text = raw_text
             else:
-                intent = ActionRouter.parse_intent(raw_text, is_action_mode=is_action_mode)
+                intent = ActionRouter.parse_intent(raw_text, is_action_mode=False)
                 action_name = intent.action_type
                 final_text = intent.target_payload
             is_offline_fallback = False
 
             # Typeless Two-Phase Fast Emission: Phase 1 (Immediate Draft Emission)
             has_text_target = CaretLocator.has_active_text_target()
-            use_gemini = self.config.gemini_enabled and not self.config.offline_mode
             two_phase_active = (
                 getattr(self.config, "two_phase_emission", True)
                 and use_gemini
                 and has_text_target
+                and not is_translation_mode
+                and action_name != "translate"
             )
             draft_emitted = False
 
@@ -640,7 +666,7 @@ class JustTalkApp:
             # 5. Gemini / AI Formatting Layer
             if use_gemini:
                 self.bridge.state_processing.emit(
-                    "Translating..." if intent.action_type == "translate" else "Cleaning..."
+                    "Translating..." if (action_name == "translate" or intent.action_type == "translate") else "Cleaning..."
                 )
                 cleaned, success, msg = self.gemini.format_text(
                     raw_text=final_text,

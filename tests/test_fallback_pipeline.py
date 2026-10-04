@@ -84,3 +84,73 @@ def test_key_redaction_in_logs_and_errors():
 
     assert google_key not in redacted_2
     assert "[REDACTED_API_KEY]" in redacted_2
+
+
+def test_translation_pipeline_routing():
+    """Verify that speech_mode='translate' routes STT to transcribe and uses translation prompt."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = Path(tmpdir) / "test_history.db"
+        db = HistoryDatabase(db_path=db_path)
+
+        with patch("just_talk.app.main.AppConfig.load") as mock_load, \
+             patch("just_talk.app.main.HistoryDatabase", return_value=db), \
+             patch("just_talk.app.main.PermissionsManager"), \
+             patch("just_talk.app.main.VoiceActivityDetector"), \
+             patch("just_talk.app.main.AudioRecorder"), \
+             patch("just_talk.app.main.ModelManager"), \
+             patch("just_talk.app.main.WhisperSTTEngine") as mock_whisper_cls, \
+             patch("just_talk.app.main.MultiProviderFormatter") as mock_formatter_cls, \
+             patch("just_talk.app.main.TextInserter") as mock_inserter_cls, \
+             patch("just_talk.app.main.NoiseFilter"), \
+             patch("just_talk.app.main.SpeakerRecognizer"):
+
+            from just_talk.config import AppConfig
+            from just_talk.app.main import JustTalkApp
+
+            cfg = AppConfig(speech_mode="translate", gemini_enabled=True, offline_mode=False)
+            mock_load.return_value = cfg
+
+            app = JustTalkApp()
+            app.config = cfg
+
+            mock_stt = mock_whisper_cls.return_value
+            mock_stt.transcribe.return_value = "yo meeting ma we will discuss project code"
+
+            mock_gemini = mock_formatter_cls.return_value
+            mock_gemini.format_text.return_value = ("In this meeting we will discuss the project code.", True, "")
+
+            mock_inserter = mock_inserter_cls.return_value
+            mock_inserter.get_active_app_name.return_value = "VS Code"
+            mock_inserter.insert.return_value = (True, "inserted", "VS Code")
+
+            import numpy as np
+            sample_audio = np.zeros(16000, dtype=np.float32)
+
+            with patch("just_talk.app.main.CaretLocator.has_active_text_target", return_value=True):
+                app._process_audio_pipeline(sample_audio, is_action_mode=False)
+
+            # 1. Verify Whisper was called with task="transcribe" (not "translate" which butchers code-switching)
+            mock_stt.transcribe.assert_called()
+            call_kwargs = mock_stt.transcribe.call_args.kwargs
+            assert call_kwargs.get("task") == "transcribe"
+            assert "Namaste" in call_kwargs.get("initial_prompt", "")
+
+            # 2. Verify Gemini received the translation prompt
+            mock_gemini.format_text.assert_called()
+            gemini_kwargs = mock_gemini.format_text.call_args.kwargs
+            instruction = gemini_kwargs.get("custom_system_instruction", "")
+            assert "CODE-SWITCHING" in instruction
+            assert "Nepali" in instruction
+
+            # 3. Verify final insertion was the translated English text
+            mock_inserter.insert.assert_called_with(
+                "In this meeting we will discuss the project code.",
+                restore_clipboard=True,
+            )
+
+            # 4. Verify DB entry was saved with action="translate"
+            recent = db.get_recent(limit=1)
+            assert len(recent) == 1
+            assert recent[0].action == "translate"
+            assert recent[0].raw_transcription == "yo meeting ma we will discuss project code"
+            assert recent[0].processed_text == "In this meeting we will discuss the project code."

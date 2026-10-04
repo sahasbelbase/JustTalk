@@ -23,3 +23,11 @@ def test_build_prompt_translate():
 
     with pytest.raises(ValueError):
         build_prompt("translate")
+
+
+def test_translate_prompt_code_switching_directives():
+    prompt = build_prompt("translate", target_language="English")
+    assert "English" in prompt
+    assert "CODE-SWITCHING" in prompt
+    assert "Nepali" in prompt
+    assert "disfluencies" in prompt.lower()

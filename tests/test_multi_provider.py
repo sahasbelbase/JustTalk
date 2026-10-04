@@ -119,6 +119,26 @@ class TestMultiProvider(unittest.TestCase):
             "Hello world.",
         )
 
+    def test_translation_directive_wrapping(self):
+        formatter = MultiProviderFormatter(provider_id="gemini", api_key="mock_key")
+        captured_instructions = []
+
+        def mock_format_gemini(raw_text, wrapped_instruction, key):
+            captured_instructions.append(wrapped_instruction)
+            return "This meeting is about project code.", True, ""
+
+        formatter._format_gemini = mock_format_gemini
+        out, success, msg = formatter.format_text(
+            "yo meeting ma hami project code discuss garchhau",
+            style="translate",
+        )
+        self.assertTrue(success)
+        self.assertEqual(out, "This meeting is about project code.")
+        self.assertTrue(len(captured_instructions) > 0)
+        instruction = captured_instructions[0]
+        self.assertIn("Translate the spoken content into clean, fluent English", instruction)
+        self.assertNotIn("Only clean and format the spoken words into written text.", instruction)
+
 
 if __name__ == "__main__":
     unittest.main()

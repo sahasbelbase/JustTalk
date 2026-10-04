@@ -31,6 +31,7 @@ class ActionRouter:
     TRANSLATE_PATTERNS = [
         re.compile(r"^translate\s+(?:this\s+)?(?:in|into|to)\s+([a-zA-Z]+)[:,\s]+(.*)$", re.IGNORECASE),
         re.compile(r"^how\s+do\s+you\s+say\s+(.*)\s+in\s+([a-zA-Z]+)$", re.IGNORECASE),
+        re.compile(r"^translate(?:\s+this)?[:,\s]+(.*)$", re.IGNORECASE),
     ]
 
     FORMAL_PATTERNS = [
@@ -56,19 +57,25 @@ class ActionRouter:
             match = pattern.match(text)
             if match:
                 groups = match.groups()
-                if len(groups) == 2:
+                if len(groups) == 1:
+                    target_lang = "English"
+                    payload = groups[0].strip()
+                elif len(groups) == 2:
                     if pattern.pattern.startswith("^how"):
                         payload, target_lang = groups[0].strip(), groups[1].strip()
                     else:
                         target_lang, payload = groups[0].strip(), groups[1].strip()
+                else:
+                    target_lang = "English"
+                    payload = text
 
-                    instruction = build_prompt("translate", target_language=target_lang.capitalize())
-                    return ActionIntent(
-                        action_type="translate",
-                        target_payload=payload if payload else text,
-                        target_language=target_lang,
-                        system_instruction=instruction,
-                    )
+                instruction = build_prompt("translate", target_language=target_lang.capitalize())
+                return ActionIntent(
+                    action_type="translate",
+                    target_payload=payload if payload else text,
+                    target_language=target_lang,
+                    system_instruction=instruction,
+                )
 
         # 2. Check for Formal Rewrite
         for pattern in cls.FORMAL_PATTERNS:

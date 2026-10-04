@@ -22,6 +22,12 @@ def test_translate_intent():
     assert intent2.target_language.lower() == "french"
     assert intent2.target_payload == "good morning"
 
+    # "translate this: yo meeting ma hami code discuss garum"
+    intent3 = ActionRouter.parse_intent("translate this: yo meeting ma hami code discuss garum", is_action_mode=True)
+    assert intent3.action_type == "translate"
+    assert intent3.target_language.lower() == "english"
+    assert "yo meeting ma hami code discuss garum" in intent3.target_payload
+
 
 def test_rewrite_intent():
     intent = ActionRouter.parse_intent("rewrite this professionally: hey dude need that report asap", is_action_mode=True)
