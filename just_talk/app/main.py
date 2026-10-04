@@ -46,6 +46,7 @@ from ..shortcuts.manager import ShortcutManager
 from ..stt.model_manager import ModelManager
 from ..stt.nepali_conformer import NepaliConformerEngine
 from ..stt.whisper_engine import WhisperSTTEngine
+from ..system.audio_ducker import SystemAudioDucker
 from ..system.autostart import AutostartManager
 from ..system.caret_locator import CaretLocator
 from ..system.inserter import TextInserter
@@ -232,6 +233,7 @@ class JustTalkApp:
             timeout=getattr(self.config, "formatting_budget_sec", 3.0),
         )
         self.inserter = TextInserter()
+        self.audio_ducker = SystemAudioDucker()
         self.noise_filter = NoiseFilter()
         self.speaker_recognizer = SpeakerRecognizer()
         self.shortcut_manager: Optional[ShortcutManager] = None
@@ -453,11 +455,18 @@ class JustTalkApp:
         self._is_action_mode = is_action_mode
         self._record_start_time = time.time()
         self.inserter.capture_active_target()
+
+        # Temporarily mute computer audio (music, YouTube, movies, Reels) while holding shortcut
+        if getattr(self.config, "mute_audio_while_recording", True):
+            self.audio_ducker.mute()
+
         print(f"[Record] START recording (action_mode={is_action_mode})", file=sys.stderr)
         self.bridge.state_listening.emit(is_action_mode)
         started = self.recorder.start()
         if not started:
             print("[Record] ERROR: Microphone failed to start!", file=sys.stderr)
+            if hasattr(self, "audio_ducker"):
+                self.audio_ducker.unmute()
             self.bridge.state_error.emit("Microphone error")
         else:
             self._level_timer.start()
@@ -473,6 +482,8 @@ class JustTalkApp:
     def _on_cancel_recording(self) -> None:
         """User cancelled recording via the overlay [ ✕ ] button."""
         self._level_timer.stop()
+        if hasattr(self, "audio_ducker"):
+            self.audio_ducker.unmute()
         if self.overlay:
             self.overlay.update_audio_level(0.0)
         self.recorder.stop()
@@ -484,6 +495,8 @@ class JustTalkApp:
     def on_stop_recording(self) -> None:
         """Triggered on the main Qt thread when push-to-talk shortcut is released or checkmark is clicked."""
         self._level_timer.stop()
+        if hasattr(self, "audio_ducker"):
+            self.audio_ducker.unmute()
         if self.overlay:
             self.overlay.update_audio_level(0.0)
 
@@ -852,6 +865,8 @@ class JustTalkApp:
 
     def quit(self) -> None:
         """Clean shutdown."""
+        if hasattr(self, "audio_ducker"):
+            self.audio_ducker.unmute()
         if self.shortcut_manager:
             self.shortcut_manager.stop()
         if self.recorder:

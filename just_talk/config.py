@@ -133,6 +133,7 @@ class AppConfig:
     speaker_id_enabled: bool = True       # WeSpeaker CAM++ speaker recognition & tagging
     target_speaker_isolation: bool = False  # If True, ignore speech from unrecognized speakers
     two_phase_emission: bool = True       # Typeless-style: instant draft emission + AI polish
+    mute_audio_while_recording: bool = True  # Mute computer sound (music, videos, Reels) while speaking
 
     # AI Formatting Layer & Resilience
     gemini_enabled: bool = True

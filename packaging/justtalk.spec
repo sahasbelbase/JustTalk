@@ -52,6 +52,11 @@ if sys.platform == "darwin":
         "Quartz",
         "AVFoundation",
     ]
+elif sys.platform == "win32":
+    hidden_imports += [
+        "ctypes",
+        "ctypes.wintypes",
+    ]
 
 a = Analysis(
     [str(project_root / "main.py")],

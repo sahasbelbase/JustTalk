@@ -1394,6 +1394,11 @@ class MainWindow(QMainWindow):
         self.voice_isolation_check.toggled.connect(self._on_voice_isolation_toggled)
         s2_form.addRow("Voice Isolation:", self.voice_isolation_check)
 
+        self.mute_audio_check = QCheckBox("Auto-Mute Computer Sound (Silences background music, movies, & Reels while holding voice key)")
+        self.mute_audio_check.setChecked(getattr(self.config, "mute_audio_while_recording", True))
+        self.mute_audio_check.toggled.connect(self._on_mute_audio_toggled)
+        s2_form.addRow("Background Audio:", self.mute_audio_check)
+
         self.two_phase_check = QCheckBox("Typeless Fast Emission (Insert draft words instantly in 250ms, then polish with AI)")
         self.two_phase_check.setChecked(getattr(self.config, "two_phase_emission", True))
         self.two_phase_check.toggled.connect(self._on_two_phase_toggled)
@@ -1603,6 +1608,12 @@ class MainWindow(QMainWindow):
 
     def _on_voice_isolation_toggled(self, checked: bool) -> None:
         self.config.voice_isolation_enabled = checked
+        self.config.save()
+        if self.on_config_changed_callback:
+            self.on_config_changed_callback(self.config)
+
+    def _on_mute_audio_toggled(self, checked: bool) -> None:
+        self.config.mute_audio_while_recording = checked
         self.config.save()
         if self.on_config_changed_callback:
             self.on_config_changed_callback(self.config)
