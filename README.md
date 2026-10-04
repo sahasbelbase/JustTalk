@@ -20,8 +20,8 @@ Download the latest version of Just Talk directly for your operating system:
 
 | Operating System | Package Format | Direct Download Link | Release Page |
 | :--- | :--- | :--- | :--- |
-| **macOS** (Apple Silicon M1-M4 & Intel) | `.dmg` Disk Image | [⬇️ **Download JustTalk-macOS.dmg**](https://github.com/sahasbelbase/JustTalk/releases/latest/download/JustTalk-macOS.dmg) | [GitHub Releases](https://github.com/sahasbelbase/JustTalk/releases/latest) |
-| **Windows** (Windows 10 / 11 64-bit) | `.exe` Setup Installer | [⬇️ **Download JustTalk-Setup.exe**](https://github.com/sahasbelbase/JustTalk/releases/latest/download/JustTalk-Setup-1.0.0.exe) | [GitHub Releases](https://github.com/sahasbelbase/JustTalk/releases/latest) |
+| **macOS** (Apple Silicon & Intel) | `.dmg` Disk Image | [⬇️ **Download JustTalk-macOS.dmg**](https://github.com/sahasbelbase/JustTalk/releases/latest/download/JustTalk-macOS.dmg) | [GitHub Releases](https://github.com/sahasbelbase/JustTalk/releases/latest) |
+| **Windows** (Windows 10 / 11 64-bit) | `.exe` Setup Installer | [⬇️ **Download JustTalk-Windows.exe**](https://github.com/sahasbelbase/JustTalk/releases/latest/download/JustTalk-Windows.exe) | [GitHub Releases](https://github.com/sahasbelbase/JustTalk/releases/latest) |
 
 > 💡 **Looking for all releases or release notes?** Visit the [Just Talk Releases Page](https://github.com/sahasbelbase/JustTalk/releases/latest).
 

@@ -84,11 +84,13 @@ if ($LASTEXITCODE -ne 0) {
 
 $InstallerExe = Get-ChildItem -Path "dist\windows_installer\*.exe" | Select-Object -Last 1
 if ($InstallerExe) {
-    # Ensure packaging/windows and dist root both have the latest installer
-    Copy-Item $InstallerExe.FullName -Destination "packaging\windows\JustTalk-Setup-1.0.0.exe" -Force
-    Copy-Item $InstallerExe.FullName -Destination "dist\JustTalk-Setup-1.0.0.exe" -Force
-    Copy-Item $InstallerExe.FullName -Destination "dist\windows_installer\JustTalk-Setup.exe" -Force
+    # Ensure packaging/windows and dist root both have the standardized latest installer
+    Copy-Item $InstallerExe.FullName -Destination "dist\JustTalk-Windows.exe" -Force
+    Copy-Item $InstallerExe.FullName -Destination "dist\windows_installer\JustTalk-Windows.exe" -Force
+    Copy-Item $InstallerExe.FullName -Destination "packaging\windows\JustTalk-Windows.exe" -Force
+    # Backwards compatibility copies
     Copy-Item $InstallerExe.FullName -Destination "dist\JustTalk-Setup.exe" -Force
+    Copy-Item $InstallerExe.FullName -Destination "packaging\windows\JustTalk-Setup-1.0.0.exe" -Force
     Write-Host "=== Windows Installer ready at: $($InstallerExe.FullName) ===" -ForegroundColor Green
 } else {
     Write-Error "Inno Setup completed but no installer executable was found in dist\windows_installer\"

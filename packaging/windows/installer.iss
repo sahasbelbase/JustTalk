@@ -4,7 +4,7 @@
 ; ==============================================================================
 
 #define MyAppName "Just Talk"
-#define MyAppVersion "1.0.11"
+#define MyAppVersion "1.0.12"
 #define MyAppPublisher "Just Talk"
 #define MyAppURL "https://github.com/sahasbelbase/JustTalk"
 #define MyAppExeName "JustTalk.exe"
@@ -31,9 +31,9 @@ AllowNoIcons=yes
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 
-; Output settings
+; Output settings: standard predictable name for releases
 OutputDir=..\..\dist\windows_installer
-OutputBaseFilename=JustTalk-Setup-{#MyAppVersion}
+OutputBaseFilename=JustTalk-Windows
 SetupIconFile=..\..\just_talk\assets\icon.ico
 UninstallDisplayName={#MyAppName}
 UninstallDisplayIcon={app}\icon.ico

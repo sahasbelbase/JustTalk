@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>Just Talk — Offline AI Voice Input for macOS & Windows</title>
+  <meta name="description" content="Talk at 160 wpm with zero latency. Audio never leaves your machine. On-device Whisper speech recognition, dynamic Action Mode, and optional Gemini formatting. Free & Open Source.">
+  <meta name="keywords" content="voice input, speech to text, whisper, offline asr, nepaliconformer, ampixa, voice typing, macos dictation, windows dictation">
+  <meta name="author" content="Sahas Belbase">
+  
+  <!-- Canonical Link -->
+  <link rel="canonical" href="https://justtalk.sahasbelbase.com/">
+  
+  <!-- Favicons -->
+  <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/icon.png">
+  <link rel="apple-touch-icon" href="assets/icon.png">
+  
+  <!-- OpenGraph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://justtalk.sahasbelbase.com/">
+  <meta property="og:title" content="Just Talk — Offline AI Voice Input for macOS & Windows">
+  <meta property="og:description" content="Hold Fn or Right Alt anywhere on your desktop. Type at 160 wpm. Audio stays on your machine. Optional AI cleanup sends text only.">
+  <meta property="og:image" content="assets/icon.png">
+  
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Just Talk — Offline AI Voice Input">
+  <meta name="twitter:description" content="Talk at 160 wpm. Audio never leaves your machine. On-device Whisper speech recognition and dynamic Action Mode.">
+  <meta name="twitter:image" content="assets/icon.png">
+  
+  <!-- Schema.org JSON-LD (No fake ratings - strict adherence to Google guidelines) -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Just Talk",
+    "operatingSystem": "macOS 12.0+, Windows 10/11",
+    "applicationCategory": "UtilitiesApplication",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    },
+    "description": "Fast, privacy-first desktop voice input. Microphone audio is processed 100% locally on your machine with faster-whisper. Optional Gemini AI formatting cleans grammar and formatting.",
+    "author": {
+      "@type": "Person",
+      "name": "Sahas Belbase",
+      "url": "https://sahas.netlify.app/"
+    },
+    "license": "https://opensource.org/licenses/MIT",
+    "softwareVersion": "1.0.12",
+    "downloadUrl": "https://github.com/sahasbelbase/JustTalk/releases"
+  }
+  </script>
+
+  <!-- Typography & Styles -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Ambient Glows -->
+  <div class="ambient-glows" aria-hidden="true">
+    <div class="glow-top"></div>
+    <div class="glow-left"></div>
+    <div class="glow-right"></div>
+  </div>
+
+  <!-- Header / Navigation -->
+  <header class="site-header">
+    <div class="header-container">
+      <a href="#" class="brand-logo" aria-label="Just Talk Home">
+        <img src="assets/icon.png" alt="Just Talk Logo" class="brand-icon">
+        <div class="brand-text">
+          <span class="brand-title">Just Talk</span>
+          <span class="brand-version">v1.0.12</span>
+        </div>
+      </a>
+
+      <nav class="nav-links" aria-label="Main Navigation">
+        <a href="#playground">Playground</a>
+        <a href="#features">Features</a>
+        <a href="#ampixa">Ampixa Engine</a>
+        <a href="#install-help">Install Guide</a>
+        <a href="#comparison">Comparison</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+
+      <div class="header-actions">
+        <a href="https://github.com/sahasbelbase/JustTalk" target="_blank" rel="noopener noreferrer" class="github-icon-btn" title="View Source on GitHub">
+          <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        </a>
+        <a href="#download" class="cta-header-btn">
+          <span>Get Just Talk</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero-section">
+    <div class="hero-container">
+      
+      <!-- Release Badge -->
+      <a href="https://github.com/sahasbelbase/JustTalk/releases/latest" target="_blank" rel="noopener noreferrer" class="release-pill">
+        <span class="pulsing-dot" aria-hidden="true"></span>
+        <span class="release-text">v1.0.12 Available • Open Source on GitHub</span>
+        <svg class="chevron-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+      </a>
+
+      <!-- Headline -->
+      <h1 class="hero-title">
+        Talk at <span class="gradient-text">160 wpm</span>.<br>
+        Audio stays on your device.
+      </h1>
+
+      <p class="hero-subtitle">
+        Hold <kbd>Fn</kbd> on macOS or <kbd>Right Alt</kbd> on Windows anywhere on your computer. Speak naturally. Audio is transcribed 100% locally. Optional AI cleanup formats text only, and one toggle turns it off.
+      </p>
+
+      <!-- Smart Download CTA -->
+      <div class="download-section" id="download">
+        
+        <!-- Desktop Download Box -->
+        <div id="desktop-download-box" class="download-box">
+          <a id="smart-download-btn" href="https://github.com/sahasbelbase/JustTalk/releases/latest/download/JustTalk-macOS.dmg" class="smart-btn">
+            <svg id="smart-btn-icon" class="btn-os-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.37c.56-.73.96-1.74.85-2.77-.89.04-1.95.6-2.58 1.34-.54.63-.98 1.65-.85 2.66.98.08 1.98-.51 2.58-1.23z"/>
+            </svg>
+            <div class="btn-text-col">
+              <div id="smart-btn-label" class="btn-label-title">Download for macOS (.dmg)</div>
+              <div id="smart-btn-sub" class="btn-label-sub">Universal Installer • macOS 12.0+</div>
+            </div>
+          </a>
+
+          <!-- Other Platforms Dropdown -->
+          <div class="dropdown-wrapper">
+            <button id="os-dropdown-trigger" class="dropdown-trigger-btn" aria-haspopup="true" aria-expanded="false">
+              <span>Other OS</span>
+              <svg class="dropdown-chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+            </button>
+
+            <div id="os-dropdown-menu" class="dropdown-popover hidden" role="menu">
+              <a href="https://github.com/sahasbelbase/JustTalk/releases/latest/download/JustTalk-macOS.dmg" class="dropdown-item" role="menuitem">
+                <svg class="dropdown-item-icon" viewBox="0 0 24 24"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.37c.56-.73.96-1.74.85-2.77-.89.04-1.95.6-2.58 1.34-.54.63-.98 1.65-.85 2.66.98.08 1.98-.51 2.58-1.23z"/></svg>
+                <div>
+                  <div class="dropdown-item-title">macOS (.dmg)</div>
+                  <div class="dropdown-item-desc">Apple Silicon M1-M4 & Intel</div>
+                </div>
+              </a>
+              <a href="https://github.com/sahasbelbase/JustTalk/releases/latest/download/JustTalk-Windows.exe" class="dropdown-item" role="menuitem">
+                <svg class="dropdown-item-icon" viewBox="0 0 24 24"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
+                <div>
+                  <div class="dropdown-item-title">Windows (.exe)</div>
+                  <div class="dropdown-item-desc">Windows 10 / 11 64-bit</div>
+                </div>
+              </a>
+              <div class="dropdown-divider"></div>
+              <a href="https://github.com/sahasbelbase/JustTalk/releases/latest" target="_blank" rel="noopener noreferrer" class="dropdown-footer-link" role="menuitem">
+                <span>View all releases & SHA256 checksums</span>
+                <svg class="external-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <!-- Mobile Notice (Shown only on phone/tablet browsers) -->
+        <div id="mobile-notice-box" class="mobile-notice hidden">
+          <p class="mobile-text">Just Talk is a desktop application for <strong>macOS</strong> and <strong>Windows</strong>.</p>
+          <div class="mobile-buttons">
+            <button id="mobile-copy-btn" class="secondary-btn">📋 Copy Download Link</button>
+            <a href="https://github.com/sahasbelbase/JustTalk" target="_blank" class="secondary-btn">⭐ Star on GitHub</a>
+          </div>
+          <span id="copy-feedback" class="copy-feedback hidden">Link copied to clipboard!</span>
+        </div>
+
+        <!-- Trust Badges -->
+        <div class="trust-row">
+          <span>✓ Audio never leaves machine</span>
+          <span class="dot-sep">•</span>
+          <span>✓ 100% Free & Open Source</span>
+          <span class="dot-sep">•</span>
+          <span>✓ MIT License</span>
+          <span class="dot-sep">•</span>
+          <a href="#install-help" class="install-help-link">First-time install guide ℹ️</a>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Interactive 3D Keycap & Live HUD Playground -->
+  <section class="playground-section" id="playground">
+    <div class="section-container">
+      
+      <div class="section-header">
+        <h2 class="section-title">Interactive Keyboard & HUD Simulator</h2>
+        <p class="section-subtitle">
+          Click and hold the keycap below (or hold <kbd>Space</kbd> on this simulator). Hold <kbd>Shift</kbd> simultaneously to ignite ⚡ <strong>Action Mode</strong>.
+        </p>
+        <div class="simulator-note">
+          <span>💡 <strong>Browser Simulation Note:</strong> Web browsers cannot intercept macOS <kbd>Fn</kbd> or Windows menu keys. The simulator responds to mouse/touch hold or <kbd>Space</kbd>. The native desktop app binds to system-level <kbd>Fn</kbd> (macOS) or <kbd>Right Alt</kbd> (Windows).</span>
+        </div>
+      </div>
+
+      <!-- Playground Card -->
+      <div class="playground-card" tabindex="0" id="playground-card" aria-label="Interactive voice input playground">
+        
+        <!-- Live Floating HUD Pill Simulation -->
+        <div class="pill-container">
+          <div id="sim-pill" class="sim-pill pill-hidden" role="status" aria-live="polite">
+            <div id="sim-pill-badge" class="pill-badge">
+              <span class="dot-listening"></span>
+            </div>
+            <div class="waveform-box">
+              <canvas id="sim-waveform" width="130" height="24" class="waveform-canvas" aria-label="Simulated Audio Waveform"></canvas>
+              <span class="waveform-label">[Simulated Audio]</span>
+            </div>
+            <span id="sim-pill-status" class="pill-status-text">LISTENING...</span>
+          </div>
+        </div>
+
+        <!-- 3D Mechanical Keycap -->
+        <div class="keycap-stage">
+          <div class="keycap-perspective">
+            <button id="sim-keycap" class="keycap-3d" role="button" tabindex="0" aria-label="Push to talk keycap simulator. Hold to speak, release to insert text.">
+              <div class="keycap-top">
+                <span class="keycap-led" aria-hidden="true"></span>
+                <span id="keycap-legend" class="keycap-text">fn</span>
+                <span class="keycap-subtext">hold to speak</span>
+              </div>
+            </button>
+          </div>
+
+          <div class="keycap-legend-guide">
+            <span class="guide-item"><span class="guide-dot blue"></span> Hold = Voice Dictation</span>
+            <span class="guide-item"><span class="guide-dot amber"></span> + Shift = ⚡ Action Mode</span>
+          </div>
+        </div>
+
+        <!-- Simulated Typing Buffer / Output Box -->
+        <div class="sim-output-section">
+          <div class="output-header">
+            <span class="output-label">ACTIVE INSERTION TARGET (Active Cursor)</span>
+            <div class="preset-group" role="group" aria-label="Audio sample presets">
+              <button class="preset-btn active" data-preset="english">English Code</button>
+              <button class="preset-btn" data-preset="nepali">Nepali Conformer</button>
+              <button class="preset-btn" data-preset="action">Action Translation</button>
+            </div>
+          </div>
+          <div class="output-box" aria-live="polite">
+            <span id="sim-typed-text" class="typed-text">Click and hold the tactile keycap above to test instant voice dictation...</span>
+            <span id="sim-cursor" class="sim-cursor" aria-hidden="true"></span>
+          </div>
+          <div class="output-footer">
+            <span id="sim-app-behavior">In the desktop app, speech is transcribed locally and typed directly into whichever app has cursor focus (VS Code, Slack, Notion, Word, Browser).</span>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <!-- First-Time Installation Help (Unsigned App Notice) -->
+  <section class="install-help-section" id="install-help">
+    <div class="section-container">
+      
+      <div class="section-header">
+        <span class="eyebrow">First-Time Setup</span>
+        <h2 class="section-title">First-Time Installation Guide</h2>
+        <p class="section-subtitle">
+          Just Talk is free, open-source software built independently without expensive corporate signing certificates ($99/yr Apple Developer / $400/yr Windows EV). Here is how to complete first-time setup safely in 10 seconds:
+        </p>
+      </div>
+
+      <div class="install-grid">
+        
+        <!-- macOS Setup -->
+        <div class="install-card">
+          <div class="install-os-header">
+            <svg class="os-icon-card" viewBox="0 0 24 24"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.37c.56-.73.96-1.74.85-2.77-.89.04-1.95.6-2.58 1.34-.54.63-.98 1.65-.85 2.66.98.08 1.98-.51 2.58-1.23z"/></svg>
+            <h3 class="install-os-title">macOS (Gatekeeper Verification)</h3>
+          </div>
+          <ol class="install-steps">
+            <li>Mount <code>JustTalk-macOS.dmg</code> and drag <strong>Just Talk</strong> to your <code>/Applications</code> folder.</li>
+            <li>If macOS Gatekeeper shows <em>"Apple cannot check it for malicious software"</em>:
+              <div class="code-snippet-box">
+                <code>xattr -cr /Applications/Just\ Talk.app</code>
+              </div>
+              <span class="snippet-sub">Run this one command in Terminal, or right-click <strong>Just Talk.app</strong> → click <strong>Open</strong> → click <strong>Open Anyway</strong>.</span>
+            </li>
+            <li>Grant <strong>Microphone</strong> and <strong>Accessibility</strong> permissions when prompted so Just Talk can listen while holding Fn and paste into your active apps.</li>
+          </ol>
+        </div>
+
+        <!-- Windows Setup -->
+        <div class="install-card">
+          <div class="install-os-header">
+            <svg class="os-icon-card" viewBox="0 0 24 24"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
+            <h3 class="install-os-title">Windows (SmartScreen Notice)</h3>
+          </div>
+          <ol class="install-steps">
+            <li>Run <code>JustTalk-Windows.exe</code> installer.</li>
+            <li>When Windows SmartScreen displays <em>"Windows protected your PC"</em>:
+              <div class="tip-box">
+                Click <strong>"More info"</strong> → Click <strong>"Run anyway"</strong>.
+              </div>
+              <span class="snippet-sub">This warning occurs for newly published open-source executables without commercial EV certificates.</span>
+            </li>
+            <li>The installer runs in per-user space without requiring Administrator rights. Hold <kbd>Right Alt</kbd> to begin voice typing!</li>
+          </ol>
+        </div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Core Architecture Features (Bento Grid) -->
+  <section class="features-section" id="features">
+    <div class="section-container">
+      
+      <div class="section-header">
+        <span class="eyebrow">Local-First Architecture</span>
+        <h2 class="section-title">Engineered for speed, privacy, and zero distraction.</h2>
+        <p class="section-subtitle">
+          Audio never touches the cloud. Faster-Whisper int8 models run directly on your hardware. Native PySide6 interface with instant cursor typing.
+        </p>
+      </div>
+
+      <!-- Bento Grid of Real Shipped Features -->
+      <div class="bento-grid">
+        
+        <!-- Feature 1: Sub-400ms On-Device Whisper -->
+        <div class="bento-card col-span-2">
+          <div class="card-inner">
+            <div class="card-icon blue">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            </div>
+            <h3 class="card-title">Sub-400ms 100% On-Device Whisper</h3>
+            <p class="card-desc">
+              CTranslate2 int8 inference executes locally utilizing ARM NEON and AVX-512 CPU/GPU acceleration. Audio streams directly into local memory and is discarded immediately after decoding.
+            </p>
+            <div class="stats-row">
+              <div class="stat-col">
+                <div class="stat-value">~380ms</div>
+                <div class="stat-label">Average Latency</div>
+              </div>
+              <div class="stat-col">
+                <div class="stat-value green">0 KB</div>
+                <div class="stat-label">Cloud Audio Egress</div>
+              </div>
+              <div class="stat-col">
+                <div class="stat-value">int8</div>
+                <div class="stat-label">Quantized Weights</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Feature 2: Dynamic Action Mode -->
+        <div class="bento-card">
+          <div class="card-inner">
+            <div class="card-icon amber">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+            </div>
+            <h3 class="card-title">Dynamic Action Mode</h3>
+            <p class="card-desc">
+              Press <kbd>Shift</kbd> while holding your trigger key to instantly switch the HUD into Action Mode with an amber halo. Speak in any language to automatically translate into clean English or trigger AI instructions.
+            </p>
+          </div>
+        </div>
+
+        <!-- Feature 3: Selective Language Footprint -->
+        <div class="bento-card">
+          <div class="card-inner">
+            <div class="card-icon purple">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"/></svg>
+            </div>
+            <h3 class="card-title">Selective Spoken Languages</h3>
+            <p class="card-desc">
+              Only download models for the languages you actually speak. If you only speak English, download the English model (~460 MB) to save disk space and RAM.
+            </p>
+          </div>
+        </div>
+
+        <!-- Feature 4: Active Cursor Insertion -->
+        <div class="bento-card">
+          <div class="card-inner">
+            <div class="card-icon cyan">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"/></svg>
+            </div>
+            <h3 class="card-title">Universal Cursor Insertion</h3>
+            <p class="card-desc">
+              Types text into whatever app is currently active (VS Code, Slack, Notion, browsers, terminals). Existing clipboard contents are restored automatically 50ms after paste.
+            </p>
+          </div>
+        </div>
+
+        <!-- Feature 5: Pure Offline Mode Toggle -->
+        <div class="bento-card">
+          <div class="card-inner">
+            <div class="card-icon green">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+            </div>
+            <h3 class="card-title">Pure Offline Mode</h3>
+            <p class="card-desc">
+              One toggle in Settings completely disables all external API calls. Your speech is transcribed locally and pasted with zero network connections.
+            </p>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Roadmap Note for upcoming neural isolation models -->
+      <div class="roadmap-box">
+        <div class="roadmap-badge">In Active Research & Development</div>
+        <p class="roadmap-text">
+          We are currently prototyping <strong>DeepFilterNet v3</strong> real-time noise cancellation and <strong>WeSpeaker CAM++</strong> speaker biometric enrollment in our lab to isolate your voice in noisy offices. These features will roll out in upcoming minor releases once fully benchmarked.
+        </p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Ampixa NepaliConformer Spotlight Section -->
+  <section class="ampixa-section" id="ampixa">
+    <div class="section-container">
+      
+      <div class="ampixa-flex">
+        <div class="ampixa-copy">
+          <div class="ampixa-badge">
+            <span>🇳🇵 Specialized Speech Engine</span>
+          </div>
+          <h2 class="ampixa-title">
+            Ampixa NepaliConformer: Natural Conversational Nepali.
+          </h2>
+          <p class="ampixa-desc">
+            Standard Whisper Large-V3 struggles significantly on conversational Nepali phone audio (yielding up to 96.3% WER). We engineered support for <a href="https://ampixa.com/#work" target="_blank" rel="noopener noreferrer" class="link-white">Ampixa Labs' NepaliConformer</a> (121M params, trained on ~1,655 hours of spontaneous Nepali conversational audio).
+          </p>
+          
+          <div class="benchmark-card">
+            <div class="benchmark-header">
+              <span>Benchmark on NepTel Conversational Speech (Ampixa Labs 2024-2025)</span>
+            </div>
+            <div class="benchmark-row">
+              <span class="bench-label">Whisper Large-V3 (Zero-shot phone audio):</span>
+              <span class="bench-val red">96.3% WER</span>
+            </div>
+            <div class="bench-bar-track">
+              <div class="bench-bar-fill red" style="width: 96.3%"></div>
+            </div>
+            <div class="benchmark-row mt-3">
+              <span class="bench-label">Ampixa NepaliConformer Engine:</span>
+              <span class="bench-val green">33.8% WER</span>
+            </div>
+            <div class="bench-bar-track">
+              <div class="bench-bar-fill green" style="width: 33.8%"></div>
+            </div>
+            <div class="benchmark-citation">
+              <span>Source citation: Evaluated by Ampixa Labs on the NepTel conversational dataset. Read research at <a href="https://ampixa.com/#work" target="_blank" rel="noopener noreferrer">ampixa.com/#work</a>.</span>
+            </div>
+          </div>
+
+          <p class="ampixa-sub">
+            Combined with optional Gemini formatting, mixed Nepglish (e.g. <em>"yo code ma error aayo, fix garnu paryo"</em>) is smoothly cleaned and formatted into fluent Devanagari or clean English.
+          </p>
+        </div>
+
+        <div class="ampixa-stat-card">
+          <div class="stat-highlight">33.8%</div>
+          <div class="stat-highlight-label">Word Error Rate on NepTel</div>
+          <p class="stat-highlight-desc">
+            Trained and benchmarked on real conversational speech. Supports fully offline local model weights.
+          </p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Architectural Comparison Matrix -->
+  <section class="comparison-section" id="comparison">
+    <div class="section-container">
+      
+      <div class="section-header">
+        <span class="eyebrow">Architectural Comparison</span>
+        <h2 class="section-title">Why engineers & writers choose Just Talk</h2>
+      </div>
+
+      <div class="table-container">
+        <table class="compare-table">
+          <thead>
+            <tr>
+              <th scope="col">Feature</th>
+              <th scope="col" class="th-highlight">Just Talk (Open Source)</th>
+              <th scope="col">Cloud Voice Typing Apps</th>
+              <th scope="col">Built-in OS Dictation</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="td-feature">On-Device Audio Privacy</td>
+              <td class="td-highlight green">✓ 100% on-device (0 audio egress)</td>
+              <td class="td-red">✗ Streams raw audio to cloud</td>
+              <td class="td-muted">Partial (device dependent)</td>
+            </tr>
+            <tr>
+              <td class="td-feature">Dynamic Action Mode (Fn + Shift)</td>
+              <td class="td-highlight green">✓ Instant on-the-fly toggle</td>
+              <td class="td-red">✗ Requires clicking dropdowns</td>
+              <td class="td-red">✗ Unsupported</td>
+            </tr>
+            <tr>
+              <td class="td-feature">Conversational Nepali & Nepglish</td>
+              <td class="td-highlight green">✓ Ampixa Conformer Engine (33.8% WER)</td>
+              <td class="td-red">✗ High error rates on slang/code</td>
+              <td class="td-red">✗ Unsupported</td>
+            </tr>
+            <tr>
+              <td class="td-feature">Pure Offline Operation</td>
+              <td class="td-highlight green">✓ Single toggle disables all external calls</td>
+              <td class="td-red">✗ Requires active internet connection</td>
+              <td class="td-muted">Basic language models only</td>
+            </tr>
+            <tr>
+              <td class="td-feature">Pricing & Licensing</td>
+              <td class="td-highlight">100% Free & Open Source (MIT)</td>
+              <td class="td-muted">$10 - $20 / month subscription</td>
+              <td class="td-muted">Bundled (Basic accuracy)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Privacy & Transparency -->
+  <section class="privacy-section" id="privacy">
+    <div class="section-container">
+      
+      <div class="section-header">
+        <span class="eyebrow">Privacy & Security</span>
+        <h2 class="section-title">Transparent data handling by design.</h2>
+      </div>
+
+      <div class="privacy-grid">
+        <div class="privacy-card">
+          <h3 class="privacy-card-title">🎙️ Audio Recording</h3>
+          <p class="privacy-card-desc">
+            Your microphone is only recorded while your trigger key is physically held down. Audio is stored in volatile RAM, processed locally by faster-whisper, and immediately cleared. Audio files are never written to disk or sent across the internet.
+          </p>
+        </div>
+        <div class="privacy-card">
+          <h3 class="privacy-card-title">🔑 API Keys & Local Config</h3>
+          <p class="privacy-card-desc">
+            If you choose to enable AI formatting, your Gemini API key is saved locally in your user folder at <code>~/.just_talk/config.json</code> with restrictive file permissions. It is only sent directly to Google's official Gemini endpoint.
+          </p>
+        </div>
+        <div class="privacy-card">
+          <h3 class="privacy-card-title">🛡️ Pure Offline Mode</h3>
+          <p class="privacy-card-desc">
+            If you handle sensitive medical records, proprietary code, or confidential legal documents, toggle <strong>Pure Offline Mode</strong>. Just Talk will bypass all cloud APIs entirely and paste raw Whisper transcriptions directly into your active cursor.
+          </p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- FAQ Section -->
+  <section class="faq-section" id="faq">
+    <div class="section-container-narrow">
+      
+      <div class="section-header">
+        <span class="eyebrow">FAQ</span>
+        <h2 class="section-title">Frequently Asked Questions</h2>
+      </div>
+
+      <div class="faq-accordion">
+        <details class="faq-item">
+          <summary class="faq-question">
+            <span>Does my voice audio ever get uploaded to the cloud?</span>
+            <span class="faq-arrow" aria-hidden="true">▾</span>
+          </summary>
+          <div class="faq-answer">
+            <p>No. Your microphone audio is processed 100% locally on your computer using faster-whisper and CTranslate2. In standard AI formatting mode, only the raw transcribed text (not your voice recording) is sent to Gemini for grammar cleanup. You can also turn on Pure Offline Mode in Settings for zero network requests.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary class="faq-question">
+            <span>Why does macOS or Windows show an untrusted developer warning?</span>
+            <span class="faq-arrow" aria-hidden="true">▾</span>
+          </summary>
+          <div class="faq-answer">
+            <p>Just Talk is a community-driven open source project released under the MIT license. We do not charge subscriptions or purchase commercial signing certificates ($99/year Apple Developer, $400/year Windows EV). On macOS, run <code>xattr -cr /Applications/Just\ Talk.app</code> once. On Windows, click "More info" then "Run anyway". All source code is completely open for audit on GitHub.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary class="faq-question">
+            <span>How does Dynamic Action Mode work?</span>
+            <span class="faq-arrow" aria-hidden="true">▾</span>
+          </summary>
+          <div class="faq-answer">
+            <p>Hold <kbd>Fn</kbd> on macOS or <kbd>Right Alt</kbd> on Windows to start dictation. If you press <kbd>Shift</kbd> while speaking, the floating HUD turns amber-gold into ⚡ Action Mode. When released, Just Talk instructs the AI to translate your speech into fluent English or execute commands instead of verbatim dictation.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary class="faq-question">
+            <span>Can I download only the language models I actually speak?</span>
+            <span class="faq-arrow" aria-hidden="true">▾</span>
+          </summary>
+          <div class="faq-answer">
+            <p>Yes! During onboarding and in the Settings panel, you select your spoken languages. If you only select English, Just Talk downloads only the English model (~460 MB), saving over 1 GB of storage and memory.</p>
+          </div>
+        </details>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="site-footer">
+    <div class="footer-container">
+      
+      <div class="footer-brand">
+        <img src="assets/icon.png" alt="Just Talk Logo" class="footer-logo">
+        <div class="footer-brand-text">
+          <span class="footer-name">Just Talk</span>
+          <span class="footer-copy">© 2026 Sahas Belbase • MIT License</span>
+        </div>
+      </div>
+
+      <div class="footer-links">
+        <a href="https://github.com/sahasbelbase/JustTalk" target="_blank" rel="noopener noreferrer">GitHub Repository</a>
+        <a href="https://sahas.netlify.app/" target="_blank" rel="noopener noreferrer">Author Portfolio</a>
+        <a href="https://github.com/sahasbelbase" target="_blank" rel="noopener noreferrer">Author GitHub</a>
+        <a href="https://linkedin.com/in/sahasbelbase" target="_blank" rel="noopener noreferrer">LinkedIn</a>
+      </div>
+
+    </div>
+  </footer>
+
+  <!-- Native JavaScript Controller -->
+  <script src="app.js"></script>
+</body>
+</html>
