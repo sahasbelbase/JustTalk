@@ -51,14 +51,18 @@ class NepaliConformerEngine(STTEngine):
             self._is_loading = True
             self._loading_status = "Locating Ampixa NepaliConformer weights..."
 
-            # Ensure model exists in cache
+            # Ensure model exists in cache — never trigger download here;
+            # NepaliConformer must be explicitly downloaded from Settings.
+            # If weights are missing, fall back immediately to Whisper.
             if not self.model_manager.is_model_downloaded("nepali_conformer"):
-                self._loading_status = "Downloading Ampixa NepaliConformer (~462 MB)..."
-                ok = self.model_manager.download_model("nepali_conformer")
-                if not ok:
-                    self._is_loading = False
-                    self._loading_status = "Download failed"
-                    return False
+                self._is_loading = False
+                self._loading_status = "Not downloaded — using Whisper Nepali fallback"
+                print(
+                    "[NepaliConformer] Ampixa weights not found locally; "
+                    "falling back to Whisper multilingual for Nepali.",
+                    file=sys.stderr,
+                )
+                return False
 
             base_dir = self.model_manager.get_model_path("nepali_conformer")
             nemo_candidates = list(base_dir.glob("*.nemo"))

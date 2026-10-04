@@ -472,6 +472,68 @@ class MainWindow(QMainWindow):
         status_row.addWidget(self.audio_card)
         layout.addLayout(status_row)
 
+        # Live Model Download Progress Card (hidden until a download is active)
+        self.home_download_card = QFrame()
+        self.home_download_card.setObjectName("card")
+        self.home_download_card.setStyleSheet("""
+            QFrame#card {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 rgba(108, 142, 239, 0.18), stop:1 rgba(48, 209, 88, 0.12));
+                border: 1px solid rgba(108, 142, 239, 0.35);
+                border-radius: 10px;
+            }
+        """)
+        hdc_layout = QVBoxLayout(self.home_download_card)
+        hdc_layout.setContentsMargins(16, 14, 16, 14)
+        hdc_layout.setSpacing(8)
+
+        hdc_header = QHBoxLayout()
+        hdc_icon_lbl = QLabel("⬇")
+        hdc_icon_lbl.setFont(ThemeManager.get_ui_font(16))
+        hdc_header.addWidget(hdc_icon_lbl)
+
+        self.home_download_title = QLabel("Downloading speech model…")
+        self.home_download_title.setFont(ThemeManager.get_ui_font(13, weight=QFont.Weight.DemiBold))
+        hdc_header.addWidget(self.home_download_title, 1)
+
+        self.home_download_pct_lbl = QLabel("0%")
+        self.home_download_pct_lbl.setFont(ThemeManager.get_mono_font(13, weight=QFont.Weight.Bold))
+        self.home_download_pct_lbl.setStyleSheet("color: #6C8EEF;")
+        hdc_header.addWidget(self.home_download_pct_lbl)
+        hdc_layout.addLayout(hdc_header)
+
+        self.home_download_bar = QProgressBar()
+        self.home_download_bar.setRange(0, 100)
+        self.home_download_bar.setValue(0)
+        self.home_download_bar.setTextVisible(False)
+        self.home_download_bar.setFixedHeight(10)
+        self.home_download_bar.setStyleSheet("""
+            QProgressBar {
+                border: none;
+                border-radius: 5px;
+                background-color: rgba(255,255,255,0.10);
+            }
+            QProgressBar::chunk {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #6C8EEF, stop:1 #30D158);
+                border-radius: 5px;
+            }
+        """)
+        hdc_layout.addWidget(self.home_download_bar)
+
+        self.home_download_detail = QLabel("Connecting to repository…")
+        self.home_download_detail.setObjectName("mutedLabel")
+        self.home_download_detail.setFont(ThemeManager.get_ui_font(11))
+        self.home_download_detail.setWordWrap(True)
+        hdc_layout.addWidget(self.home_download_detail)
+
+        self.home_download_card.hide()
+        layout.addWidget(self.home_download_card)
+
+        # Register global download listener so Home screen always shows live progress
+        self.model_manager.register_global_listener(self._on_home_download_progress_raw)
+
+
         # "Try It Here" Live Dictation Sandbox
         practice_card = QFrame()
         practice_card.setObjectName("card")
@@ -696,6 +758,75 @@ class MainWindow(QMainWindow):
             r_layout.addWidget(copy_btn)
 
             self.recent_items_layout.addWidget(row)
+
+    def _on_home_download_progress_raw(self, tier_id: str, pct: float, msg: str) -> None:
+        """Called on a background thread from ModelManager. Must dispatch to Qt thread via QTimer."""
+        # QTimer.singleShot is thread-safe and queues the call to the main Qt thread.
+        QTimer.singleShot(0, lambda: self._on_home_download_update(tier_id, pct, msg))
+
+    def _on_home_download_update(self, tier_id: str, pct: float, msg: str) -> None:
+        """Update the Home screen download progress card on the Qt main thread."""
+        if not hasattr(self, "home_download_card"):
+            return
+        tier_info = self.model_manager.get_tier_info(tier_id)
+        display = tier_info.display_name if tier_info else tier_id
+
+        if pct < 0:
+            # Download failed or cancelled
+            self.home_download_card.setStyleSheet("""
+                QFrame#card {
+                    background: rgba(255, 69, 58, 0.10);
+                    border: 1px solid rgba(255, 69, 58, 0.35);
+                    border-radius: 10px;
+                }
+            """)
+            self.home_download_title.setText("Download stopped")
+            self.home_download_pct_lbl.setText("—")
+            self.home_download_pct_lbl.setStyleSheet("color: #FF453A;")
+            self.home_download_detail.setText(msg)
+            self.home_download_card.show()
+            # Auto-hide the card after 6 seconds
+            QTimer.singleShot(6000, lambda: self._hide_home_download_card_if_idle())
+        elif pct >= 100:
+            # Completed
+            self.home_download_card.setStyleSheet("""
+                QFrame#card {
+                    background: rgba(48, 209, 88, 0.12);
+                    border: 1px solid rgba(48, 209, 88, 0.35);
+                    border-radius: 10px;
+                }
+            """)
+            self.home_download_title.setText(f"✓ {display} — Ready!")
+            self.home_download_pct_lbl.setText("100%")
+            self.home_download_pct_lbl.setStyleSheet("color: #30D158;")
+            self.home_download_bar.setValue(100)
+            self.home_download_detail.setText(msg)
+            self.home_download_card.show()
+            self._refresh_home_status()
+            QTimer.singleShot(8000, lambda: self._hide_home_download_card_if_idle())
+        else:
+            # In-progress
+            self.home_download_card.setStyleSheet("""
+                QFrame#card {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                        stop:0 rgba(108, 142, 239, 0.18), stop:1 rgba(48, 209, 88, 0.12));
+                    border: 1px solid rgba(108, 142, 239, 0.35);
+                    border-radius: 10px;
+                }
+            """)
+            self.home_download_title.setText(f"Downloading {display}")
+            self.home_download_pct_lbl.setText(f"{int(pct)}%")
+            self.home_download_pct_lbl.setStyleSheet("color: #6C8EEF;")
+            self.home_download_bar.setValue(int(max(0, min(100, pct))))
+            self.home_download_detail.setText(msg)
+            self.home_download_card.show()
+
+    def _hide_home_download_card_if_idle(self) -> None:
+        """Hide the home download card only if no download is currently active."""
+        if not hasattr(self, "home_download_card"):
+            return
+        if not self.model_manager.is_downloading():
+            self.home_download_card.hide()
 
     # -------------------------------------------------------------------------
     # Screen 2: History View
@@ -1702,7 +1833,9 @@ class MainWindow(QMainWindow):
 
         # Check required models for spoken languages
         all_ready, missing = self.model_manager.are_required_models_downloaded(
-            self.config.spoken_languages, tier_id
+            self.config.spoken_languages,
+            tier_id,
+            nepali_engine=getattr(self.config, "nepali_asr_engine", "conformer"),
         )
 
         if hasattr(self.model_manager, "is_downloading") and self.model_manager.is_downloading(tier_id):

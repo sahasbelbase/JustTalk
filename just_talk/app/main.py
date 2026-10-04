@@ -638,6 +638,7 @@ class JustTalkApp:
                 (cur_lang in ("ne", "ne_en") or "ne" in getattr(self.config, "spoken_languages", []))
                 and getattr(self.config, "nepali_asr_engine", "conformer") == "conformer"
                 and hasattr(self, "nepali_conformer")
+                and self.model_manager.is_model_downloaded("nepali_conformer")
             )
 
             raw_text = ""

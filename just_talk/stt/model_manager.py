@@ -178,14 +178,44 @@ class ModelManager:
         self.models_dir.mkdir(parents=True, exist_ok=True)
         self._download_threads: Dict[str, threading.Thread] = {}
         self._progress_listeners: Dict[str, list[Callable[[float, str], None]]] = {}
+        self._global_listeners: list[Callable[[str, float, str], None]] = []
         self._active_progress: Dict[str, Tuple[float, str]] = {}
         self._cancel_flags: Dict[str, bool] = {}
         self._download_lock = threading.Lock()
 
-    def is_downloading(self, tier_id: str) -> bool:
+    def register_global_listener(self, callback: Callable[[str, float, str], None]) -> None:
+        """Register a callback (tier_id, pct, msg) invoked on any model download progress or status change."""
         with self._download_lock:
-            thread = self._download_threads.get(tier_id)
-            return thread is not None and thread.is_alive()
+            if callback not in self._global_listeners:
+                self._global_listeners.append(callback)
+            # Replay active downloads immediately so new UI components catch up
+            for tid, prog in list(self._active_progress.items()):
+                try:
+                    callback(tid, prog[0], prog[1])
+                except Exception:
+                    pass
+
+    def unregister_global_listener(self, callback: Callable[[str, float, str], None]) -> None:
+        with self._download_lock:
+            if callback in self._global_listeners:
+                self._global_listeners.remove(callback)
+
+    def is_downloading(self, tier_id: Optional[str] = None) -> bool:
+        with self._download_lock:
+            if tier_id is not None:
+                thread = self._download_threads.get(tier_id)
+                return thread is not None and thread.is_alive()
+            # If tier_id is None, check if ANY download is currently active
+            return any(t is not None and t.is_alive() for t in self._download_threads.values())
+
+    def get_any_active_download(self) -> Optional[Tuple[str, float, str]]:
+        """Return (tier_id, pct, msg) for the first active download in progress, if any."""
+        with self._download_lock:
+            for tid, thread in self._download_threads.items():
+                if thread and thread.is_alive() and tid in self._active_progress:
+                    pct, msg = self._active_progress[tid]
+                    return tid, pct, msg
+            return None
 
     def get_active_progress(self, tier_id: str) -> Optional[Tuple[float, str]]:
         with self._download_lock:
@@ -288,7 +318,12 @@ class ModelManager:
 
         return False, f"Target '{clean}' is neither an existing directory nor a valid Hugging Face repository."
 
-    def get_models_for_languages(self, spoken_languages: list[str], tier_preference: str = "quality") -> list[str]:
+    def get_models_for_languages(
+        self,
+        spoken_languages: list[str],
+        tier_preference: str = "quality",
+        nepali_engine: str = "conformer",
+    ) -> list[str]:
         """Return the minimal list of model tier IDs required for the selected spoken languages."""
         langs = set(spoken_languages or ["en"])
         models: list[str] = []
@@ -299,20 +334,28 @@ class ModelManager:
                 needs_multilingual = True
 
         if "ne" in langs or "ne_en" in langs:
-            models.append("nepali_conformer")
+            if nepali_engine == "conformer":
+                models.append("nepali_conformer")
+            else:
+                needs_multilingual = True
 
         if needs_multilingual:
             models.append(tier_preference if tier_preference in ("quality", "balanced", "fast") else "quality")
         else:
             # English only
-            if "en" in langs and not ("ne" in langs and len(langs) == 1):
+            if "en" in langs and not ("ne" in langs and len(langs) == 1 and nepali_engine == "conformer"):
                 models.append("small.en" if tier_preference in ("quality", "balanced") else "base.en")
 
         return list(dict.fromkeys(models))
 
-    def are_required_models_downloaded(self, spoken_languages: list[str], tier_preference: str = "quality") -> tuple[bool, list[str]]:
+    def are_required_models_downloaded(
+        self,
+        spoken_languages: list[str],
+        tier_preference: str = "quality",
+        nepali_engine: str = "conformer",
+    ) -> tuple[bool, list[str]]:
         """Check if all models needed for the spoken languages are downloaded."""
-        required = self.get_models_for_languages(spoken_languages, tier_preference)
+        required = self.get_models_for_languages(spoken_languages, tier_preference, nepali_engine=nepali_engine)
         missing = [t for t in required if not self.is_model_downloaded(t)]
         return len(missing) == 0, missing
 
@@ -372,9 +415,15 @@ class ModelManager:
             with self._download_lock:
                 self._active_progress[tier_id] = (pct, text)
                 listeners = list(self._progress_listeners.get(tier_id, []))
+                globals_list = list(self._global_listeners)
             for cb in listeners:
                 try:
                     cb(pct, text)
+                except Exception:
+                    pass
+            for gcb in globals_list:
+                try:
+                    gcb(tier_id, pct, text)
                 except Exception:
                     pass
 
@@ -477,6 +526,11 @@ class ModelManager:
                                 if resp.status_code == 416:
                                     # Requested range not satisfiable (part already complete)
                                     pass
+                                elif resp.status_code in (401, 403):
+                                    err_msg = f"Repository '{repo_id}' requires authentication or is gated (HTTP {resp.status_code})."
+                                    print(f"[ModelManager] {err_msg}", file=sys.stderr)
+                                    notify(-1.0, err_msg)
+                                    return False
                                 elif resp.status_code not in (200, 206):
                                     resp.raise_for_status()
                                 else:
