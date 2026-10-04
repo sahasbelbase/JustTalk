@@ -1,0 +1,11 @@
+# Vanity Download Redirects
+/download/mac    https://github.com/sahasbelbase/JustTalk/releases/latest/download/JustTalk-macOS.dmg    302
+/download/win    https://github.com/sahasbelbase/JustTalk/releases/latest/download/JustTalk-Windows.exe    302
+/download/latest https://github.com/sahasbelbase/JustTalk/releases/latest    302
+
+# Social & Repo Redirects
+/github          https://github.com/sahasbelbase/JustTalk    302
+/issues          https://github.com/sahasbelbase/JustTalk/issues    302
+/author          https://github.com/sahasbelbase    302
+/portfolio       https://sahas.netlify.app/    302
+/linkedin        https://linkedin.com/in/sahasbelbase    302
