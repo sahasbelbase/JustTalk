@@ -7,7 +7,7 @@ This guide provides step-by-step instructions to install, configure, and uninsta
 ## Method 1: Install via Setup Wizard (Recommended for Users)
 
 ### Step 1: Download & Run Installer
-1. Download or open `JustTalk-Setup-1.0.0.exe` (found in `dist/windows_installer/` or GitHub Releases).
+1. Download [**JustTalk-Setup-1.0.0.exe**](https://github.com/sahasbelbase/JustTalk/releases/latest/download/JustTalk-Setup-1.0.0.exe) directly (or browse [GitHub Releases](https://github.com/sahasbelbase/JustTalk/releases/latest)).
 2. Double-click the installer to launch the modern branded setup wizard.
 
 ### Step 2: Handle Windows Defender SmartScreen (If Prompted)

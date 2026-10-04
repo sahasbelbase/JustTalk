@@ -305,6 +305,7 @@ class JustTalkApp:
             gemini=self.gemini,
         )
         self.tray.show()
+        self.main_window.update_available.connect(self.tray.set_update_available)
 
         # 5. Open window (Onboarding or Main Window)
         # Any manual launch from Finder / Dock / Spotlight must ALWAYS present the UI!

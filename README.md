@@ -3,13 +3,27 @@
 > **A fast, quiet voice keyboard for macOS and Windows.**  
 > Think → Speak → Done.
 
-[![Tests](https://github.com/sahas/JustTalk/actions/workflows/build.yml/badge.svg)](https://github.com/sahas/JustTalk/actions)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Tests](https://github.com/sahasbelbase/JustTalk/actions/workflows/build.yml/badge.svg)](https://github.com/sahasbelbase/JustTalk/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.md)
 [![Python: 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
+[![Releases](https://img.shields.io/github/v/release/sahasbelbase/JustTalk?color=blue&label=Latest%20Release)](https://github.com/sahasbelbase/JustTalk/releases/latest)
 
 Just Talk is a lightweight desktop productivity utility that runs quietly in your system tray or menu bar. When you hold your push-to-talk trigger, it captures your speech, transcribes it locally using on-device Whisper neural models, subtly cleans the text using Gemini, and instantly inserts the result directly into whatever text field or application you are currently using (Chrome, VS Code, Slack, Notion, Discord, Terminal, etc.).
 
 If no text field is actively focused, the final text is automatically placed on your clipboard and a subtle notification is shown.
+
+---
+
+## 📥 Direct Downloads & Installers
+
+Download the latest version of Just Talk directly for your operating system:
+
+| Operating System | Package Format | Direct Download Link | Release Page |
+| :--- | :--- | :--- | :--- |
+| **macOS** (Apple Silicon M1-M4 & Intel) | `.dmg` Disk Image | [⬇️ **Download JustTalk-macOS.dmg**](https://github.com/sahasbelbase/JustTalk/releases/latest/download/JustTalk-macOS.dmg) | [GitHub Releases](https://github.com/sahasbelbase/JustTalk/releases/latest) |
+| **Windows** (Windows 10 / 11 64-bit) | `.exe` Setup Installer | [⬇️ **Download JustTalk-Setup.exe**](https://github.com/sahasbelbase/JustTalk/releases/latest/download/JustTalk-Setup-1.0.0.exe) | [GitHub Releases](https://github.com/sahasbelbase/JustTalk/releases/latest) |
+
+> 💡 **Looking for all releases or release notes?** Visit the [Just Talk Releases Page](https://github.com/sahasbelbase/JustTalk/releases/latest).
 
 ---
 
@@ -62,15 +76,16 @@ Choose the speed and accuracy profile that matches your hardware:
 ### 🍏 macOS Installation & Setup
 For detailed, step-by-step instructions, see **[macOS Installation Guide](packaging/mac/INSTALL_MAC.md)**.
 
-1. **Pre-Built DMG**: Open `dist/JustTalk-macOS.dmg` and drag `Just Talk` into `/Applications`.
-2. **Clear Quarantine (if prompted by Gatekeeper)**:
+1. **Download Pre-Built DMG**: Download [**JustTalk-macOS.dmg**](https://github.com/sahasbelbase/JustTalk/releases/latest/download/JustTalk-macOS.dmg) (or get it from [GitHub Releases](https://github.com/sahasbelbase/JustTalk/releases/latest)).
+2. **Install**: Double-click the DMG and drag `Just Talk` into `/Applications`.
+3. **Clear Quarantine (if prompted by Gatekeeper)**:
    ```bash
    xattr -cr /Applications/JustTalk.app
    ```
-3. **Grant Permissions** (*System Settings > Privacy & Security*):
+4. **Grant Permissions** (*System Settings > Privacy & Security*):
    - **Microphone**: Enabled for voice recording.
    - **Accessibility**: Enabled for global hotkey and text caret insertion.
-4. **Xcode Developer Tools (if building from source)**:
+5. **Xcode Developer Tools (if building from source)**:
    ```bash
    xcode-select --install
    ./packaging/mac/setup_mac.sh
@@ -79,7 +94,7 @@ For detailed, step-by-step instructions, see **[macOS Installation Guide](packag
 ### 🪟 Windows Installation & Setup
 For detailed, step-by-step instructions, see **[Windows Installation Guide](packaging/windows/INSTALL_WINDOWS.md)**.
 
-1. **Pre-Built Installer**: Run `JustTalk-Setup-1.0.0.exe` (found in `dist/windows_installer/` or GitHub Releases).
+1. **Download Pre-Built Installer**: Download [**JustTalk-Setup.exe**](https://github.com/sahasbelbase/JustTalk/releases/latest/download/JustTalk-Setup-1.0.0.exe) (or get it from [GitHub Releases](https://github.com/sahasbelbase/JustTalk/releases/latest)) and run the setup wizard.
    - Installs to `%LOCALAPPDATA%\Programs\Just Talk` with **no admin UAC prompt needed**.
    - Creates Start Menu, Desktop, and Windows Startup shortcuts.
    - Configures `AppUserModelID` for native Windows 10/11 taskbar pinning.
@@ -204,4 +219,4 @@ JustTalk/
 ---
 
 ## ⚖️ License
-MIT License. Free and open source.
+MIT License. Free and open source. See [LICENSE.md](LICENSE.md) for full license details.

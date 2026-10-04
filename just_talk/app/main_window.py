@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import sys
+import threading
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -36,6 +37,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .. import __version__
 from ..ai.gemini import GeminiFormatter
 from ..audio.recorder import AudioRecorder
 from ..config import AppConfig
@@ -45,6 +47,7 @@ from ..stt.model_manager import TIERS, ModelManager
 from ..system.autostart import AutostartManager
 from ..system.clipboard import ClipboardManager
 from ..system.permissions import PermissionsManager
+from ..system.updater import UpdateChecker, UpdateInfo
 from .ai_formatting_view import AIFormattingView
 from .language_selector import SearchableLanguageComboBox
 from .theme import ThemeManager
@@ -59,6 +62,7 @@ class MainWindow(QMainWindow):
 
     config_changed = Signal(AppConfig)
     replay_tutorial_requested = Signal()
+    update_available = Signal(object)
 
     def __init__(
         self,
@@ -75,6 +79,7 @@ class MainWindow(QMainWindow):
         self.model_manager = model_manager
         self.gemini = gemini
         self.on_config_changed_callback = on_config_changed
+        self.latest_update_info: Optional[UpdateInfo] = None
 
         self.setWindowTitle("Just Talk")
         self.resize(1160, 760)
@@ -96,6 +101,9 @@ class MainWindow(QMainWindow):
         self._status_timer = QTimer(self)
         self._status_timer.timeout.connect(self._refresh_home_status)
         self._status_timer.start(5000)
+
+        # Check for updates in background after startup
+        QTimer.singleShot(3000, self._check_updates_background)
 
     # -------------------------------------------------------------------------
     # Window Lifecycle & macOS Activation Policy
@@ -211,7 +219,7 @@ class MainWindow(QMainWindow):
         title_vbox.setSpacing(0)
         title = QLabel("Just Talk")
         title.setFont(ThemeManager.get_ui_font(13, weight=QFont.Weight.Bold))
-        subtitle = QLabel("v1.0")
+        subtitle = QLabel(f"v{__version__}")
         subtitle.setObjectName("mutedLabel")
         subtitle.setFont(ThemeManager.get_ui_font(10))
         title_vbox.addWidget(title)
@@ -314,6 +322,30 @@ class MainWindow(QMainWindow):
         subtitle.setFont(ThemeManager.get_ui_font(13))
         layout.addWidget(subtitle)
         layout.addSpacing(6)
+
+        # Update Available Banner (hidden by default)
+        self.update_banner = QFrame()
+        self.update_banner.setObjectName("updateBanner")
+        self.update_banner.setStyleSheet("""
+            QFrame#updateBanner {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 rgba(108, 142, 239, 0.22), stop:1 rgba(48, 209, 88, 0.18));
+                border: 1px solid rgba(108, 142, 239, 0.4);
+                border-radius: 8px;
+            }
+        """)
+        self.update_banner.hide()
+        ub_layout = QHBoxLayout(self.update_banner)
+        ub_layout.setContentsMargins(14, 10, 14, 10)
+        ub_layout.setSpacing(10)
+        self.update_banner_label = QLabel("⚡ Just Talk update available!")
+        self.update_banner_label.setFont(ThemeManager.get_ui_font(12, weight=QFont.Weight.Medium))
+        self.update_banner_btn = QPushButton("Update Now")
+        self.update_banner_btn.setObjectName("primaryBtn")
+        self.update_banner_btn.setStyleSheet("padding: 4px 14px; font-weight: bold;")
+        self.update_banner_btn.clicked.connect(self._on_install_update_clicked)
+        ub_layout.addWidget(self.update_banner_label, 1)
+        ub_layout.addWidget(self.update_banner_btn)
+        layout.addWidget(self.update_banner)
 
         # Push-to-Talk Hero Keycap Card
         hero_card = QFrame()
@@ -1151,6 +1183,52 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(sec5)
 
+        # Section 6: Software Updates & Version
+        sec6, sec6_layout = self._create_settings_section("Software Updates")
+        u_row = QHBoxLayout()
+        self.update_status_label = QLabel(f"Current version: v{__version__}")
+        self.update_status_label.setObjectName("mutedLabel")
+        self.update_status_label.setFont(ThemeManager.get_ui_font(12))
+
+        self.check_update_btn = QPushButton("Check for Updates")
+        self.check_update_btn.setObjectName("secondaryBtn")
+        self.check_update_btn.clicked.connect(self._on_check_updates_clicked)
+
+        u_row.addWidget(self.update_status_label, 1)
+        u_row.addWidget(self.check_update_btn)
+        sec6_layout.addLayout(u_row)
+
+        self.update_action_box = QWidget()
+        self.update_action_box.hide()
+        uab_layout = QVBoxLayout(self.update_action_box)
+        uab_layout.setContentsMargins(0, 4, 0, 0)
+        uab_layout.setSpacing(6)
+
+        self.install_update_btn = QPushButton("⚡ Update to Latest Version Now")
+        self.install_update_btn.setObjectName("primaryBtn")
+        self.install_update_btn.clicked.connect(self._on_install_update_clicked)
+
+        self.update_progress_bar = QProgressBar()
+        self.update_progress_bar.hide()
+        self.update_progress_bar.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 4px;
+                background-color: rgba(255, 255, 255, 0.06);
+                text-align: center;
+            }
+            QProgressBar::chunk {
+                background-color: #30D158;
+                border-radius: 3px;
+            }
+        """)
+
+        uab_layout.addWidget(self.install_update_btn)
+        uab_layout.addWidget(self.update_progress_bar)
+        sec6_layout.addWidget(self.update_action_box)
+
+        layout.addWidget(sec6)
+
         # Save Button
         bottom_box = QHBoxLayout()
         bottom_box.addStretch()
@@ -1676,3 +1754,117 @@ class MainWindow(QMainWindow):
         elif 17 <= hour < 22:
             return "Good evening"
         return "Good night"
+
+    # -------------------------------------------------------------------------
+    # Application Updates
+    # -------------------------------------------------------------------------
+
+    def _check_updates_background(self) -> None:
+        def worker():
+            try:
+                info = UpdateChecker.check_for_updates()
+                if info.available:
+                    QTimer.singleShot(0, lambda: self._apply_update_info(info))
+            except Exception:
+                pass
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _apply_update_info(self, info: UpdateInfo) -> None:
+        self.latest_update_info = info
+        self.update_available.emit(info)
+        self.update_banner_label.setText(
+            f"⚡ Just Talk v{info.latest_version} is available! (Installed: v{__version__})"
+        )
+        self.update_banner.show()
+        if hasattr(self, "update_status_label"):
+            self.update_status_label.setText(
+                f"Update Available: v{info.latest_version} (Current: v{__version__})"
+            )
+            self.update_status_label.setStyleSheet("color: #30D158; font-weight: bold;")
+        if hasattr(self, "update_action_box"):
+            self.update_action_box.show()
+        if hasattr(self, "install_update_btn"):
+            self.install_update_btn.setText(f"⚡ Update to v{info.latest_version} (In-Place)")
+
+    def _on_check_updates_clicked(self) -> None:
+        self.check_update_btn.setEnabled(False)
+        self.check_update_btn.setText("Checking...")
+        self.update_status_label.setText("Checking GitHub for the latest release...")
+        self.update_status_label.setStyleSheet("")
+
+        def worker():
+            info = UpdateChecker.check_for_updates()
+
+            def finish():
+                self.check_update_btn.setEnabled(True)
+                self.check_update_btn.setText("Check for Updates")
+                if info.available:
+                    self._apply_update_info(info)
+                else:
+                    self.update_status_label.setText(
+                        f"✓ Just Talk v{__version__} is the latest version. You're up to date!"
+                    )
+                    self.update_status_label.setStyleSheet("color: #30D158;")
+                    self.update_action_box.hide()
+
+            QTimer.singleShot(0, finish)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_install_update_clicked(self) -> None:
+        if not self.latest_update_info or not self.latest_update_info.download_url:
+            self._on_check_updates_clicked()
+            return
+
+        info = self.latest_update_info
+        if hasattr(self, "update_banner_btn"):
+            self.update_banner_btn.setEnabled(False)
+            self.update_banner_btn.setText("Updating...")
+        if hasattr(self, "install_update_btn"):
+            self.install_update_btn.setEnabled(False)
+            self.install_update_btn.setText("Downloading update...")
+        if hasattr(self, "update_progress_bar"):
+            self.update_progress_bar.show()
+            self.update_progress_bar.setValue(0)
+
+        cache_dir = UpdateChecker.get_updates_cache_dir()
+        filename = info.asset_name or ("JustTalk-macOS.dmg" if sys.platform == "darwin" else "JustTalk-Setup.exe")
+        target_path = cache_dir / filename
+
+        def worker():
+            def progress(downloaded: int, total: int):
+                pct = int((downloaded / total) * 100) if total > 0 else 0
+                QTimer.singleShot(0, lambda p=pct: self.update_progress_bar.setValue(p))
+
+            try:
+                UpdateChecker.download_update(info.download_url, target_path, progress_callback=progress)
+
+                def on_download_done():
+                    if hasattr(self, "install_update_btn"):
+                        self.install_update_btn.setText("Installing & Restarting...")
+                    success = UpdateChecker.install_update(target_path)
+                    if not success:
+                        QMessageBox.information(
+                            self,
+                            "Update Ready",
+                            f"Update downloaded to {target_path}.\nOpening installer to complete update...",
+                        )
+
+                QTimer.singleShot(0, on_download_done)
+            except Exception as e:
+                def on_error(err_msg: str):
+                    if hasattr(self, "update_banner_btn"):
+                        self.update_banner_btn.setEnabled(True)
+                        self.update_banner_btn.setText("Update Now")
+                    if hasattr(self, "install_update_btn"):
+                        self.install_update_btn.setEnabled(True)
+                        self.install_update_btn.setText("⚡ Retry Update")
+                    if hasattr(self, "update_status_label"):
+                        self.update_status_label.setText(f"Download failed: {err_msg}")
+                        self.update_status_label.setStyleSheet("color: #FF453A;")
+
+                QTimer.singleShot(0, lambda m=str(e): on_error(m))
+
+        threading.Thread(target=worker, daemon=True).start()
+

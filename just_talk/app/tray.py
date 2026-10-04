@@ -36,16 +36,32 @@ class SystemTrayManager:
         self.gemini = gemini
 
         self._menu: Optional[QMenu] = None
+        self._update_info = None
         self.tray_icon = QSystemTrayIcon(parent)
         self.tray_icon.setIcon(self.icon)
         self.tray_icon.setToolTip("Just Talk — Voice Keyboard")
         self.tray_icon.activated.connect(self._on_tray_activated)
         self._build_menu()
 
+    def set_update_available(self, update_info) -> None:
+        """Called when a new version of Just Talk is detected."""
+        self._update_info = update_info
+        self._build_menu()
+
     def _build_menu(self) -> None:
         # Avoid orphan menus leaking in memory
         old_menu = self._menu
         menu = QMenu()
+
+        # Update available action (if new version detected)
+        if getattr(self, "_update_info", None) and self._update_info.available:
+            update_action = QAction(f"⚡ Update Available: v{self._update_info.latest_version}", menu)
+            font = update_action.font()
+            font.setBold(True)
+            update_action.setFont(font)
+            update_action.triggered.connect(lambda: self.on_open_main("settings"))
+            menu.addAction(update_action)
+            menu.addSeparator()
 
         # Primary Action: Open Full App Window
         open_action = QAction("Open Just Talk", menu)

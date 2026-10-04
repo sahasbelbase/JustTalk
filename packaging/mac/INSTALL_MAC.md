@@ -6,10 +6,11 @@ This guide walks you through installing, configuring permissions, and running **
 
 ## Method 1: Install Pre-Built DMG (Recommended for Users)
 
-### Step 1: Open the DMG Installer
-1. Double-click `JustTalk-macOS.dmg` (found in `dist/`, `packaging/mac/`, or downloaded from GitHub Releases).
-2. A window opens showing **Just Talk** and a shortcut to your **Applications** folder.
-3. Drag the **Just Talk** icon into the **Applications** folder.
+### Step 1: Download & Open the DMG Installer
+1. Download [**JustTalk-macOS.dmg**](https://github.com/sahasbelbase/JustTalk/releases/latest/download/JustTalk-macOS.dmg) directly (or browse [GitHub Releases](https://github.com/sahasbelbase/JustTalk/releases/latest)).
+2. Double-click `JustTalk-macOS.dmg`.
+3. A window opens showing **Just Talk** and a shortcut to your **Applications** folder.
+4. Drag the **Just Talk** icon into the **Applications** folder.
 
 ### Step 2: Open Just Talk
 1. Open **Finder** -> Go to **Applications** -> double-click **Just Talk**.
