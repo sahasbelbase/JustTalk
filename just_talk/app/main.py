@@ -44,6 +44,7 @@ from ..database.history import HistoryDatabase
 from ..security import CredentialManager
 from ..shortcuts.manager import ShortcutManager
 from ..stt.model_manager import ModelManager
+from ..stt.nepali_conformer import NepaliConformerEngine
 from ..stt.whisper_engine import WhisperSTTEngine
 from ..system.autostart import AutostartManager
 from ..system.caret_locator import CaretLocator
@@ -79,6 +80,7 @@ class AppBridge(QObject):
     # connected to @Slot methods below with explicit QueuedConnection.
     start_recording_requested = Signal(bool)   # bool: is_action_mode
     stop_recording_requested = Signal()
+    action_mode_changed = Signal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -94,6 +96,9 @@ class AppBridge(QObject):
         self.stop_recording_requested.connect(
             self._on_stop_recording, Qt.ConnectionType.QueuedConnection
         )
+        self.action_mode_changed.connect(
+            self._on_action_mode_changed, Qt.ConnectionType.QueuedConnection
+        )
 
     @Slot(bool)
     def _on_start_recording(self, is_action_mode: bool) -> None:
@@ -106,6 +111,12 @@ class AppBridge(QObject):
         """Guaranteed to run on the main Qt thread."""
         if self._controller:
             self._controller.on_stop_recording()
+
+    @Slot(bool)
+    def _on_action_mode_changed(self, is_action_mode: bool) -> None:
+        """Guaranteed to run on the main Qt thread."""
+        if self._controller:
+            self._controller.on_action_mode_changed(is_action_mode)
 
 
 class JustTalkApplication(QApplication):
@@ -205,6 +216,7 @@ class JustTalkApp:
         )
         self.model_manager = ModelManager()
         self.stt_engine = WhisperSTTEngine(self.model_manager)
+        self.nepali_conformer = NepaliConformerEngine(self.model_manager)
         provider_id = getattr(self.config, "ai_provider", "gemini") or "gemini"
         model = getattr(self.config, "ai_model", "") or self.config.gemini_model
         custom_base = getattr(self.config, "custom_api_base_url", "")
@@ -350,6 +362,7 @@ class JustTalkApp:
             push_to_talk=self.config.push_to_talk,
             on_start_recording=lambda action: self.bridge.start_recording_requested.emit(action),
             on_stop_recording=lambda: self.bridge.stop_recording_requested.emit(),
+            on_action_mode_changed=lambda is_action: self.bridge.action_mode_changed.emit(is_action),
         )
         self.shortcut_manager.start()
 
@@ -444,6 +457,13 @@ class JustTalkApp:
         else:
             self._level_timer.start()
             print("[Record] Microphone stream opened successfully.", file=sys.stderr)
+
+    def on_action_mode_changed(self, is_action_mode: bool) -> None:
+        """Triggered on the main Qt thread when Shift is pressed/released while already holding push-to-talk."""
+        self._is_action_mode = is_action_mode
+        print(f"[Record] Dynamically toggled Action Mode: {is_action_mode}", file=sys.stderr)
+        if self.overlay and self.recorder and self.recorder.is_recording:
+            self.overlay.set_action_mode(is_action_mode)
 
     def _on_cancel_recording(self) -> None:
         """User cancelled recording via the overlay [ ✕ ] button."""
@@ -609,20 +629,41 @@ class JustTalkApp:
                     prompt_parts.append(f"Custom vocabulary: {clean_terms}.")
             initial_prompt = " ".join(prompt_parts) if prompt_parts else None
 
-            raw_text = self.stt_engine.transcribe(
-                audio,
-                language=lang,
-                task=task,
-                initial_prompt=initial_prompt,
+            use_conformer = (
+                (cur_lang in ("ne", "ne_en") or "ne" in getattr(self.config, "spoken_languages", []))
+                and getattr(self.config, "nepali_asr_engine", "conformer") == "conformer"
+                and hasattr(self, "nepali_conformer")
             )
-            # Automatic fallback: if configured language yielded nothing, try auto-detection
-            if (not raw_text or not raw_text.strip()) and lang:
+
+            raw_text = ""
+            if use_conformer:
+                try:
+                    raw_text = self.nepali_conformer.transcribe(
+                        audio,
+                        language="ne",
+                        task=task,
+                        initial_prompt=initial_prompt,
+                    )
+                except Exception as c_err:
+                    print(f"[STT] Conformer transcription warning ({c_err}), falling back to Whisper...", file=sys.stderr)
+                    raw_text = ""
+
+            if not raw_text or not raw_text.strip():
                 raw_text = self.stt_engine.transcribe(
                     audio,
-                    language=None,
+                    language=lang,
                     task=task,
                     initial_prompt=initial_prompt,
                 )
+                # Automatic fallback: if configured language yielded nothing, try auto-detection
+                if (not raw_text or not raw_text.strip()) and lang:
+                    raw_text = self.stt_engine.transcribe(
+                        audio,
+                        language=None,
+                        task=task,
+                        initial_prompt=initial_prompt,
+                    )
+
 
             if not raw_text or not raw_text.strip():
                 print("[STT] Whisper returned empty transcription → 'No speech recognized'", file=sys.stderr)

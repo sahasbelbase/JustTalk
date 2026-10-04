@@ -66,6 +66,36 @@ TIERS: Dict[str, ModelTierInfo] = {
         accuracy_rating="Basic",
         description="Minimal 74M model for legacy hardware with low RAM.",
     ),
+    "nepali_conformer": ModelTierInfo(
+        tier_id="nepali_conformer",
+        display_name="Ampixa NepaliConformer (Offline · 121M)",
+        model_name="nepali-conformer-offline",
+        disk_size_mb=462,
+        ram_mb=350,
+        speed_factor="~180ms latency",
+        accuracy_rating="33.8% WER (Call-Center Tested)",
+        description="Ampixa Labs' specialized offline Nepali ASR trained on 1,655 hours conversational speech (33.8% WER vs 96.3% Whisper).",
+    ),
+    "small.en": ModelTierInfo(
+        tier_id="small.en",
+        display_name="English Balanced (small.en · 461 MB)",
+        model_name="small.en",
+        disk_size_mb=461,
+        ram_mb=450,
+        speed_factor="~250ms latency",
+        accuracy_rating="High English Accuracy",
+        description="Dedicated English-only model. Faster than multilingual, minimal memory, zero foreign character hallucinations.",
+    ),
+    "base.en": ModelTierInfo(
+        tier_id="base.en",
+        display_name="English Fast (base.en · 142 MB)",
+        model_name="base.en",
+        disk_size_mb=142,
+        ram_mb=200,
+        speed_factor="~150ms latency",
+        accuracy_rating="Standard English",
+        description="Ultralight English-only model. Instant download for fast dictation and minimal laptop resource usage.",
+    ),
 }
 
 
@@ -107,6 +137,31 @@ TIER_REPOS: Dict[str, Tuple[str, list[Tuple[str, int]]]] = {
             ("tokenizer.json", 2203239),
             ("vocabulary.txt", 459861),
             ("model.bin", 145217532),
+        ],
+    ),
+    "nepali_conformer": (
+        "ampixa/nepali-conformer-offline",
+        [
+            ("README.md", 3127),
+            ("nepali_conformer_offline.nemo", 484669440),
+        ],
+    ),
+    "small.en": (
+        "Systran/faster-whisper-small.en",
+        [
+            ("config.json", 2657),
+            ("tokenizer.json", 2128466),
+            ("vocabulary.txt", 422309),
+            ("model.bin", 483545366),
+        ],
+    ),
+    "base.en": (
+        "Systran/faster-whisper-base.en",
+        [
+            ("config.json", 2227),
+            ("tokenizer.json", 2128466),
+            ("vocabulary.txt", 422309),
+            ("model.bin", 145216508),
         ],
     ),
 }
@@ -185,11 +240,16 @@ class ModelManager:
         return False
 
     def _verify_directory_integrity(self, dir_path: Path) -> bool:
-        """Verify that a directory contains a valid Whisper model."""
+        """Verify that a directory contains a valid Whisper or Conformer model."""
         if not dir_path.exists() or not dir_path.is_dir():
             return False
 
-        # Must contain config.json and model weights
+        # 1. Check for NeMo offline model archive (Ampixa NepaliConformer)
+        nemo_files = list(dir_path.glob("*.nemo"))
+        if nemo_files:
+            return any(f.stat().st_size > 20_000_000 for f in nemo_files)
+
+        # 2. Check for Whisper CTranslate2/faster-whisper models
         has_config = (dir_path / "config.json").exists()
         has_tokenizer = (dir_path / "tokenizer.json").exists() or (dir_path / "vocabulary.txt").exists() or (dir_path / "vocabulary.json").exists()
         
@@ -206,6 +266,43 @@ class ModelManager:
         # Weight file must be at least 15MB (even tiny is >30MB; corrupted files are typically 0 or few KB)
         valid_weights = any(w.stat().st_size > 15_000_000 for w in weight_files)
         return has_config and valid_weights
+
+    def get_models_for_languages(self, spoken_languages: list[str], tier_preference: str = "quality") -> list[str]:
+        """Return the minimal list of model tier IDs required for the selected spoken languages."""
+        langs = set(spoken_languages or ["en"])
+        models: list[str] = []
+        needs_multilingual = False
+
+        for lang in langs:
+            if lang in ("de", "fr", "es", "zh", "it", "ja", "ko", "hi", "pt", "ru", "ar", "nl", "pl", "tr", "sv", "vi"):
+                needs_multilingual = True
+
+        if "ne" in langs or "ne_en" in langs:
+            models.append("nepali_conformer")
+
+        if needs_multilingual:
+            models.append(tier_preference if tier_preference in ("quality", "balanced", "fast") else "quality")
+        else:
+            # English only
+            if "en" in langs and not ("ne" in langs and len(langs) == 1):
+                models.append("small.en" if tier_preference in ("quality", "balanced") else "base.en")
+
+        return list(dict.fromkeys(models))
+
+    def are_required_models_downloaded(self, spoken_languages: list[str], tier_preference: str = "quality") -> tuple[bool, list[str]]:
+        """Check if all models needed for the spoken languages are downloaded."""
+        required = self.get_models_for_languages(spoken_languages, tier_preference)
+        missing = [t for t in required if not self.is_model_downloaded(t)]
+        return len(missing) == 0, missing
+
+    def get_total_download_size_mb(self, tier_ids: list[str]) -> int:
+        """Return combined total MB required for downloading given tier IDs."""
+        total = 0
+        for tid in tier_ids:
+            info = self.get_tier_info(tid)
+            total += info.disk_size_mb
+        return total
+
 
     def download_model(
         self,

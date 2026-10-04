@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -29,7 +30,7 @@ from PySide6.QtWidgets import (
 
 from ..ai.gemini import GeminiFormatter
 from ..audio.recorder import AudioRecorder
-from ..config import AppConfig
+from ..config import ADDITIONAL_LANGUAGES, CORE_SPOKEN_LANGUAGES, AppConfig
 from ..security import CredentialManager
 from ..stt.model_manager import TIERS, ModelManager
 from ..system.autostart import AutostartManager
@@ -68,8 +69,9 @@ class OnboardingWindow(QDialog):
         self.model_progress_signal.connect(self._on_model_progress_update)
 
         self.setWindowTitle("Welcome to Just Talk")
-        self.resize(860, 680)
-        self.setMinimumSize(740, 580)
+        self.resize(960, 720)
+        self.setMinimumSize(880, 640)
+
 
         # Center on screen
         screen = QApplication.primaryScreen()
@@ -527,7 +529,61 @@ class OnboardingWindow(QDialog):
         desc.setWordWrap(True)
         layout.addWidget(desc)
 
-        # 1. Model Status & Download Progress Card
+        # 1. Spoken Languages Selection Card
+        spoken_card = QFrame()
+        spoken_card.setObjectName("card")
+        sp_layout = QVBoxLayout(spoken_card)
+        sp_layout.setContentsMargins(16, 14, 16, 14)
+        sp_layout.setSpacing(10)
+
+        sp_head = QLabel("What languages do you speak?")
+        sp_head.setFont(ThemeManager.get_ui_font(14, weight=QFont.Weight.DemiBold))
+        sp_layout.addWidget(sp_head)
+
+        sp_sub = QLabel("Select your spoken languages. Just Talk only downloads what you need, saving gigabytes of disk space and keeping memory usage low.")
+        sp_sub.setObjectName("mutedLabel")
+        sp_sub.setFont(ThemeManager.get_ui_font(12))
+        sp_sub.setWordWrap(True)
+        sp_layout.addWidget(sp_sub)
+
+        # Core Language Checkboxes Grid
+        self.lang_checkboxes: dict[str, QCheckBox] = {}
+        grid_container = QWidget()
+        grid = QGridLayout(grid_container)
+        grid.setContentsMargins(0, 4, 0, 4)
+        grid.setHorizontalSpacing(16)
+        grid.setVerticalSpacing(8)
+
+        active_spoken = set(getattr(self.config, "spoken_languages", ["en"]) or ["en"])
+
+        for idx, item in enumerate(CORE_SPOKEN_LANGUAGES):
+            chk = QCheckBox(f"{item['flag']} {item['name']} ({item['native']})")
+            chk.setFont(ThemeManager.get_ui_font(13))
+            chk.setChecked(item["code"] in active_spoken)
+            chk.toggled.connect(self._on_spoken_language_toggled)
+            self.lang_checkboxes[item["code"]] = chk
+            grid.addWidget(chk, idx // 2, idx % 2)
+
+        sp_layout.addWidget(grid_container)
+
+        # Search / Add More Languages
+        search_row = QHBoxLayout()
+        search_lbl = QLabel("Search more languages:")
+        search_lbl.setFont(ThemeManager.get_ui_font(12))
+        search_lbl.setObjectName("mutedLabel")
+        search_row.addWidget(search_lbl)
+
+        self.add_lang_combo = QComboBox()
+        self.add_lang_combo.addItem("+ Add other language...", "")
+        for name, code in ADDITIONAL_LANGUAGES:
+            self.add_lang_combo.addItem(f"{name}", code)
+        self.add_lang_combo.currentIndexChanged.connect(self._on_additional_language_selected)
+        search_row.addWidget(self.add_lang_combo, 1)
+        sp_layout.addLayout(search_row)
+
+        layout.addWidget(spoken_card)
+
+        # 2. Dynamic Model Footprint & Download Progress Card
         model_card = QFrame()
         model_card.setObjectName("card")
         m_layout = QVBoxLayout(model_card)
@@ -535,9 +591,9 @@ class OnboardingWindow(QDialog):
         m_layout.setSpacing(10)
 
         m_head = QHBoxLayout()
-        m_title = QLabel("Multilingual Speech Model (Balanced · 466 MB)")
-        m_title.setFont(ThemeManager.get_ui_font(13, weight=QFont.Weight.DemiBold))
-        m_head.addWidget(m_title)
+        self.model_card_title = QLabel("Required Offline Speech Models")
+        self.model_card_title.setFont(ThemeManager.get_ui_font(13, weight=QFont.Weight.DemiBold))
+        m_head.addWidget(self.model_card_title)
         m_head.addStretch()
 
         self.model_status_badge = QLabel("Checking...")
@@ -545,11 +601,11 @@ class OnboardingWindow(QDialog):
         m_head.addWidget(self.model_status_badge)
         m_layout.addLayout(m_head)
 
-        m_sub = QLabel("Supports Nepali, English, German, French, Italian, Mandarin, and 90+ languages with high punctuation accuracy.")
-        m_sub.setObjectName("mutedLabel")
-        m_sub.setFont(ThemeManager.get_ui_font(12))
-        m_sub.setWordWrap(True)
-        m_layout.addWidget(m_sub)
+        self.model_sub_lbl = QLabel("")
+        self.model_sub_lbl.setObjectName("mutedLabel")
+        self.model_sub_lbl.setFont(ThemeManager.get_ui_font(12))
+        self.model_sub_lbl.setWordWrap(True)
+        m_layout.addWidget(self.model_sub_lbl)
 
         # Progress bar
         self.model_progress_bar = QProgressBar()
@@ -572,9 +628,10 @@ class OnboardingWindow(QDialog):
         self.model_detail_lbl = QLabel("")
         self.model_detail_lbl.setFont(ThemeManager.get_ui_font(11))
         self.model_detail_lbl.setObjectName("mutedLabel")
+        self.model_detail_lbl.setWordWrap(True)
         btn_row.addWidget(self.model_detail_lbl, 1)
 
-        self.download_model_btn = QPushButton("Download Model")
+        self.download_model_btn = QPushButton("Download Models")
         self.download_model_btn.setObjectName("secondaryBtn")
         self.download_model_btn.clicked.connect(self._start_model_download)
         btn_row.addWidget(self.download_model_btn)
@@ -582,12 +639,13 @@ class OnboardingWindow(QDialog):
 
         layout.addWidget(model_card)
 
-        # 2. Language & Output Mode Card
+        # 3. Language & Output Mode Card
         lang_card = QFrame()
         lang_card.setObjectName("card")
         l_layout = QVBoxLayout(lang_card)
         l_layout.setContentsMargins(16, 14, 16, 14)
         l_layout.setSpacing(12)
+
 
         # Mode Selector (Transcribe vs Translate)
         mode_header = QLabel("Output Mode:")
@@ -735,15 +793,65 @@ class OnboardingWindow(QDialog):
             else:
                 self.sample_phrase.setText('"Hello Just Talk, this is my first voice test."')
 
+    def _on_spoken_language_toggled(self) -> None:
+        """Handle user toggling a spoken language in the checklist."""
+        selected = [code for code, chk in getattr(self, "lang_checkboxes", {}).items() if chk.isChecked()]
+        if not selected:
+            # Keep at least English selected
+            if "en" in self.lang_checkboxes:
+                self.lang_checkboxes["en"].setChecked(True)
+                selected = ["en"]
+
+        self.config.spoken_languages = selected
+        self.config.save()
+        self._update_model_status_display()
+
+    def _on_additional_language_selected(self, index: int) -> None:
+        """Handle adding a language from the additional search combo box."""
+        if index <= 0 or not hasattr(self, "add_lang_combo"):
+            return
+        code = self.add_lang_combo.currentData()
+        name = self.add_lang_combo.currentText()
+        if code and code not in self.lang_checkboxes:
+            chk = QCheckBox(f"🌐 {name}")
+            chk.setFont(ThemeManager.get_ui_font(13))
+            chk.setChecked(True)
+            chk.toggled.connect(self._on_spoken_language_toggled)
+            self.lang_checkboxes[code] = chk
+            self._on_spoken_language_toggled()
+        # Reset combo to placeholder
+        self.add_lang_combo.setCurrentIndex(0)
+
     def _update_model_status_display(self) -> None:
-        tier_id = getattr(self.config, "model_tier", "quality")
-        is_dl = self.model_manager.is_model_downloaded(tier_id)
-        info = self.model_manager.get_tier_info(tier_id)
-        if is_dl:
+        required_tiers = self.model_manager.get_models_for_languages(
+            self.config.spoken_languages, self.config.model_tier
+        )
+        all_ready, missing = self.model_manager.are_required_models_downloaded(
+            self.config.spoken_languages, self.config.model_tier
+        )
+
+        tier_names = [self.model_manager.get_tier_info(t).display_name.split("(")[0].strip() for t in required_tiers]
+        total_mb = self.model_manager.get_total_download_size_mb(required_tiers)
+        missing_mb = self.model_manager.get_total_download_size_mb(missing)
+
+        if "ne" in self.config.spoken_languages or "ne_en" in self.config.spoken_languages:
+            nepali_note = " Includes Ampixa NepaliConformer for high-accuracy conversational Nepali."
+        else:
+            nepali_note = ""
+
+        if self.config.spoken_languages == ["en"]:
+            footprint_text = f"Only English model needed ({total_mb} MB) · Ultra-fast, zero foreign hallucinations, saves 1+ GB disk space!"
+        else:
+            footprint_text = f"Required models: {', '.join(tier_names)} (Total ~{total_mb} MB).{nepali_note}"
+
+        if hasattr(self, "model_sub_lbl"):
+            self.model_sub_lbl.setText(footprint_text)
+
+        if all_ready:
             self.model_status_badge.setText("✓ Ready Locally")
             self.model_status_badge.setStyleSheet("color: #30D158;")
             self.model_progress_bar.setValue(100)
-            self.model_detail_lbl.setText("Speech model is downloaded and verified on disk.")
+            self.model_detail_lbl.setText(f"All required language models are downloaded and verified on disk ({total_mb} MB).")
             self.download_model_btn.hide()
         elif self._is_downloading_model:
             self.model_status_badge.setText("Downloading...")
@@ -751,13 +859,15 @@ class OnboardingWindow(QDialog):
             self.download_model_btn.setEnabled(False)
             self.download_model_btn.setText("Downloading...")
         else:
-            self.model_status_badge.setText("Not Downloaded")
+            self.model_status_badge.setText("Download Needed")
             self.model_status_badge.setStyleSheet("color: #FF9F0A;")
             self.model_progress_bar.setValue(0)
-            self.model_detail_lbl.setText(f"Click below to download {info.display_name} (~{info.disk_size_mb} MB) for offline speech recognition.")
+            self.model_detail_lbl.setText(
+                f"Missing {len(missing)} model(s) for your languages (~{missing_mb} MB). Click below to download what is needed."
+            )
             self.download_model_btn.show()
             self.download_model_btn.setEnabled(True)
-            self.download_model_btn.setText("Download Speech Model")
+            self.download_model_btn.setText(f"Download Needed Models (~{missing_mb} MB)")
 
     def _start_model_download(self) -> None:
         if self._is_downloading_model:
@@ -769,15 +879,33 @@ class OnboardingWindow(QDialog):
         self.model_status_badge.setStyleSheet("color: #6C8EEF;")
 
         def worker():
-            def progress(pct: float, msg: str):
-                self.model_progress_signal.emit(pct, msg)
+            required_tiers = self.model_manager.get_models_for_languages(
+                self.config.spoken_languages, self.config.model_tier
+            )
+            missing = [t for t in required_tiers if not self.model_manager.is_model_downloaded(t)]
+            if not missing:
+                self.model_progress_signal.emit(100.0, "✓ All selected models ready!")
+                return
 
-            tier_id = getattr(self.config, "model_tier", "quality")
-            success = self.model_manager.download_model(tier_id, progress_callback=progress)
-            if success:
-                self.model_progress_signal.emit(100.0, "✓ Model ready!")
-            else:
-                self.model_progress_signal.emit(-1.0, "Download failed. Please check internet connection.")
+            total_count = len(missing)
+            for idx, tier_id in enumerate(missing):
+                info = self.model_manager.get_tier_info(tier_id)
+
+                def progress(pct: float, msg: str):
+                    if pct >= 0:
+                        overall = (idx / total_count) * 100.0 + (pct / total_count)
+                        self.model_progress_signal.emit(overall, f"[{idx + 1}/{total_count}] {msg}")
+                    else:
+                        self.model_progress_signal.emit(pct, msg)
+
+                success = self.model_manager.download_model(tier_id, progress_callback=progress)
+                if not success:
+                    self.model_progress_signal.emit(
+                        -1.0, f"Download failed for {info.display_name}. Please check internet connection."
+                    )
+                    return
+
+            self.model_progress_signal.emit(100.0, "✓ All selected language models are ready!")
 
         import threading
 
@@ -797,13 +925,14 @@ class OnboardingWindow(QDialog):
             self.model_progress_bar.setValue(100)
             self.model_status_badge.setText("✓ Ready Locally")
             self.model_status_badge.setStyleSheet("color: #30D158;")
-            self.model_detail_lbl.setText("Speech model is downloaded and verified on disk.")
+            self.model_detail_lbl.setText("All required language models are downloaded and verified on disk.")
             self.download_model_btn.hide()
         else:
             self.model_progress_bar.setValue(int(pct))
             self.model_status_badge.setText(f"Downloading {pct:.0f}%")
             self.model_status_badge.setStyleSheet("color: #6C8EEF;")
             self.model_detail_lbl.setText(msg)
+
 
     # -------------------------------------------------------------------------
     # Step 3: Self-Correction Walkthrough

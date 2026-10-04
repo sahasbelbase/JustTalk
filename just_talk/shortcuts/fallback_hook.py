@@ -22,16 +22,19 @@ class PynputHotkeyMonitor:
         on_start_recording: Callable[[bool], None],  # bool: is_action_mode
         on_stop_recording: Callable[[], None],
         push_to_talk: bool = True,
+        on_action_mode_changed: Optional[Callable[[bool], None]] = None,
     ):
         self.trigger_key = trigger_key.lower()
         self.action_key = action_key.lower()
         self.on_start_recording = on_start_recording
         self.on_stop_recording = on_stop_recording
         self.push_to_talk = push_to_talk
+        self.on_action_mode_changed = on_action_mode_changed
 
         self._current_keys: Set[keyboard.Key | keyboard.KeyCode] = set()
         self._listener: Optional[keyboard.Listener] = None
         self._is_active = False
+        self._is_action_mode = False
         self._lock = threading.Lock()
 
     @staticmethod
@@ -110,6 +113,7 @@ class PynputHotkeyMonitor:
         return self._matches_trigger() and has_shift
 
     def _on_press(self, key):
+        action_changed: Optional[bool] = None
         with self._lock:
             self._current_keys.add(key)
             is_trigger = self._matches_trigger()
@@ -119,19 +123,35 @@ class PynputHotkeyMonitor:
                 if self.push_to_talk:
                     if not self._is_active:
                         self._is_active = True
+                        self._is_action_mode = is_action
                         try:
                             self.on_start_recording(is_action)
                         except Exception as e:
                             print(f"[PynputHook] on_start error: {e}", file=sys.stderr)
+                    else:
+                        # Already active: check if Shift was pressed during the hold
+                        if is_action != self._is_action_mode:
+                            self._is_action_mode = is_action
+                            action_changed = is_action
                 else:
                     # Toggle mode
                     self._is_active = not self._is_active
+                    self._is_action_mode = is_action
                     if self._is_active:
                         self.on_start_recording(is_action)
                     else:
                         self.on_stop_recording()
 
+        if action_changed is not None and self.on_action_mode_changed:
+            try:
+                self.on_action_mode_changed(action_changed)
+            except Exception as e:
+                print(f"[PynputHook] on_action_mode_changed error: {e}", file=sys.stderr)
+
     def _on_release(self, key):
+        to_stop = False
+        action_changed: Optional[bool] = None
+
         with self._lock:
             is_right_alt_release = self._is_right_alt(key)
 
@@ -151,7 +171,6 @@ class PynputHotkeyMonitor:
                 self._current_keys.discard(k)
 
             # On Windows, AltGr often generates a synthetic Ctrl_L press event.
-            # When Right Alt is released, clean up synthetic Ctrl if present.
             if is_right_alt_release:
                 ctrl_to_remove = [
                     k for k in self._current_keys
@@ -161,13 +180,28 @@ class PynputHotkeyMonitor:
                     self._current_keys.discard(ck)
 
             if self.push_to_talk and self._is_active:
-                # If trigger key was released, stop recording
                 if not self._matches_trigger():
                     self._is_active = False
-                    try:
-                        self.on_stop_recording()
-                    except Exception as e:
-                        print(f"[PynputHook] on_stop error: {e}", file=sys.stderr)
+                    self._is_action_mode = False
+                    to_stop = True
+                else:
+                    # Trigger is still down, but Shift might have been released
+                    is_action = self._matches_action()
+                    if is_action != self._is_action_mode:
+                        self._is_action_mode = is_action
+                        action_changed = is_action
+
+        if action_changed is not None and self.on_action_mode_changed:
+            try:
+                self.on_action_mode_changed(action_changed)
+            except Exception as e:
+                print(f"[PynputHook] on_action_mode_changed error: {e}", file=sys.stderr)
+
+        if to_stop:
+            try:
+                self.on_stop_recording()
+            except Exception as e:
+                print(f"[PynputHook] on_stop error: {e}", file=sys.stderr)
 
     def reset_state(self) -> None:
         """Reset internal key tracking and state."""

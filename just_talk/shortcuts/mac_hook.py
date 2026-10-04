@@ -57,11 +57,13 @@ class MacHotkeyMonitor:
         on_stop_recording: Callable[[], None],
         trigger_key: str = "fn",
         push_to_talk: bool = True,
+        on_action_mode_changed: Optional[Callable[[bool], None]] = None,
     ):
         self.on_start_recording = on_start_recording
         self.on_stop_recording = on_stop_recording
         self.trigger_key = trigger_key.lower().strip()
         self.push_to_talk = push_to_talk
+        self.on_action_mode_changed = on_action_mode_changed
 
         self._lock = threading.Lock()
         self._is_active = False
@@ -188,7 +190,7 @@ class MacHotkeyMonitor:
                         elif self.trigger_key in ("alt", "option"):
                             is_down = bool(flags & AppKit.NSEventModifierFlagOption)
 
-                        if is_down != self._prev_trigger_down:
+                        if is_down != self._prev_trigger_down or (is_down and shift_is_active != self._is_action_mode):
                             self._handle_trigger_state(is_down, shift_is_active)
                 except Exception:
                     pass
@@ -258,8 +260,10 @@ class MacHotkeyMonitor:
         """
         Handle key transition changes with debounce and combination cancellation.
         Ensures quick accidental taps (<80ms) are filtered and callbacks are invoked outside lock.
+        Supports dynamically switching into/out of Action Mode while holding the trigger key.
         """
         to_stop = False
+        action_changed: Optional[bool] = None
 
         with self._lock:
             if is_down:
@@ -267,6 +271,7 @@ class MacHotkeyMonitor:
                     self._prev_trigger_down = True
                     self._press_start_time = time.time()
                     self._cancelled_by_combination = False
+                    self._is_action_mode = is_shift
 
                     if self.push_to_talk:
                         # Schedule debounce timer
@@ -286,6 +291,19 @@ class MacHotkeyMonitor:
                             if time.time() - self._press_start_time > 0.20:
                                 self._is_active = False
                                 to_stop = True
+                else:
+                    # Key is already held down! Dynamically update action mode if Shift was pressed/released
+                    if is_shift != self._is_action_mode:
+                        self._is_action_mode = is_shift
+                        if self._is_active:
+                            action_changed = is_shift
+                        elif self._debounce_timer:
+                            self._cancel_debounce()
+                            self._debounce_timer = threading.Timer(
+                                self.DEBOUNCE_DELAY_SEC, self._fire_start, args=(is_shift,)
+                            )
+                            self._debounce_timer.daemon = True
+                            self._debounce_timer.start()
             else:
                 # Key released (Key up)
                 if self._prev_trigger_down:
@@ -302,6 +320,13 @@ class MacHotkeyMonitor:
                             self._is_active = False
                             self._is_action_mode = False
                             to_stop = True
+
+        if action_changed is not None and self.on_action_mode_changed:
+            try:
+                print(f"[MacHotkeyMonitor] Dynamic Action Mode change: {action_changed}", file=sys.stderr)
+                self.on_action_mode_changed(action_changed)
+            except Exception as e:
+                print(f"[MacHotkeyMonitor] on_action_mode_changed error: {e}", file=sys.stderr)
 
         if to_stop:
             try:
@@ -411,7 +436,7 @@ class MacHotkeyMonitor:
                     elif self.trigger_key in ("alt", "option"):
                         is_down = bool(flags & self.ALT_FLAG_MASK)
 
-                    if is_down != self._prev_trigger_down:
+                    if is_down != self._prev_trigger_down or (is_down and shift_is_active != self._is_action_mode):
                         self._handle_trigger_state(is_down, shift_is_active)
 
                 return event

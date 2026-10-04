@@ -61,17 +61,69 @@ SUPPORTED_LANGUAGES: list[tuple[str, str]] = [
     ("Auto-Detect All Languages", "auto"),
 ]
 
+CORE_SPOKEN_LANGUAGES: list[dict[str, str]] = [
+    {"code": "en", "name": "English", "native": "English", "flag": "🇬🇧 / 🇺🇸", "desc": "Default · Fast & lightweight"},
+    {"code": "ne", "name": "Nepali & Nepglish", "native": "नेपाली", "flag": "🇳🇵", "desc": "Ampixa Conformer engine (33.8% WER)"},
+    {"code": "de", "name": "German", "native": "Deutsch", "flag": "🇩🇪", "desc": "Multilingual model"},
+    {"code": "fr", "name": "French", "native": "Français", "flag": "🇫🇷", "desc": "Multilingual model"},
+    {"code": "es", "name": "Spanish", "native": "Español", "flag": "🇪🇸", "desc": "Multilingual model"},
+    {"code": "zh", "name": "Mandarin Chinese", "native": "中文 (普通话)", "flag": "🇨🇳", "desc": "Multilingual model"},
+]
+
+ADDITIONAL_LANGUAGES: list[tuple[str, str]] = [
+    ("Italian (Italiano)", "it"),
+    ("Japanese (日本語)", "ja"),
+    ("Korean (한국어)", "ko"),
+    ("Hindi (हिन्दी)", "hi"),
+    ("Portuguese (Português)", "pt"),
+    ("Russian (Русский)", "ru"),
+    ("Arabic (العربية)", "ar"),
+    ("Dutch (Nederlands)", "nl"),
+    ("Polish (Polski)", "pl"),
+    ("Turkish (Türkçe)", "tr"),
+    ("Swedish (Svenska)", "sv"),
+    ("Vietnamese (Tiếng Việt)", "vi"),
+]
+
 
 @dataclass
 class AppConfig:
     """User-configurable desktop application settings."""
 
-    # STT Model
+    # STT Model & Spoken Languages
     model_tier: str = "quality"  # Default: "quality" (large-v3-turbo), "max" (large-v3), "balanced" (small), "fast" (base)
-    language: str = "en"  # "en", "ne_en", "ne", "es", "fr", "de", "zh", "auto"
+    language: str = "en"  # Active language: "en", "ne_en", "ne", "es", "fr", "de", "zh", "auto"
+    spoken_languages: list[str] = field(default_factory=lambda: ["en"])  # Languages the user actively speaks
+    nepali_asr_engine: str = "conformer"  # "conformer" (Ampixa Labs 33.8% WER) or "whisper"
     speech_mode: str = "transcribe"  # "transcribe" (write what I say) or "translate" (translate speech to English)
     audio_device_index: Optional[int] = None
     push_to_talk: bool = True  # True: hold to speak, False: toggle on/off
+
+    def get_required_model_tiers(self) -> list[str]:
+        """Compute the minimal set of model tiers required for user's selected spoken languages."""
+        langs = set(self.spoken_languages or ["en"])
+        models: list[str] = []
+        needs_multilingual = False
+
+        for lang in langs:
+            if lang in ("de", "fr", "es", "zh") or lang in [code for _, code in ADDITIONAL_LANGUAGES]:
+                needs_multilingual = True
+
+        if "ne" in langs or "ne_en" in langs or self.language in ("ne", "ne_en"):
+            if self.nepali_asr_engine == "conformer":
+                models.append("nepali_conformer")
+            else:
+                needs_multilingual = True
+
+        if needs_multilingual:
+            models.append(self.model_tier if self.model_tier in ("quality", "balanced", "fast") else "quality")
+        else:
+            # English only
+            if "en" in langs:
+                models.append("small.en" if self.model_tier in ("quality", "balanced") else "base.en")
+
+        return list(dict.fromkeys(models))
+
 
     # Custom Vocabulary (comma-separated words, personal names, product terms)
     custom_vocabulary: str = ""

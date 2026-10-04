@@ -82,3 +82,47 @@ def test_mac_hotkey_monitor_combo_cancellation():
     assert len(started) == 0
 
     monitor.stop()
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS-specific hotkey tests")
+def test_mac_hotkey_monitor_dynamic_shift():
+    """Verify that pressing Shift while holding the trigger key switches to Action Mode dynamically."""
+    started = []
+    stopped = []
+    action_changes = []
+
+    monitor = MacHotkeyMonitor(
+        on_start_recording=lambda action: started.append(action),
+        on_stop_recording=lambda: stopped.append(True),
+        trigger_key="fn",
+        push_to_talk=True,
+        on_action_mode_changed=lambda is_action: action_changes.append(is_action),
+    )
+    monitor._running = True
+
+    # 1. Simulate Fn press down without shift
+    monitor._handle_trigger_state(is_down=True, is_shift=False)
+    # Wait for debounce to fire
+    time.sleep(monitor.DEBOUNCE_DELAY_SEC + 0.05)
+
+    assert monitor._is_active is True
+    assert started == [False]
+    assert action_changes == []
+
+    # 2. Press Shift while holding Fn
+    monitor._handle_trigger_state(is_down=True, is_shift=True)
+    assert monitor._is_action_mode is True
+    assert action_changes == [True]
+
+    # 3. Release Shift while still holding Fn
+    monitor._handle_trigger_state(is_down=True, is_shift=False)
+    assert monitor._is_action_mode is False
+    assert action_changes == [True, False]
+
+    # 4. Release Fn
+    monitor._handle_trigger_state(is_down=False, is_shift=False)
+    assert monitor._is_active is False
+    assert len(stopped) == 1
+
+    monitor.stop()
+

@@ -293,12 +293,12 @@ class FloatingPillOverlay(QWidget):
         self._press_start_time = time.time()
         self._state = self.STATE_LISTENING
         self._is_action_mode = is_action_mode
-        self._status_text = "Translating" if is_action_mode else "Listening"
+        self._status_text = "Action Mode" if is_action_mode else "Listening"
         self._shake_offset = 0.0
         self._audio_level = 0.0
         self._target_audio_level = 0.0
         self._bars = [0.2] * 9
-        self._pill_width = 216.0 if is_action_mode else 208.0
+        self._pill_width = 224.0 if is_action_mode else 208.0
 
         self._reposition()
         if not self.isVisible():
@@ -319,6 +319,14 @@ class FloatingPillOverlay(QWidget):
 
         self._anim_timer.start()
         self.update()
+
+    def set_action_mode(self, is_action_mode: bool) -> None:
+        """Dynamically elevate or lower the listening session to/from Action Mode while speaking."""
+        if self._state == self.STATE_LISTENING:
+            self._is_action_mode = is_action_mode
+            self._status_text = "Action Mode" if is_action_mode else "Listening"
+            self._pill_width = 224.0 if is_action_mode else 208.0
+            self.update()
 
     def update_audio_level(self, rms: float) -> None:
         """Live microphone volume callback (RMS 0.0 - 1.0) with non-linear boost."""
@@ -557,8 +565,14 @@ class FloatingPillOverlay(QWidget):
 
         # 1. Outer Soft Glow / Shadow
         glow_path = QPainterPath()
-        glow_path.addRoundedRect(capsule_rect.adjusted(-2, -2, 2, 2), radius + 2, radius + 2)
-        painter.fillPath(glow_path, QColor(0, 0, 0, 45))
+        if self._state == self.STATE_LISTENING and self._is_action_mode:
+            glow_path.addRoundedRect(capsule_rect.adjusted(-3, -3, 3, 3), radius + 3, radius + 3)
+            painter.fillPath(glow_path, QColor(255, 159, 10, 75))
+            border_pen = QPen(QColor(255, 159, 10, 200), 1.4)
+        else:
+            glow_path.addRoundedRect(capsule_rect.adjusted(-2, -2, 2, 2), radius + 2, radius + 2)
+            painter.fillPath(glow_path, QColor(0, 0, 0, 45))
+            border_pen = QPen(QColor(255, 255, 255, 34), 1.0)
 
         # 2. Main Capsule: Deep Obsidian Black (#0B0C0E)
         capsule_path = QPainterPath()
@@ -566,7 +580,6 @@ class FloatingPillOverlay(QWidget):
         painter.fillPath(capsule_path, QColor(11, 12, 14, 245))
 
         # 3. Hairline Border (subtle clean outline)
-        border_pen = QPen(QColor(255, 255, 255, 34), 1.0)
         painter.setPen(border_pen)
         painter.drawPath(capsule_path)
 
@@ -597,9 +610,9 @@ class FloatingPillOverlay(QWidget):
             confirm_center = QPointF(x + w - 24.0, y + h / 2.0)
             painter.setPen(Qt.PenStyle.NoPen)
             if self._hovered_btn == "confirm":
-                painter.setBrush(QColor(230, 232, 238, 255))
+                painter.setBrush(QColor(255, 179, 64, 255) if self._is_action_mode else QColor(230, 232, 238, 255))
             else:
-                painter.setBrush(QColor(255, 255, 255, 255))
+                painter.setBrush(QColor(255, 159, 10, 255) if self._is_action_mode else QColor(255, 255, 255, 255))
             painter.drawEllipse(confirm_center, btn_radius, btn_radius)
 
             # Draw "✓" in bold black
@@ -611,7 +624,7 @@ class FloatingPillOverlay(QWidget):
             check_path.lineTo(confirm_center.x() + 5.5, confirm_center.y() - 3.8)
             painter.drawPath(check_path)
 
-            # C. Center Sound Waveform Visualizer (9 Pure White Symmetrical Bars)
+            # C. Center Sound Waveform Visualizer
             num_bars = len(self._bars)
             bar_w = 3.2
             bar_gap = 3.8
@@ -620,7 +633,10 @@ class FloatingPillOverlay(QWidget):
             center_y = y + h / 2.0
 
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(255, 255, 255, 255))
+            if self._is_action_mode:
+                painter.setBrush(QColor(255, 179, 64, 255))
+            else:
+                painter.setBrush(QColor(255, 255, 255, 255))
 
             for idx, bar_ratio in enumerate(self._bars):
                 # Center bar max height: 28px, min: 5px
@@ -629,6 +645,19 @@ class FloatingPillOverlay(QWidget):
                 by = center_y - bar_h / 2.0
                 bar_rect = QRectF(bx, by, bar_w, bar_h)
                 painter.drawRoundedRect(bar_rect, 1.6, 1.6)
+
+            if self._is_action_mode:
+                # Draw subtle "⚡ ACTION" tag
+                painter.setPen(QColor(255, 179, 64, 220))
+                font = painter.font()
+                font.setPixelSize(9)
+                font.setBold(True)
+                painter.setFont(font)
+                painter.drawText(
+                    QRectF(x, y + 2, w, 11),
+                    Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
+                    "⚡ ACTION MODE",
+                )
 
         # ---------------------------------------------------------------------
         # State: PROCESSING (Spinning Shimmer + Text)

@@ -89,3 +89,40 @@ def test_alt_space_and_ctrl_space_matching():
     assert monitor._is_active is False
     assert len(stopped) == 1
     monitor.reset_state()
+
+
+def test_dynamic_shift_action_mode():
+    started = []
+    stopped = []
+    action_changes = []
+
+    monitor = PynputHotkeyMonitor(
+        trigger_key="right_alt",
+        action_key="ctrl_shift_space",
+        on_start_recording=lambda is_action: started.append(is_action),
+        on_stop_recording=lambda: stopped.append(True),
+        push_to_talk=True,
+        on_action_mode_changed=lambda is_action: action_changes.append(is_action),
+    )
+
+    # 1. Press Right Alt without Shift -> starts dictation (action=False)
+    monitor._on_press(keyboard.Key.alt_r)
+    assert monitor._is_active is True
+    assert started == [False]
+    assert action_changes == []
+
+    # 2. Press Shift while holding Right Alt -> triggers action mode dynamically
+    monitor._on_press(keyboard.Key.shift)
+    assert monitor._is_action_mode is True
+    assert action_changes == [True]
+
+    # 3. Release Shift while still holding Right Alt -> action mode turns off dynamically
+    monitor._on_release(keyboard.Key.shift)
+    assert monitor._is_action_mode is False
+    assert action_changes == [True, False]
+
+    # 4. Release Right Alt -> stops recording
+    monitor._on_release(keyboard.Key.alt_r)
+    assert monitor._is_active is False
+    assert len(stopped) == 1
+

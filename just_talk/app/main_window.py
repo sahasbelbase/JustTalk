@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QFormLayout,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -40,7 +41,7 @@ from PySide6.QtWidgets import (
 from .. import __version__
 from ..ai.gemini import GeminiFormatter
 from ..audio.recorder import AudioRecorder
-from ..config import AppConfig
+from ..config import ADDITIONAL_LANGUAGES, CORE_SPOKEN_LANGUAGES, AppConfig
 from ..database.history import HistoryDatabase, HistoryItem
 from ..security import CredentialManager
 from ..stt.model_manager import TIERS, ModelManager
@@ -82,8 +83,9 @@ class MainWindow(QMainWindow):
         self.latest_update_info: Optional[UpdateInfo] = None
 
         self.setWindowTitle("Just Talk")
-        self.resize(1160, 760)
-        self.setMinimumSize(920, 580)
+        self.resize(1260, 820)
+        self.setMinimumSize(1020, 680)
+
 
         # Center on screen
         screen = QApplication.primaryScreen()
@@ -1018,11 +1020,68 @@ class MainWindow(QMainWindow):
         self.mic_test_container.hide()
         s2_form.addRow("", self.mic_test_container)
 
+        # Spoken Languages Checkbox Grid
+        spoken_langs_container = QWidget()
+        sl_layout = QVBoxLayout(spoken_langs_container)
+        sl_layout.setContentsMargins(0, 0, 0, 0)
+        sl_layout.setSpacing(6)
+
+        sl_desc = QLabel("Select the languages you plan to speak. Just Talk only downloads what you need, saving gigabytes of disk space.")
+        sl_desc.setObjectName("mutedLabel")
+        sl_desc.setWordWrap(True)
+        sl_layout.addWidget(sl_desc)
+
+        grid_container = QWidget()
+        grid = QGridLayout(grid_container)
+        grid.setContentsMargins(0, 4, 0, 4)
+        grid.setHorizontalSpacing(16)
+        grid.setVerticalSpacing(6)
+
+        self.settings_lang_checkboxes: dict[str, QCheckBox] = {}
+        active_spoken = set(getattr(self.config, "spoken_languages", ["en"]) or ["en"])
+
+        for idx, item in enumerate(CORE_SPOKEN_LANGUAGES):
+            chk = QCheckBox(f"{item['flag']} {item['name']} ({item['native']})")
+            chk.setChecked(item["code"] in active_spoken)
+            chk.toggled.connect(self._on_settings_spoken_languages_changed)
+            self.settings_lang_checkboxes[item["code"]] = chk
+            grid.addWidget(chk, idx // 2, idx % 2)
+
+        sl_layout.addWidget(grid_container)
+
+        # Search combo for additional languages
+        search_row = QHBoxLayout()
+        search_lbl = QLabel("Search more languages:")
+        search_lbl.setObjectName("mutedLabel")
+        search_row.addWidget(search_lbl)
+
+        self.settings_add_lang_combo = QComboBox()
+        self.settings_add_lang_combo.addItem("+ Add other language...", "")
+        for name, code in ADDITIONAL_LANGUAGES:
+            self.settings_add_lang_combo.addItem(f"{name}", code)
+        self.settings_add_lang_combo.currentIndexChanged.connect(self._on_settings_add_language_selected)
+        search_row.addWidget(self.settings_add_lang_combo, 1)
+        sl_layout.addLayout(search_row)
+
+        s2_form.addRow("Spoken Languages:", spoken_langs_container)
+
+        # Nepali ASR Engine Option
+        self.nepali_engine_combo = QComboBox()
+        self.nepali_engine_combo.addItem("Ampixa NepaliConformer (Recommended · 33.8% WER)", "conformer")
+        self.nepali_engine_combo.addItem("OpenAI Whisper Large / Multilingual", "whisper")
+        cur_nep_eng = getattr(self.config, "nepali_asr_engine", "conformer")
+        n_idx = self.nepali_engine_combo.findData(cur_nep_eng)
+        if n_idx >= 0:
+            self.nepali_engine_combo.setCurrentIndex(n_idx)
+        self.nepali_engine_combo.currentIndexChanged.connect(self._on_nepali_engine_changed)
+        s2_form.addRow("Nepali ASR Engine:", self.nepali_engine_combo)
+
         self.tier_combo = QComboBox()
         for tier_id, info in TIERS.items():
             self.tier_combo.addItem(f"{info.display_name} — {info.speed_factor} ({info.disk_size_mb} MB)", tier_id)
         self.tier_combo.currentIndexChanged.connect(self._on_tier_selection_changed)
         s2_form.addRow("Model Quality:", self.tier_combo)
+
 
         # Responsive Model Storage & Download Card
         storage_row = QVBoxLayout()
@@ -1413,10 +1472,50 @@ class MainWindow(QMainWindow):
             if self.on_config_changed_callback:
                 self.on_config_changed_callback(self.config)
 
+    def _on_settings_spoken_languages_changed(self) -> None:
+        selected = [code for code, chk in getattr(self, "settings_lang_checkboxes", {}).items() if chk.isChecked()]
+        if not selected:
+            if "en" in self.settings_lang_checkboxes:
+                self.settings_lang_checkboxes["en"].setChecked(True)
+                selected = ["en"]
+        self.config.spoken_languages = selected
+        self.config.save()
+        self._update_model_status()
+        if self.on_config_changed_callback:
+            self.on_config_changed_callback(self.config)
+
+    def _on_settings_add_language_selected(self, index: int) -> None:
+        if index <= 0 or not hasattr(self, "settings_add_lang_combo"):
+            return
+        code = self.settings_add_lang_combo.currentData()
+        name = self.settings_add_lang_combo.currentText()
+        if code and code not in self.settings_lang_checkboxes:
+            chk = QCheckBox(f"🌐 {name}")
+            chk.setChecked(True)
+            chk.toggled.connect(self._on_settings_spoken_languages_changed)
+            self.settings_lang_checkboxes[code] = chk
+            self._on_settings_spoken_languages_changed()
+        self.settings_add_lang_combo.setCurrentIndex(0)
+
+    def _on_nepali_engine_changed(self, index: int) -> None:
+        engine = self.nepali_engine_combo.currentData()
+        if engine:
+            self.config.nepali_asr_engine = engine
+            self.config.save()
+            self._update_model_status()
+            if self.on_config_changed_callback:
+                self.on_config_changed_callback(self.config)
+
     def _update_model_status(self) -> None:
         tier_id = self.tier_combo.currentData() or self.config.model_tier
         info = self.model_manager.get_tier_info(tier_id)
         downloaded = self.model_manager.is_model_downloaded(tier_id)
+
+        # Check required models for spoken languages
+        all_ready, missing = self.model_manager.are_required_models_downloaded(
+            self.config.spoken_languages, tier_id
+        )
+
         if hasattr(self.model_manager, "is_downloading") and self.model_manager.is_downloading(tier_id):
             active_prog = self.model_manager.get_active_progress(tier_id)
             pct = active_prog[0] if active_prog else 5.0
@@ -1428,8 +1527,8 @@ class MainWindow(QMainWindow):
             self.download_btn.setText("Downloading...")
             self.download_btn.setEnabled(False)
             self.model_error_label.hide()
-        elif downloaded:
-            self.model_status_label.setText(f"✓ {info.display_name} is downloaded and ready in cache (~{info.disk_size_mb} MB).")
+        elif downloaded and all_ready:
+            self.model_status_label.setText(f"✓ All models for your spoken languages are downloaded and ready in cache (~{info.disk_size_mb} MB).")
             self.model_status_label.setStyleSheet("color: #30D158;")
             self.download_btn.setText("Re-download Model")
             self.download_btn.setStyleSheet("")
@@ -1437,13 +1536,17 @@ class MainWindow(QMainWindow):
             self.model_progress_bar.hide()
             self.model_error_label.hide()
         else:
-            self.model_status_label.setText(f"Not downloaded yet (~{info.disk_size_mb} MB required). Downloads automatically on first voice input or click below.")
+            missing_mb = self.model_manager.get_total_download_size_mb(missing or [tier_id])
+            self.model_status_label.setText(
+                f"Models needed for your active languages (~{missing_mb} MB). Downloads automatically on first voice input or click below."
+            )
             self.model_status_label.setStyleSheet("color: #8E8E93;")
-            self.download_btn.setText(f"Download {info.model_name.upper()} ({info.disk_size_mb} MB)")
+            self.download_btn.setText(f"Download Needed Models ({missing_mb} MB)")
             self.download_btn.setStyleSheet("background-color: #6C8EEF; color: white; border: none; font-weight: bold; border-radius: 6px; padding: 6px 12px;")
             self.download_btn.setEnabled(True)
             self.model_progress_bar.hide()
             self.model_error_label.hide()
+
 
     def _on_download_model(self) -> None:
         tier_id = self.tier_combo.currentData() or self.config.model_tier
