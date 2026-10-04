@@ -2,6 +2,7 @@
 
 import pytest
 from just_talk.ai.prompts import (
+    SYSTEM_PROMPT_AUTO,
     SYSTEM_PROMPT_CONCISE,
     SYSTEM_PROMPT_FORMAL,
     SYSTEM_PROMPT_SUBTLE,
@@ -14,6 +15,9 @@ def test_build_prompt_modes():
     assert build_prompt("subtle") == SYSTEM_PROMPT_SUBTLE
     assert build_prompt("formal") == SYSTEM_PROMPT_FORMAL
     assert build_prompt("concise") == SYSTEM_PROMPT_CONCISE
+    assert build_prompt("auto") == SYSTEM_PROMPT_AUTO
+    # Safe fallback on unknown style
+    assert build_prompt("unknown_style") == SYSTEM_PROMPT_SUBTLE
 
 
 def test_build_prompt_translate():
