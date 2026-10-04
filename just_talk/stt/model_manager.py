@@ -512,6 +512,17 @@ class ModelManager:
 
                         existing_bytes = part_file.stat().st_size if part_file.exists() else 0
                         headers = {"User-Agent": "JustTalk-Desktop/1.0"}
+                        import os
+                        hf_tok = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+                        if not hf_tok:
+                            tok_file = Path.home() / ".cache" / "huggingface" / "token"
+                            if tok_file.exists():
+                                try:
+                                    hf_tok = tok_file.read_text().strip()
+                                except Exception:
+                                    pass
+                        if hf_tok:
+                            headers["Authorization"] = f"Bearer {hf_tok}"
                         file_mode = "wb"
                         bytes_added_to_overall = 0
 
@@ -527,7 +538,13 @@ class ModelManager:
                                     # Requested range not satisfiable (part already complete)
                                     pass
                                 elif resp.status_code in (401, 403):
-                                    err_msg = f"Repository '{repo_id}' requires authentication or is gated (HTTP {resp.status_code})."
+                                    if tier_id == "nepali_conformer":
+                                        err_msg = (
+                                            f"Ampixa NepaliConformer is a gated model on Hugging Face (HTTP {resp.status_code}). "
+                                            "Request access at https://huggingface.co/ampixa/nepali-conformer-offline or use OpenAI Whisper for Nepali."
+                                        )
+                                    else:
+                                        err_msg = f"Repository '{repo_id}' requires authentication or is gated (HTTP {resp.status_code})."
                                     print(f"[ModelManager] {err_msg}", file=sys.stderr)
                                     notify(-1.0, err_msg)
                                     return False
