@@ -402,7 +402,34 @@
           </div>
         </div>
 
-        <!-- Feature 5: Pure Offline Mode Toggle -->
+        <!-- Feature 5: Bring Your Own Model (BYOM) -->
+        <div class="bento-card col-span-2">
+          <div class="card-inner">
+            <div class="card-icon amber">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>
+            </div>
+            <h3 class="card-title">Bring Your Own Model (BYOM) & Local Ollama</h3>
+            <p class="card-desc">
+              Total freedom over your AI stack. Connect local Ollama (Llama 3.2, Qwen 2.5, DeepSeek R1) for 100% offline, private text cleanup with zero token costs. Or load any custom Hugging Face repo or local CTranslate2 speech model with live latency benchmarks.
+            </p>
+            <div class="stats-row">
+              <div class="stat-col">
+                <div class="stat-value">Ollama</div>
+                <div class="stat-label">Local LLMs Supported</div>
+              </div>
+              <div class="stat-col">
+                <div class="stat-value green">Hugging Face</div>
+                <div class="stat-label">Custom STT Repos</div>
+              </div>
+              <div class="stat-col">
+                <div class="stat-value">0 Cloud Cost</div>
+                <div class="stat-label">Self-Hosted Freedom</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Feature 6: Pure Offline Mode Toggle -->
         <div class="bento-card">
           <div class="card-inner">
             <div class="card-icon green">
@@ -621,6 +648,16 @@
           </summary>
           <div class="faq-answer">
             <p>Yes! During onboarding and in the Settings panel, you select your spoken languages. If you only select English, Just Talk downloads only the English model (~460 MB), saving over 1 GB of storage and memory.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary class="faq-question">
+            <span>Can I Bring My Own Model (BYOM) or run local LLMs like Ollama?</span>
+            <span class="faq-arrow" aria-hidden="true">▾</span>
+          </summary>
+          <div class="faq-answer">
+            <p>Yes! Just Talk gives you complete control over your models. In Settings, you can switch AI formatting to <strong>Ollama (100% On-Device)</strong> to use models like Llama 3.2, Qwen 2.5, or DeepSeek R1 with zero internet access and zero token costs. For speech recognition, you can specify any custom Hugging Face repo ID or local CTranslate2 directory with live latency benchmarking.</p>
           </div>
         </details>
       </div>
