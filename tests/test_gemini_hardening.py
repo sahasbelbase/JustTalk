@@ -124,3 +124,18 @@ def test_format_text_circuit_breaker_instant_fallback():
         assert success is False
         assert "paused" in msg
         assert out == "Test speech."
+
+
+def test_gemini_timeout_capped_at_2_seconds():
+    formatter = GeminiFormatter(api_key="mock_key")
+    # Default timeout must be 2.0 seconds
+    assert formatter.timeout == 2.0
+
+    import httpx
+    with patch("httpx.Client.post", side_effect=httpx.TimeoutException("Read timed out")):
+        out, success, msg = formatter.format_text("um uh this took longer than 2 seconds")
+        assert success is False
+        assert "timeout" in msg.lower() or "timed out" in msg.lower() or "error" in msg.lower()
+        # Fallback raw text preserved
+        assert out == "This took longer than 2 seconds."
+

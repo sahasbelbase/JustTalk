@@ -62,3 +62,26 @@ def test_audio_recorder_level_callback():
     assert len(levels) == 1
     assert levels[0] > 0.0
     assert rec.get_audio_level() == levels[0]
+
+
+def test_audio_recorder_get_current_audio_snapshot():
+    rec = AudioRecorder()
+    assert rec.get_current_audio() is None
+
+    rec._is_recording = True
+    rec._actual_sample_rate = 16000
+    assert rec.get_current_audio() is None
+
+    # Simulate 2 chunks of audio
+    chunk1 = np.ones(1600, dtype=np.float32) * 0.2
+    chunk2 = np.ones(1600, dtype=np.float32) * 0.4
+    rec._frames = [chunk1, chunk2]
+
+    snapshot = rec.get_current_audio()
+    assert snapshot is not None
+    assert len(snapshot) == 3200
+    # Original frames are NOT cleared or mutated (streaming doesn't affect final recording)
+    assert len(rec._frames) == 2
+    assert np.allclose(snapshot[:1600], 0.2)
+    assert np.allclose(snapshot[1600:], 0.4)
+

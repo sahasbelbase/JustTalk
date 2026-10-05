@@ -90,17 +90,27 @@ ADDITIONAL_LANGUAGES: list[tuple[str, str]] = [
 class AppConfig:
     """User-configurable desktop application settings."""
 
-    # STT Model & Spoken Languages
+    # Speech-to-Text Engine Provider
+    # "os_native": Built-in Apple/Windows Dictation (zero download, zero login, instant on-device) [Default]
+    # "google_web": Google Web Speech API (zero download, zero login, free cloud, first-class Nepali)
+    # "whisper": Local faster-whisper / BYOM (offline, requires model download)
+    stt_provider: str = "os_native"
+
+    # STT Model & Spoken Languages (used when stt_provider == "whisper")
     model_tier: str = "quality"  # Default: "quality" (large-v3-turbo), "max" (large-v3), "balanced" (small), "fast" (base)
     language: str = "en"  # Active language: "en", "ne_en", "ne", "es", "fr", "de", "zh", "auto"
     spoken_languages: list[str] = field(default_factory=lambda: ["en"])  # Languages the user actively speaks
     nepali_asr_engine: str = "whisper"  # Default: "whisper" (100% out-of-the-box, no tokens needed) or "conformer"
     speech_mode: str = "transcribe"  # "transcribe" (write what I say) or "translate" (translate speech to English)
     audio_device_index: Optional[int] = None
-    push_to_talk: bool = True  # True: hold to speak, False: toggle on/off
+    push_to_talk: bool = False  # False: Tap-to-Toggle (Tap to start, Tap to stop) [Default], True: hold to speak
 
-    def get_required_model_tiers(self) -> list[str]:
+    def get_required_model_tiers(self, for_current_provider: bool = False) -> list[str]:
         """Compute the minimal set of model tiers required for user's selected spoken languages."""
+        # Non-whisper providers (os_native, google_web) require ZERO local models if checking active provider
+        if for_current_provider and getattr(self, "stt_provider", "whisper") != "whisper":
+            return []
+
         langs = set(self.spoken_languages or ["en"])
         models: list[str] = []
         needs_multilingual = False
@@ -140,7 +150,7 @@ class AppConfig:
     offline_mode: bool = False
     gemini_model: str = "gemini-3.8-flash"
     prompt_style: str = "subtle"  # "subtle", "formal", "concise"
-    formatting_budget_sec: float = 6.0  # Max time budget before raw text fallback
+    formatting_budget_sec: float = 2.0  # Max time budget before raw text fallback
 
     # Multi-Provider AI Configuration
     ai_provider: str = "gemini"  # Active provider ID: 'gemini', 'ollama', 'openai', 'anthropic', 'grok', 'groq', 'openrouter', 'deepseek', 'custom'
@@ -177,6 +187,75 @@ class AppConfig:
     # Optional Pill Indicators
     show_idle_indicator: bool = False
     sound_effects: bool = False
+
+    # Words-saved formula speeds (editable in Settings)
+    speaking_speed_wpm: int = 160  # Default: 160 wpm speaking rate
+    typing_speed_wpm: int = 40     # Default: 40 wpm typing rate
+
+    # Writing Conventions per context (context_label → {option: value})
+    # Populated with sensible defaults on first use; user can override per context.
+    conventions: dict = field(default_factory=lambda: {
+        "sql": {
+            "keyword_case": "upper",          # upper | lower | title
+            "naming_style": "PascalCase",     # PascalCase | snake_case | camelCase
+            "schema_prefix": True,            # add schema prefix (e.g. dbo.)
+            "aliases": True,                  # add short table aliases
+            "dialect": "tsql",                # tsql | mysql | postgres | sqlite | ansi
+            "indent_width": 4,
+        },
+        "python": {
+            "naming_style": "snake_case",     # PEP 8
+            "indent_width": 4,
+            "quote_style": "double",          # double | single
+            "type_hints": True,
+            "docstring_style": "google",      # google | numpy | sphinx
+        },
+        "javascript": {
+            "naming_style": "camelCase",      # Google JS Style
+            "indent_width": 2,
+            "quote_style": "single",
+            "semicolons": True,
+            "trailing_commas": True,
+        },
+        "typescript": {
+            "naming_style": "camelCase",
+            "indent_width": 2,
+            "quote_style": "single",
+            "semicolons": True,
+            "trailing_commas": True,
+            "strict": True,
+        },
+        "java": {
+            "naming_style": "camelCase",      # Oracle Code Conventions
+            "indent_width": 4,
+            "brace_style": "K&R",
+        },
+        "csharp": {
+            "naming_style": "PascalCase",     # Microsoft .NET conventions
+            "indent_width": 4,
+            "var_keyword": True,
+            "brace_style": "Allman",
+        },
+        "go": {
+            "naming_style": "camelCase",      # gofmt standard
+            "indent_width": 1,               # gofmt uses real tabs
+            "indent_char": "tab",
+        },
+        "rust": {
+            "naming_style": "snake_case",     # rustfmt standard
+            "indent_width": 4,
+        },
+        "php": {
+            "naming_style": "camelCase",      # PSR-12
+            "indent_width": 4,
+            "quote_style": "single",
+        },
+        "text": {
+            "style": "plain",                 # plain | formal | casual | bullet
+            "no_em_dash": True,
+            "no_filler_openers": True,
+        },
+    })
 
     @property
     def has_completed_onboarding(self) -> bool:

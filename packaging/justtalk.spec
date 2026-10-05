@@ -38,6 +38,7 @@ hidden_imports = [
     "scipy",
     "scipy.signal",
     "onnxruntime",
+    "speech_recognition",
     "PySide6",
     "PySide6.QtCore",
     "PySide6.QtGui",
@@ -51,6 +52,7 @@ if sys.platform == "darwin":
         "AppKit",
         "Quartz",
         "AVFoundation",
+        "Speech",
     ]
 elif sys.platform == "win32":
     hidden_imports += [

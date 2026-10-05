@@ -20,6 +20,7 @@ class ShortcutManager:
         on_start_recording: Callable[[bool], None],
         on_stop_recording: Callable[[], None],
         on_action_mode_changed: Optional[Callable[[bool], None]] = None,
+        on_cancel_recording: Optional[Callable[[], None]] = None,
     ):
         self.shortcut = shortcut
         self.action_shortcut = action_shortcut
@@ -27,6 +28,7 @@ class ShortcutManager:
         self.on_start_recording = on_start_recording
         self.on_stop_recording = on_stop_recording
         self.on_action_mode_changed = on_action_mode_changed
+        self.on_cancel_recording = on_cancel_recording
 
         self._mac_monitor: Optional[MacFnKeyMonitor] = None
         self._pynput_monitor: Optional[PynputHotkeyMonitor] = None
@@ -56,6 +58,7 @@ class ShortcutManager:
                 trigger_key=self.shortcut,
                 push_to_talk=self.push_to_talk,
                 on_action_mode_changed=self.on_action_mode_changed,
+                on_cancel_recording=self.on_cancel_recording,
             )
             ok = self._mac_monitor.start()
             if ok:
@@ -70,6 +73,7 @@ class ShortcutManager:
             on_start_recording=self.on_start_recording,
             on_stop_recording=self.on_stop_recording,
             on_action_mode_changed=self.on_action_mode_changed,
+            on_cancel_recording=self.on_cancel_recording,
         )
         return self._pynput_monitor.start()
 

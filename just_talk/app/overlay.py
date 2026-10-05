@@ -22,6 +22,7 @@ from PySide6.QtGui import (
     QBrush,
     QColor,
     QFont,
+    QFontMetrics,
     QPainter,
     QPainterPath,
     QPen,
@@ -75,7 +76,9 @@ class FloatingPillOverlay(QWidget):
         # Animation properties
         self._morph_progress = 0.0
         self._opacity = 0.0
+        self._live_transcript = ""
         self._pill_width = 216.0
+        self._target_pill_width = 216.0
         self._pill_height = 48.0
 
         # Window flags: Tool type creates a Cocoa QNSPanel on macOS.
@@ -102,7 +105,7 @@ class FloatingPillOverlay(QWidget):
         self._anim_timer.timeout.connect(self._on_animation_frame)
 
         self._apply_native_window_attributes()
-        self.setFixedSize(280, 68)
+        self.setFixedSize(580, 68)
         self._reposition()
 
     # -------------------------------------------------------------------------
@@ -294,11 +297,13 @@ class FloatingPillOverlay(QWidget):
         self._state = self.STATE_LISTENING
         self._is_action_mode = is_action_mode
         self._status_text = "Action Mode" if is_action_mode else "Listening"
+        self._live_transcript = ""
         self._shake_offset = 0.0
         self._audio_level = 0.0
         self._target_audio_level = 0.0
         self._bars = [0.2] * 9
         self._pill_width = 224.0 if is_action_mode else 208.0
+        self._target_pill_width = self._pill_width
 
         self._reposition()
         if not self.isVisible():
@@ -320,12 +325,41 @@ class FloatingPillOverlay(QWidget):
         self._anim_timer.start()
         self.update()
 
+    @property
+    def _partial_transcript(self) -> str:
+        return self._live_transcript
+
+    def set_state(self, state: int | str) -> None:
+        """Set overlay state."""
+        if state in ("idle", self.STATE_IDLE):
+            self._state = self.STATE_IDLE
+            self._live_transcript = ""
+            self._pill_width = 216.0
+            self._target_pill_width = 216.0
+            self.hide()
+
+    def update_partial_transcript(self, text: str) -> None:
+        """Update live streaming partial transcript displayed inside the floating HUD."""
+        clean_text = text.strip()
+        if not clean_text:
+            return
+        self._live_transcript = clean_text
+        font = ThemeManager.get_ui_font(13, weight=QFont.Weight.Medium)
+        fm = QFontMetrics(font)
+        text_w = fm.horizontalAdvance(clean_text)
+        # Ensure room for cancel button, mini wave, text, and confirm button
+        desired_w = min(540.0, max(224.0 if self._is_action_mode else 208.0, text_w + 130.0))
+        self._target_pill_width = desired_w
+        self.update()
+
     def set_action_mode(self, is_action_mode: bool) -> None:
         """Dynamically elevate or lower the listening session to/from Action Mode while speaking."""
         if self._state == self.STATE_LISTENING:
             self._is_action_mode = is_action_mode
             self._status_text = "Action Mode" if is_action_mode else "Listening"
-            self._pill_width = 224.0 if is_action_mode else 208.0
+            if not self._live_transcript:
+                self._pill_width = 224.0 if is_action_mode else 208.0
+                self._target_pill_width = self._pill_width
             self.update()
 
     def update_audio_level(self, rms: float) -> None:
@@ -339,7 +373,9 @@ class FloatingPillOverlay(QWidget):
         """Morph from waveform into spinning thinking shimmer."""
         self._state = self.STATE_PROCESSING
         self._status_text = text
+        self._live_transcript = ""
         self._pill_width = 175.0
+        self._target_pill_width = 175.0
         self._opacity = 1.0
         if not self.isVisible():
             self.show()
@@ -353,7 +389,9 @@ class FloatingPillOverlay(QWidget):
         """Emerald checkmark confirmation."""
         self._state = self.STATE_INSERTED
         self._status_text = "Inserted"
+        self._live_transcript = ""
         self._pill_width = 150.0
+        self._target_pill_width = 150.0
         self._opacity = 1.0
         if not self.isVisible():
             self.show()
@@ -365,7 +403,9 @@ class FloatingPillOverlay(QWidget):
         """Offline fallback confirmation."""
         self._state = self.STATE_INSERTED_OFFLINE
         self._status_text = "Inserted (offline)"
+        self._live_transcript = ""
         self._pill_width = 190.0
+        self._target_pill_width = 190.0
         self._opacity = 1.0
         if not self.isVisible():
             self.show()
@@ -377,7 +417,9 @@ class FloatingPillOverlay(QWidget):
         """Clipboard confirmation badge."""
         self._state = self.STATE_COPIED
         self._status_text = "Copied to Clipboard"
+        self._live_transcript = ""
         self._pill_width = 180.0
+        self._target_pill_width = 180.0
         self._opacity = 1.0
         if not self.isVisible():
             self.show()
@@ -389,7 +431,9 @@ class FloatingPillOverlay(QWidget):
         """Subtle horizontal shake with error message."""
         self._state = self.STATE_ERROR
         self._status_text = message
+        self._live_transcript = ""
         self._pill_width = 200.0
+        self._target_pill_width = 200.0
         self._shake_start = time.time()
         self._opacity = 1.0
         if not self.isVisible():
@@ -430,6 +474,12 @@ class FloatingPillOverlay(QWidget):
             return
 
         now = time.time()
+
+        # Smoothly interpolate pill width towards target width for liquid morphing
+        if abs(self._pill_width - self._target_pill_width) > 0.5:
+            self._pill_width += (self._target_pill_width - self._pill_width) * 0.28
+        else:
+            self._pill_width = self._target_pill_width
 
         # 1. Audio smoothing (instant attack ~25ms, smooth organic release)
         if self._target_audio_level > self._audio_level:
@@ -553,6 +603,7 @@ class FloatingPillOverlay(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setOpacity(self._opacity)
+        now = time.time()
 
         # Dynamic pill dimensions
         w = self._pill_width * self._morph_progress
@@ -624,40 +675,77 @@ class FloatingPillOverlay(QWidget):
             check_path.lineTo(confirm_center.x() + 5.5, confirm_center.y() - 3.8)
             painter.drawPath(check_path)
 
-            # C. Center Sound Waveform Visualizer
-            num_bars = len(self._bars)
-            bar_w = 3.2
-            bar_gap = 3.8
-            total_waveform_w = num_bars * bar_w + (num_bars - 1) * bar_gap
-            waveform_start_x = x + (w - total_waveform_w) / 2.0
-            center_y = y + h / 2.0
+            # C. Center Sound Waveform Visualizer or Live Partial Transcript
+            if not self._live_transcript:
+                num_bars = len(self._bars)
+                bar_w = 3.2
+                bar_gap = 3.8
+                total_waveform_w = num_bars * bar_w + (num_bars - 1) * bar_gap
+                waveform_start_x = x + (w - total_waveform_w) / 2.0
+                center_y = y + h / 2.0
 
-            painter.setPen(Qt.PenStyle.NoPen)
-            if self._is_action_mode:
-                painter.setBrush(QColor(255, 179, 64, 255))
+                painter.setPen(Qt.PenStyle.NoPen)
+                if self._is_action_mode:
+                    painter.setBrush(QColor(255, 179, 64, 255))
+                else:
+                    painter.setBrush(QColor(255, 255, 255, 255))
+
+                for idx, bar_ratio in enumerate(self._bars):
+                    # Center bar max height: 28px, min: 5px
+                    bar_h = max(5.0, bar_ratio * 28.0)
+                    bx = waveform_start_x + idx * (bar_w + bar_gap)
+                    by = center_y - bar_h / 2.0
+                    bar_rect = QRectF(bx, by, bar_w, bar_h)
+                    painter.drawRoundedRect(bar_rect, 1.6, 1.6)
+
+                if self._is_action_mode:
+                    # Draw subtle "⚡ ACTION" tag
+                    painter.setPen(QColor(255, 179, 64, 220))
+                    font = painter.font()
+                    font.setPixelSize(9)
+                    font.setBold(True)
+                    painter.setFont(font)
+                    painter.drawText(
+                        QRectF(x, y + 2, w, 11),
+                        Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
+                        "⚡ ACTION MODE",
+                    )
             else:
-                painter.setBrush(QColor(255, 255, 255, 255))
+                # Live streaming words displayed in real-time as user speaks!
+                # 1. Mini 3-bar audio wave indicator right beside the cancel button
+                mini_start_x = x + 44.0
+                center_y = y + h / 2.0
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(QColor(255, 179, 64, 230) if self._is_action_mode else QColor(255, 255, 255, 220))
+                for m_idx in range(3):
+                    m_ratio = self._bars[3 + m_idx]
+                    m_h = max(4.0, m_ratio * 16.0)
+                    m_bx = mini_start_x + m_idx * 5.0
+                    m_by = center_y - m_h / 2.0
+                    painter.drawRoundedRect(QRectF(m_bx, m_by, 2.4, m_h), 1.2, 1.2)
 
-            for idx, bar_ratio in enumerate(self._bars):
-                # Center bar max height: 28px, min: 5px
-                bar_h = max(5.0, bar_ratio * 28.0)
-                bx = waveform_start_x + idx * (bar_w + bar_gap)
-                by = center_y - bar_h / 2.0
-                bar_rect = QRectF(bx, by, bar_w, bar_h)
-                painter.drawRoundedRect(bar_rect, 1.6, 1.6)
-
-            if self._is_action_mode:
-                # Draw subtle "⚡ ACTION" tag
-                painter.setPen(QColor(255, 179, 64, 220))
-                font = painter.font()
-                font.setPixelSize(9)
-                font.setBold(True)
+                # 2. Live text layout
+                text_start_x = mini_start_x + 20.0
+                avail_text_w = max(40.0, (x + w - 46.0) - text_start_x)
+                font = ThemeManager.get_ui_font(13, weight=QFont.Weight.Medium)
                 painter.setFont(font)
-                painter.drawText(
-                    QRectF(x, y + 2, w, 11),
-                    Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
-                    "⚡ ACTION MODE",
-                )
+                fm = QFontMetrics(font)
+
+                # Elide on left so latest spoken words are always prominently visible
+                elided_str = fm.elidedText(self._live_transcript, Qt.TextElideMode.ElideLeft, int(avail_text_w - 12.0))
+
+                # Text color
+                painter.setPen(QColor(245, 245, 247, 255))
+                text_rect = QRectF(text_start_x, y, avail_text_w, h)
+                painter.drawText(text_rect, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, elided_str)
+
+                # 3. Pulsing live indicator bar at end of visible text
+                drawn_w = min(avail_text_w, fm.horizontalAdvance(elided_str))
+                cursor_x = text_start_x + drawn_w + 3.0
+                if cursor_x < x + w - 44.0:
+                    cursor_opacity = int(140 + 115 * (0.5 + 0.5 * math.sin(now * 7.0)))
+                    painter.setPen(QColor(255, 179, 64, cursor_opacity) if self._is_action_mode else QColor(255, 255, 255, cursor_opacity))
+                    painter.drawLine(QPointF(cursor_x, center_y - 6.0), QPointF(cursor_x, center_y + 6.0))
 
         # ---------------------------------------------------------------------
         # State: PROCESSING (Spinning Shimmer + Text)

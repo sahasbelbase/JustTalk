@@ -240,6 +240,41 @@ class AudioRecorder:
         self._stream = stream
         return True
 
+    def get_current_audio(self) -> Optional[np.ndarray]:
+        """
+        Return a copy of the currently captured audio as a 1D NumPy float32 array at 16000 Hz,
+        without stopping the stream. Useful for real-time partial streaming transcription.
+        """
+        with self._lock:
+            if not self._is_recording or not self._frames:
+                return None
+            captured_audio = np.concatenate(self._frames, axis=0)
+
+        if captured_audio is not None and len(captured_audio) > 0:
+            actual_rate = getattr(self, "_actual_sample_rate", self.SAMPLE_RATE)
+            if actual_rate != self.SAMPLE_RATE:
+                try:
+                    from scipy import signal
+
+                    gcd = math.gcd(int(actual_rate), self.SAMPLE_RATE)
+                    up = self.SAMPLE_RATE // gcd
+                    down = int(actual_rate) // gcd
+                    captured_audio = signal.resample_poly(captured_audio, up, down).astype(np.float32)
+                except Exception:
+                    target_len = int(len(captured_audio) * self.SAMPLE_RATE / actual_rate)
+                    captured_audio = np.interp(
+                        np.linspace(0, len(captured_audio), target_len, endpoint=False),
+                        np.arange(len(captured_audio)),
+                        captured_audio,
+                    ).astype(np.float32)
+
+            peak = float(np.max(np.abs(captured_audio)))
+            if 0.0005 < peak < 0.20:
+                boost = min(4.5, 0.75 / max(peak, 0.001))
+                captured_audio = np.clip(captured_audio * boost, -1.0, 1.0)
+
+        return captured_audio
+
     def stop(self) -> Optional[np.ndarray]:
         """
         Stop recording and return the accumulated audio as a 1D NumPy float32 array at 16000 Hz.

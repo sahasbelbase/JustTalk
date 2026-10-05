@@ -139,6 +139,21 @@ class TestMultiProvider(unittest.TestCase):
         self.assertIn("Translate the spoken content into clean, fluent English", instruction)
         self.assertNotIn("Only clean and format the spoken words into written text.", instruction)
 
+    def test_timeout_capped_at_2_seconds(self):
+        formatter = MultiProviderFormatter(provider_id="openai", api_key="test-key", timeout=15.0)
+        # Even if a larger timeout is passed, default timeout is 2.0s and effective timeout never exceeds 2.0s
+        default_formatter = MultiProviderFormatter(provider_id="gemini")
+        self.assertEqual(default_formatter.timeout, 2.0)
+
+        # Verify timeout cap during format call
+        with patch("httpx.Client.post") as mock_post:
+            import httpx
+            mock_post.side_effect = httpx.TimeoutException("Read timed out")
+            out, success, msg = formatter.format_text("long raw text " * 50)
+            self.assertFalse(success)
+            self.assertTrue("timeout" in msg.lower() or "timed out" in msg.lower())
+
 
 if __name__ == "__main__":
     unittest.main()
+

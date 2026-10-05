@@ -118,7 +118,7 @@ class GeminiFormatter:
         self,
         api_key: Optional[str] = None,
         model_name: str = "gemini-3.8-flash",
-        timeout: float = 3.0,
+        timeout: float = 2.0,
         circuit_breaker: Optional[CircuitBreaker] = None,
         time_func: Callable[[], float] = time.time,
     ):
@@ -397,9 +397,11 @@ class GeminiFormatter:
         # Anti-prompt injection: explicit data boundaries
         is_translation = "translate" in system_instruction.lower() or style == "translate"
         task_directive = (
-            "Translate the spoken content into clean, fluent English according to the instructions above."
+            "Translate the spoken content into clean, fluent English. "
+            "MANDATORY: DO NOT summarize. DO NOT drop information. Preserve full detail and length."
             if is_translation
-            else "Only clean and format the spoken words into written text."
+            else "STRICT TRANSCRIPTION ONLY: Only fix punctuation, capitalization, and filler words. "
+                 "MANDATORY: DO NOT summarize. DO NOT omit sentences. DO NOT shorten or rephrase. Output the full message."
         )
         wrapped_instruction = (
             f"{system_instruction}\n"

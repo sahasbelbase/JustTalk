@@ -58,17 +58,20 @@ class MacHotkeyMonitor:
         trigger_key: str = "fn",
         push_to_talk: bool = True,
         on_action_mode_changed: Optional[Callable[[bool], None]] = None,
+        on_cancel_recording: Optional[Callable[[], None]] = None,
     ):
         self.on_start_recording = on_start_recording
         self.on_stop_recording = on_stop_recording
         self.trigger_key = trigger_key.lower().strip()
         self.push_to_talk = push_to_talk
         self.on_action_mode_changed = on_action_mode_changed
+        self.on_cancel_recording = on_cancel_recording
 
         self._lock = threading.Lock()
         self._is_active = False
         self._is_action_mode = False
         self._press_start_time = 0.0
+        self._last_toggle_time = 0.0
 
         # State tracking for transition detection and combo filtering
         self._prev_trigger_down = False
@@ -262,6 +265,7 @@ class MacHotkeyMonitor:
         Ensures quick accidental taps (<80ms) are filtered and callbacks are invoked outside lock.
         Supports dynamically switching into/out of Action Mode while holding the trigger key.
         """
+        to_start = False
         to_stop = False
         action_changed: Optional[bool] = None
 
@@ -269,12 +273,13 @@ class MacHotkeyMonitor:
             if is_down:
                 if not self._prev_trigger_down:
                     self._prev_trigger_down = True
-                    self._press_start_time = time.time()
+                    now = time.time()
+                    self._press_start_time = now
                     self._cancelled_by_combination = False
                     self._is_action_mode = is_shift
 
                     if self.push_to_talk:
-                        # Schedule debounce timer
+                        # Schedule debounce timer for push-to-talk
                         self._cancel_debounce()
                         self._debounce_timer = threading.Timer(
                             self.DEBOUNCE_DELAY_SEC, self._fire_start, args=(is_shift,)
@@ -282,14 +287,17 @@ class MacHotkeyMonitor:
                         self._debounce_timer.daemon = True
                         self._debounce_timer.start()
                     else:
-                        # Toggle mode: click to start, click to stop
-                        if not self._is_active:
-                            self._is_active = True
-                            self._is_action_mode = is_shift
-                            to_start = True
-                        else:
-                            if time.time() - self._press_start_time > 0.20:
+                        # Foolproof Toggle Mode: Tap to Start, Tap to Stop
+                        # Hardware debounce threshold (250ms) protects against switch bounce
+                        if now - self._last_toggle_time >= 0.25:
+                            self._last_toggle_time = now
+                            if not self._is_active:
+                                self._is_active = True
+                                self._is_action_mode = is_shift
+                                to_start = True
+                            else:
                                 self._is_active = False
+                                self._is_action_mode = False
                                 to_stop = True
                 else:
                     # Key is already held down! Dynamically update action mode if Shift was pressed/released
@@ -315,11 +323,18 @@ class MacHotkeyMonitor:
                         if self._is_active:
                             self._is_active = False
                             to_stop = True
-                    elif self._is_active:
-                        if self.push_to_talk:
-                            self._is_active = False
-                            self._is_action_mode = False
-                            to_stop = True
+                    elif self._is_active and self.push_to_talk:
+                        # In Push-to-Talk mode, releasing the key stops recording
+                        self._is_active = False
+                        self._is_action_mode = False
+                        to_stop = True
+
+        if to_start:
+            try:
+                print(f"[MacHotkeyMonitor] Toggle START recording (action_mode={is_shift})", file=sys.stderr)
+                self.on_start_recording(is_shift)
+            except Exception as e:
+                print(f"[MacHotkeyMonitor] on_start error: {e}", file=sys.stderr)
 
         if action_changed is not None and self.on_action_mode_changed:
             try:
@@ -330,16 +345,37 @@ class MacHotkeyMonitor:
 
         if to_stop:
             try:
-                print("[MacHotkeyMonitor] Key released, STOP recording", file=sys.stderr)
+                print("[MacHotkeyMonitor] STOP recording", file=sys.stderr)
                 self.on_stop_recording()
             except Exception as e:
                 print(f"[MacHotkeyMonitor] on_stop error: {e}", file=sys.stderr)
 
     def _handle_other_key_down(self, keycode: int) -> None:
         """
-        Called when another key is pressed while the trigger key is held.
-        Cancels voice recording only on legitimate system combinations (Fn+F1-F12, Fn+arrows, Fn+delete).
+        Called when another key is pressed while the trigger key is held or active.
+        Cancels voice recording on Escape (keycode 53) or legitimate system combinations (Fn+F1-F12, Fn+arrows, Fn+delete).
         """
+        # Emergency Cancel: Escape key (macOS kVK_Escape = 53)
+        if keycode == 53:
+            to_cancel = False
+            with self._lock:
+                if self._is_active or self._prev_trigger_down:
+                    self._cancelled_by_combination = True
+                    self._cancel_debounce()
+                    if self._is_active:
+                        self._is_active = False
+                        to_cancel = True
+            if to_cancel:
+                print("[MacHotkeyMonitor] Escape key pressed -> CANCEL recording", file=sys.stderr)
+                try:
+                    if self.on_cancel_recording:
+                        self.on_cancel_recording()
+                    else:
+                        self.on_stop_recording()
+                except Exception as e:
+                    print(f"[MacHotkeyMonitor] cancel error: {e}", file=sys.stderr)
+            return
+
         if keycode not in self.FN_COMBINATION_KEYS:
             return
 

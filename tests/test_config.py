@@ -13,7 +13,9 @@ def test_default_config():
     assert config.gemini_enabled is True
     assert config.offline_mode is False
     assert config.history_retention_days == 30
-    assert config.push_to_talk is True
+    assert config.push_to_talk is False
+    assert config.stt_provider == "os_native"
+    assert config.two_phase_emission is True
 
 
 def test_supported_languages():

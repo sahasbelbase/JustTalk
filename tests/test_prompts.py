@@ -35,3 +35,18 @@ def test_translate_prompt_code_switching_directives():
     assert "CODE-SWITCHING" in prompt
     assert "Nepali" in prompt
     assert "disfluencies" in prompt.lower()
+
+
+def test_strict_preservation_directives():
+    subtle = build_prompt("subtle")
+    assert "strict transcription formatting assistant" in subtle.lower()
+    assert "do not summarize" in subtle.lower()
+    assert "do not remove information" in subtle.lower()
+    assert "preserve every single detail" in subtle.lower()
+
+    auto = build_prompt("auto")
+    assert "do not summarize" in auto.lower()
+    assert "do not delete information" in auto.lower()
+
+    translate = build_prompt("translate", target_language="English")
+    assert "do not summarize" in translate.lower()

@@ -128,3 +128,36 @@ def test_mac_hotkey_monitor_dynamic_shift():
 
     monitor.stop()
 
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS-specific hotkey tests")
+def test_mac_hotkey_monitor_toggle_mode():
+    """Verify Tap-to-Start and Tap-to-Stop (toggle mode)."""
+    started = []
+    stopped = []
+
+    monitor = MacHotkeyMonitor(
+        on_start_recording=lambda action: started.append(action),
+        on_stop_recording=lambda: stopped.append(True),
+        trigger_key="fn",
+        push_to_talk=False,  # Toggle mode
+    )
+    monitor._running = True
+
+    # 1. Tap 1 (Press down and release Fn) -> Should start recording
+    monitor._handle_trigger_state(is_down=True, is_shift=False)
+    monitor._handle_trigger_state(is_down=False, is_shift=False)
+    assert monitor._is_active is True
+    assert started == [False]
+    assert stopped == []
+
+    # Wait past 250ms debounce window
+    time.sleep(0.3)
+
+    # 2. Tap 2 (Press down and release Fn again) -> Should stop recording
+    monitor._handle_trigger_state(is_down=True, is_shift=False)
+    monitor._handle_trigger_state(is_down=False, is_shift=False)
+    assert monitor._is_active is False
+    assert len(stopped) == 1
+
+    monitor.stop()
+

@@ -4,11 +4,11 @@
 ; ==============================================================================
 
 #define MyAppName "Just Talk"
-#define MyAppVersion "1.0.12"
+#define MyAppVersion "2.0.1"
 #define MyAppPublisher "Just Talk"
 #define MyAppURL "https://github.com/sahasbelbase/JustTalk"
 #define MyAppExeName "JustTalk.exe"
-#define MyAppID "JustTalk.Desktop.VoiceInput.1.0"
+#define MyAppID "JustTalk.Desktop.VoiceInput.2.0"
 
 [Setup]
 ; Unique GUID for Just Talk

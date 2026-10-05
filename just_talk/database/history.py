@@ -27,6 +27,9 @@ class HistoryItem:
     status: str  # "inserted", "clipboard", "failed"
     duration_ms: int = 0
     speaker: Optional[str] = None
+    context: str = "text"       # "sql", "python", "javascript", "typescript", "java", "csharp", "go", "rust", "php", "text"
+    word_count: int = 0         # Word count of processed_text
+    duration_sec: float = 0.0   # Recording duration in seconds
 
     @property
     def formatted_time(self) -> str:
@@ -90,6 +93,30 @@ class HistoryDatabase:
             except sqlite3.OperationalError:
                 pass
 
+            # Phase 3 migrations: context, word_count, duration_sec
+            for col_def in [
+                "context TEXT DEFAULT 'text'",
+                "word_count INTEGER DEFAULT 0",
+                "duration_sec REAL DEFAULT 0.0",
+            ]:
+                try:
+                    conn.execute(f"ALTER TABLE history ADD COLUMN {col_def}")
+                except sqlite3.OperationalError:
+                    pass
+
+            # Backfill word_count for existing rows where it is still 0 but processed_text is not empty
+            conn.execute(
+                """
+                UPDATE history
+                SET word_count = (
+                    LENGTH(TRIM(processed_text))
+                    - LENGTH(REPLACE(TRIM(processed_text), ' ', ''))
+                    + 1
+                )
+                WHERE word_count = 0 AND TRIM(processed_text) != ''
+                """
+            )
+
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS voice_profiles (
@@ -118,10 +145,17 @@ class HistoryDatabase:
         status: str = "inserted",
         duration_ms: int = 0,
         speaker: Optional[str] = None,
+        context: str = "text",
+        word_count: int = -1,
+        duration_sec: float = 0.0,
     ) -> HistoryItem:
         """Insert a new history entry."""
         item_id = str(uuid.uuid4())
         timestamp = datetime.now(timezone.utc).isoformat()
+        # Auto-compute word_count if not supplied
+        if word_count < 0:
+            text = (processed_text or "").strip()
+            word_count = len(text.split()) if text else 0
         item = HistoryItem(
             id=item_id,
             timestamp=timestamp,
@@ -132,56 +166,161 @@ class HistoryDatabase:
             status=status,
             duration_ms=duration_ms,
             speaker=speaker,
+            context=context,
+            word_count=word_count,
+            duration_sec=duration_sec,
         )
 
         with self._get_connection() as conn:
             conn.execute(
                 """
-                INSERT INTO history (id, timestamp, action, raw_transcription, processed_text, application, status, duration_ms, speaker)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO history (id, timestamp, action, raw_transcription, processed_text,
+                                     application, status, duration_ms, speaker,
+                                     context, word_count, duration_sec)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    item.id,
-                    item.timestamp,
-                    item.action,
-                    item.raw_transcription,
-                    item.processed_text,
-                    item.application,
-                    item.status,
-                    item.duration_ms,
-                    item.speaker,
+                    item.id, item.timestamp, item.action,
+                    item.raw_transcription, item.processed_text,
+                    item.application, item.status, item.duration_ms, item.speaker,
+                    item.context, item.word_count, item.duration_sec,
                 ),
             )
             conn.commit()
         return item
+
+
+    def _row_to_item(self, row: sqlite3.Row) -> HistoryItem:
+        """Convert a sqlite3.Row to a HistoryItem, tolerating missing columns."""
+        keys = row.keys()
+        return HistoryItem(
+            id=row["id"],
+            timestamp=row["timestamp"],
+            action=row["action"],
+            raw_transcription=row["raw_transcription"],
+            processed_text=row["processed_text"],
+            application=row["application"],
+            status=row["status"],
+            duration_ms=row["duration_ms"] or 0,
+            speaker=row["speaker"] if "speaker" in keys else None,
+            context=row["context"] if "context" in keys else "text",
+            word_count=row["word_count"] if "word_count" in keys else 0,
+            duration_sec=row["duration_sec"] if "duration_sec" in keys else 0.0,
+        )
 
     def get_recent(self, limit: int = 100) -> List[HistoryItem]:
         """Fetch the most recent history records ordered from newest to oldest."""
         with self._get_connection() as conn:
             cursor = conn.execute(
                 """
-                SELECT id, timestamp, action, raw_transcription, processed_text, application, status, duration_ms, speaker
+                SELECT id, timestamp, action, raw_transcription, processed_text,
+                       application, status, duration_ms, speaker,
+                       context, word_count, duration_sec
                 FROM history
                 ORDER BY timestamp DESC
                 LIMIT ?
                 """,
                 (limit,),
             )
-            rows = cursor.fetchall()
-            return [
-                HistoryItem(
-                    id=row["id"],
-                    timestamp=row["timestamp"],
-                    action=row["action"],
-                    raw_transcription=row["raw_transcription"],
-                    processed_text=row["processed_text"],
-                    application=row["application"],
-                    status=row["status"],
-                    duration_ms=row["duration_ms"],
-                    speaker=row["speaker"] if "speaker" in row.keys() else None,
-                )
-                for row in rows
-            ]
+            return [self._row_to_item(row) for row in cursor.fetchall()]
+
+    def get_by_date(self, date_str: str, limit: int = 500) -> List[HistoryItem]:
+        """Fetch all history records for a given date (YYYY-MM-DD)."""
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                """
+                SELECT id, timestamp, action, raw_transcription, processed_text,
+                       application, status, duration_ms, speaker,
+                       context, word_count, duration_sec
+                FROM history
+                WHERE DATE(timestamp) = ?
+                ORDER BY timestamp DESC
+                LIMIT ?
+                """,
+                (date_str, limit),
+            )
+            return [self._row_to_item(row) for row in cursor.fetchall()]
+
+    def delete(self, item_id: str) -> bool:
+        """Delete a single history entry by id. Returns True if a row was deleted."""
+        with self._get_connection() as conn:
+            cur = conn.execute("DELETE FROM history WHERE id = ?", (item_id,))
+            conn.commit()
+            return cur.rowcount > 0
+
+    def get_daily_stats(self, days: int = 365) -> List[dict]:
+        """
+        Return per-day aggregates for the contribution graph.
+        Each entry: {date, word_count, duration_min, top_app}
+        Only returns days that have at least one record.
+        """
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                """
+                SELECT
+                    DATE(timestamp) AS date,
+                    SUM(word_count) AS total_words,
+                    SUM(duration_sec) / 60.0 AS total_min,
+                    application AS top_app
+                FROM history
+                WHERE timestamp >= DATE('now', ?)
+                GROUP BY DATE(timestamp), application
+                ORDER BY DATE(timestamp) DESC, total_words DESC
+                """,
+                (f"-{days} days",),
+            )
+            # Collapse multiple apps per day — keep the highest-word one
+            by_date: dict[str, dict] = {}
+            for row in cursor.fetchall():
+                d = row["date"]
+                if d not in by_date:
+                    by_date[d] = {
+                        "date": d,
+                        "word_count": int(row["total_words"] or 0),
+                        "duration_min": round(float(row["total_min"] or 0), 1),
+                        "top_app": row["top_app"] or "Unknown",
+                    }
+                else:
+                    # Accumulate words from other apps
+                    by_date[d]["word_count"] += int(row["total_words"] or 0)
+                    by_date[d]["duration_min"] += round(float(row["total_min"] or 0), 1)
+            return sorted(by_date.values(), key=lambda x: x["date"])
+
+    def get_stats_summary(self) -> dict:
+        """
+        Compute dashboard summary stats:
+          total_words, today_words, streak_days
+        """
+        with self._get_connection() as conn:
+            total_row = conn.execute("SELECT SUM(word_count) AS s FROM history").fetchone()
+            total_words = int(total_row["s"] or 0)
+
+            today_str = datetime.now().strftime("%Y-%m-%d")
+            today_row = conn.execute(
+                "SELECT SUM(word_count) AS s FROM history WHERE DATE(timestamp)=?",
+                (today_str,),
+            ).fetchone()
+            today_words = int(today_row["s"] or 0)
+
+            # Streak: count consecutive days backwards from today with at least 1 word
+            streak = 0
+            check_date = datetime.now().date()
+            while True:
+                ds = check_date.strftime("%Y-%m-%d")
+                row = conn.execute(
+                    "SELECT COUNT(*) AS c FROM history WHERE DATE(timestamp)=?", (ds,)
+                ).fetchone()
+                if row["c"] > 0:
+                    streak += 1
+                    check_date = (datetime.fromordinal(check_date.toordinal() - 1)).date()
+                else:
+                    break
+
+        return {
+            "total_words": total_words,
+            "today_words": today_words,
+            "streak_days": streak,
+        }
 
     def search(self, query: str, limit: int = 50) -> List[HistoryItem]:
         """Search history records by raw transcription or processed text."""
@@ -189,7 +328,9 @@ class HistoryDatabase:
         with self._get_connection() as conn:
             cursor = conn.execute(
                 """
-                SELECT id, timestamp, action, raw_transcription, processed_text, application, status, duration_ms, speaker
+                SELECT id, timestamp, action, raw_transcription, processed_text,
+                       application, status, duration_ms, speaker,
+                       context, word_count, duration_sec
                 FROM history
                 WHERE raw_transcription LIKE ? OR processed_text LIKE ?
                 ORDER BY timestamp DESC
@@ -197,21 +338,8 @@ class HistoryDatabase:
                 """,
                 (q, q, limit),
             )
-            rows = cursor.fetchall()
-            return [
-                HistoryItem(
-                    id=row["id"],
-                    timestamp=row["timestamp"],
-                    action=row["action"],
-                    raw_transcription=row["raw_transcription"],
-                    processed_text=row["processed_text"],
-                    application=row["application"],
-                    status=row["status"],
-                    duration_ms=row["duration_ms"],
-                    speaker=row["speaker"] if "speaker" in row.keys() else None,
-                )
-                for row in rows
-            ]
+            return [self._row_to_item(row) for row in cursor.fetchall()]
+
 
     def save_voice_profile(self, name: str, embedding: np.ndarray) -> str:
         """Save or update an enrolled speaker voice profile."""

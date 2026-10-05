@@ -53,6 +53,9 @@ from ..system.updater import UpdateChecker, UpdateInfo
 from .ai_formatting_view import AIFormattingView
 from .language_selector import SearchableLanguageComboBox
 from .theme import ThemeManager
+from .conventions_view import ConventionsView
+from .history_view import HistoryView
+from .home_view import DashboardWidget
 
 
 class MainWindow(QMainWindow):
@@ -185,11 +188,13 @@ class MainWindow(QMainWindow):
         # 2. Main Stack Area
         self.stack = QStackedWidget()
         self.home_view = self._create_home_view()
-        self.history_view = self._create_history_view()
+        self.history_view = HistoryView(self.db, self.config, self)
+        self.conventions_view = ConventionsView(self.config, self._on_config_changed_internal, self)
         self.settings_view = self._create_settings_view()
 
         self.stack.addWidget(self.home_view)
         self.stack.addWidget(self.history_view)
+        self.stack.addWidget(self.conventions_view)
         self.stack.addWidget(self.settings_view)
 
         root_layout.addWidget(self.stack, 1)
@@ -252,11 +257,18 @@ class MainWindow(QMainWindow):
         self.nav_group.addButton(self.nav_history, 1)
         layout.addWidget(self.nav_history)
 
+        self.nav_conventions = QPushButton("✨  Conventions")
+        self.nav_conventions.setObjectName("navBtn")
+        self.nav_conventions.setCheckable(True)
+        self.nav_conventions.clicked.connect(lambda: self.switch_screen("conventions"))
+        self.nav_group.addButton(self.nav_conventions, 2)
+        layout.addWidget(self.nav_conventions)
+
         self.nav_settings = QPushButton("⚙  Settings")
         self.nav_settings.setObjectName("navBtn")
         self.nav_settings.setCheckable(True)
         self.nav_settings.clicked.connect(lambda: self.switch_screen("settings"))
-        self.nav_group.addButton(self.nav_settings, 2)
+        self.nav_group.addButton(self.nav_settings, 3)
         layout.addWidget(self.nav_settings)
 
         layout.addStretch()
@@ -295,9 +307,12 @@ class MainWindow(QMainWindow):
         elif name == "history":
             self.stack.setCurrentIndex(1)
             self.nav_history.setChecked(True)
-            self._load_history_data()
-        elif name == "settings":
+            self.history_view.refresh()
+        elif name == "conventions":
             self.stack.setCurrentIndex(2)
+            self.nav_conventions.setChecked(True)
+        elif name == "settings":
+            self.stack.setCurrentIndex(3)
             self.nav_settings.setChecked(True)
 
     # -------------------------------------------------------------------------
@@ -314,19 +329,11 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(36, 30, 36, 30)
         layout.setSpacing(16)
 
-        # Large greeting heading — Typeless style
-        greeting_text = self._get_time_greeting()
-        self.greeting_label = QLabel(greeting_text)
-        self.greeting_label.setFont(ThemeManager.get_display_font(32, weight=QFont.Weight.Bold))
-        layout.addWidget(self.greeting_label)
+        # 1. New Dashboard
+        self.dashboard = DashboardWidget(self.db, self.config, self)
+        layout.addWidget(self.dashboard)
 
-        subtitle = QLabel("Just Talk is warm in RAM and ready to transcribe.")
-        subtitle.setObjectName("mutedLabel")
-        subtitle.setFont(ThemeManager.get_ui_font(13))
-        layout.addWidget(subtitle)
-        layout.addSpacing(6)
-
-        # Update Available Banner (hidden by default)
+        # 2. Update Available Banner (hidden by default)
         self.update_banner = QFrame()
         self.update_banner.setObjectName("updateBanner")
         self.update_banner.setStyleSheet("""
@@ -626,6 +633,9 @@ class MainWindow(QMainWindow):
 
     def _refresh_home_status(self) -> None:
         """Update live status labels and recent history on Home screen."""
+        if hasattr(self, "dashboard"):
+            self.dashboard.refresh()
+            
         # 1. Speech engine
         stt_src = getattr(self.config, "stt_model_source", "bundled")
         if stt_src == "custom":
@@ -1084,7 +1094,9 @@ class MainWindow(QMainWindow):
             kb_row.addStretch()
             s1_form.addRow("Fn Key Behavior:", kb_row)
 
-        self.ptt_check = QCheckBox("Push-to-Talk (Hold shortcut to speak, release to format and insert)")
+        self.ptt_check = QCheckBox("Hold-to-Talk (Uncheck for Tap-to-Start / Tap-to-Stop Toggle Mode)")
+        self.ptt_check.setChecked(self.config.push_to_talk)
+        self.ptt_check.toggled.connect(self._on_ptt_toggled)
         s1_form.addRow("Trigger Mode:", self.ptt_check)
 
         self.retention_combo = QComboBox()
@@ -1111,6 +1123,18 @@ class MainWindow(QMainWindow):
         s2_form.setSpacing(12)
         s2_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         s2_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+
+        # Speech-to-Text Engine Selection
+        self.stt_provider_combo = QComboBox()
+        self.stt_provider_combo.addItem("OS Native (Apple/Windows Dictation) [Default · Zero Download]", "os_native")
+        self.stt_provider_combo.addItem("Google Web Speech (Free Cloud · Instant Nepali & 120+ languages)", "google_web")
+        self.stt_provider_combo.addItem("Local Whisper / BYOM (Offline · Requires Model Download)", "whisper")
+        cur_prov = getattr(self.config, "stt_provider", "os_native") or "os_native"
+        p_idx = self.stt_provider_combo.findData(cur_prov)
+        if p_idx >= 0:
+            self.stt_provider_combo.setCurrentIndex(p_idx)
+        self.stt_provider_combo.currentIndexChanged.connect(self._on_stt_provider_changed)
+        s2_form.addRow("Speech Engine:", self.stt_provider_combo)
 
         # Microphone selection and live testing row
         mic_row = QHBoxLayout()
@@ -1560,6 +1584,11 @@ class MainWindow(QMainWindow):
             self.shortcut_combo.setCurrentIndex(idx)
         self.ptt_check.setChecked(self.config.push_to_talk)
 
+        if hasattr(self, "stt_provider_combo"):
+            prov_idx = self.stt_provider_combo.findData(getattr(self.config, "stt_provider", "os_native"))
+            if prov_idx >= 0:
+                self.stt_provider_combo.setCurrentIndex(prov_idx)
+
         ret_idx = self.retention_combo.findData(self.config.history_retention_days)
         if ret_idx >= 0:
             self.retention_combo.setCurrentIndex(ret_idx)
@@ -1614,6 +1643,19 @@ class MainWindow(QMainWindow):
 
     def _on_mute_audio_toggled(self, checked: bool) -> None:
         self.config.mute_audio_while_recording = checked
+        self.config.save()
+        if self.on_config_changed_callback:
+            self.on_config_changed_callback(self.config)
+
+    def _on_stt_provider_changed(self, index: int) -> None:
+        prov = self.stt_provider_combo.currentData()
+        self.config.stt_provider = prov
+        self.config.save()
+        if self.on_config_changed_callback:
+            self.on_config_changed_callback(self.config)
+
+    def _on_ptt_toggled(self, checked: bool) -> None:
+        self.config.push_to_talk = checked
         self.config.save()
         if self.on_config_changed_callback:
             self.on_config_changed_callback(self.config)
@@ -2080,6 +2122,13 @@ class MainWindow(QMainWindow):
             self.on_config_changed_callback(self.config)
         self._refresh_home_status()
 
+    def _on_config_changed_internal(self, cfg: Optional[AppConfig] = None) -> None:
+        self.config.save()
+        if self.on_config_changed_callback:
+            self.on_config_changed_callback(self.config)
+        self.config_changed.emit(self.config)
+        self._refresh_home_status()
+
     def _style_home_mode_buttons(self) -> None:
         transcribe_active = getattr(self.config, "speech_mode", "transcribe") != "translate"
         if transcribe_active:
@@ -2164,6 +2213,8 @@ class MainWindow(QMainWindow):
     def _on_save_settings(self) -> None:
         self.config.shortcut = self.shortcut_combo.currentData()
         self.config.push_to_talk = self.ptt_check.isChecked()
+        if hasattr(self, "stt_provider_combo"):
+            self.config.stt_provider = self.stt_provider_combo.currentData() or "os_native"
         self.config.history_retention_days = self.retention_combo.currentData()
         self.config.launch_at_startup = self.startup_check.isChecked()
         self.config.start_minimized = self.minimized_check.isChecked()

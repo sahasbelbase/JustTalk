@@ -43,7 +43,7 @@ class ActionRouter:
     ]
 
     @classmethod
-    def parse_intent(cls, raw_text: str, is_action_mode: bool = False) -> ActionIntent:
+    def parse_intent(cls, raw_text: str, is_action_mode: bool = False, context: str = "text", conventions: dict = None) -> ActionIntent:
         """
         Parse raw speech into a structured ActionIntent.
         If is_action_mode is True, checks for command patterns first.
@@ -69,7 +69,7 @@ class ActionRouter:
                     target_lang = "English"
                     payload = text
 
-                instruction = build_prompt("translate", target_language=target_lang.capitalize())
+                instruction = build_prompt("translate", target_language=target_lang.capitalize(), context=context, conventions=conventions)
                 return ActionIntent(
                     action_type="translate",
                     target_payload=payload if payload else text,
@@ -85,7 +85,7 @@ class ActionRouter:
                 return ActionIntent(
                     action_type="rewrite",
                     target_payload=payload if payload else text,
-                    system_instruction=SYSTEM_PROMPT_FORMAL,
+                    system_instruction=build_prompt("formal", context=context, conventions=conventions),
                 )
 
         # 3. Check for Concise Summary
@@ -96,12 +96,12 @@ class ActionRouter:
                 return ActionIntent(
                     action_type="summarize",
                     target_payload=payload if payload else text,
-                    system_instruction=SYSTEM_PROMPT_CONCISE,
+                    system_instruction=build_prompt("concise", context=context, conventions=conventions),
                 )
 
         # Default standard subtle cleanup
         return ActionIntent(
             action_type="format",
             target_payload=text,
-            system_instruction=SYSTEM_PROMPT_SUBTLE,
+            system_instruction=build_prompt("subtle", context=context, conventions=conventions),
         )

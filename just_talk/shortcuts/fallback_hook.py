@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import threading
+import time
 from typing import Callable, Optional, Set
 
 from pynput import keyboard
@@ -23,6 +24,7 @@ class PynputHotkeyMonitor:
         on_stop_recording: Callable[[], None],
         push_to_talk: bool = True,
         on_action_mode_changed: Optional[Callable[[bool], None]] = None,
+        on_cancel_recording: Optional[Callable[[], None]] = None,
     ):
         self.trigger_key = trigger_key.lower()
         self.action_key = action_key.lower()
@@ -30,11 +32,13 @@ class PynputHotkeyMonitor:
         self.on_stop_recording = on_stop_recording
         self.push_to_talk = push_to_talk
         self.on_action_mode_changed = on_action_mode_changed
+        self.on_cancel_recording = on_cancel_recording
 
         self._current_keys: Set[keyboard.Key | keyboard.KeyCode] = set()
         self._listener: Optional[keyboard.Listener] = None
         self._is_active = False
         self._is_action_mode = False
+        self._last_toggle_time = 0.0
         self._lock = threading.Lock()
 
     @staticmethod
@@ -113,8 +117,33 @@ class PynputHotkeyMonitor:
         return self._matches_trigger() and has_shift
 
     def _on_press(self, key):
+        to_start = False
+        to_stop = False
         action_changed: Optional[bool] = None
+        now = time.time()
+
+        # Emergency Cancel: Escape key
+        if key == keyboard.Key.esc:
+            to_cancel = False
+            with self._lock:
+                if self._is_active:
+                    self._is_active = False
+                    self._is_action_mode = False
+                    to_cancel = True
+            if to_cancel:
+                print("[PynputHook] Escape key pressed -> CANCEL recording", file=sys.stderr)
+                try:
+                    if self.on_cancel_recording:
+                        self.on_cancel_recording()
+                    else:
+                        self.on_stop_recording()
+                except Exception as e:
+                    print(f"[PynputHook] cancel error: {e}", file=sys.stderr)
+                return
+
         with self._lock:
+            # Check if this key was already pressed (OS auto-repeat filtering)
+            is_repeat = key in self._current_keys
             self._current_keys.add(key)
             is_trigger = self._matches_trigger()
             is_action = self._matches_action()
@@ -124,29 +153,43 @@ class PynputHotkeyMonitor:
                     if not self._is_active:
                         self._is_active = True
                         self._is_action_mode = is_action
-                        try:
-                            self.on_start_recording(is_action)
-                        except Exception as e:
-                            print(f"[PynputHook] on_start error: {e}", file=sys.stderr)
+                        to_start = True
                     else:
                         # Already active: check if Shift was pressed during the hold
                         if is_action != self._is_action_mode:
                             self._is_action_mode = is_action
                             action_changed = is_action
                 else:
-                    # Toggle mode
-                    self._is_active = not self._is_active
-                    self._is_action_mode = is_action
-                    if self._is_active:
-                        self.on_start_recording(is_action)
-                    else:
-                        self.on_stop_recording()
+                    # Foolproof Toggle Mode: Tap to Start, Tap to Stop
+                    # Filter out rapid key repeat pulses and debounce contact bounce (<250ms)
+                    if not is_repeat and (now - self._last_toggle_time >= 0.25):
+                        self._last_toggle_time = now
+                        if not self._is_active:
+                            self._is_active = True
+                            self._is_action_mode = is_action
+                            to_start = True
+                        else:
+                            self._is_active = False
+                            self._is_action_mode = False
+                            to_stop = True
+
+        if to_start:
+            try:
+                self.on_start_recording(is_action)
+            except Exception as e:
+                print(f"[PynputHook] on_start error: {e}", file=sys.stderr)
 
         if action_changed is not None and self.on_action_mode_changed:
             try:
                 self.on_action_mode_changed(action_changed)
             except Exception as e:
                 print(f"[PynputHook] on_action_mode_changed error: {e}", file=sys.stderr)
+
+        if to_stop:
+            try:
+                self.on_stop_recording()
+            except Exception as e:
+                print(f"[PynputHook] on_stop error: {e}", file=sys.stderr)
 
     def _on_release(self, key):
         to_stop = False
@@ -208,6 +251,7 @@ class PynputHotkeyMonitor:
         with self._lock:
             self._current_keys.clear()
             self._is_active = False
+            self._is_action_mode = False
 
     def start(self) -> bool:
         try:

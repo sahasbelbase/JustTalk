@@ -7,7 +7,7 @@ Unicode true
 ManifestDPIAware true
 
 !define PRODUCT_NAME "Just Talk"
-!define PRODUCT_VERSION "1.0.0"
+!define PRODUCT_VERSION "2.0.1"
 !define PRODUCT_PUBLISHER "Just Talk"
 !define PRODUCT_WEB_SITE "https://github.com/sahasbelbase/JustTalk"
 !define PRODUCT_EXE "JustTalk.exe"

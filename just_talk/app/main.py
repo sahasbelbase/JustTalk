@@ -43,12 +43,15 @@ from ..config import AppConfig
 from ..database.history import HistoryDatabase
 from ..security import CredentialManager
 from ..shortcuts.manager import ShortcutManager
+from ..stt import create_stt_engine_for_config, get_native_stt_engine
 from ..stt.model_manager import ModelManager
 from ..stt.nepali_conformer import NepaliConformerEngine
 from ..stt.whisper_engine import WhisperSTTEngine
 from ..system.audio_ducker import SystemAudioDucker
 from ..system.autostart import AutostartManager
 from ..system.caret_locator import CaretLocator
+from ..system.clipboard import ClipboardManager
+from ..system.context_detector import detect_context
 from ..system.inserter import TextInserter
 from ..system.permissions import PermissionsManager
 from .main_window import MainWindow
@@ -70,6 +73,7 @@ class AppBridge(QObject):
     """
 
     level_changed = Signal(float)
+    partial_transcript = Signal(str)
     state_listening = Signal(bool)
     state_processing = Signal(str)
     state_inserted = Signal()
@@ -81,6 +85,7 @@ class AppBridge(QObject):
     # connected to @Slot methods below with explicit QueuedConnection.
     start_recording_requested = Signal(bool)   # bool: is_action_mode
     stop_recording_requested = Signal()
+    cancel_recording_requested = Signal()
     action_mode_changed = Signal(bool)
 
     def __init__(self, parent=None):
@@ -97,6 +102,9 @@ class AppBridge(QObject):
         self.stop_recording_requested.connect(
             self._on_stop_recording, Qt.ConnectionType.QueuedConnection
         )
+        self.cancel_recording_requested.connect(
+            self._on_cancel_recording, Qt.ConnectionType.QueuedConnection
+        )
         self.action_mode_changed.connect(
             self._on_action_mode_changed, Qt.ConnectionType.QueuedConnection
         )
@@ -112,6 +120,12 @@ class AppBridge(QObject):
         """Guaranteed to run on the main Qt thread."""
         if self._controller:
             self._controller.on_stop_recording()
+
+    @Slot()
+    def _on_cancel_recording(self) -> None:
+        """Guaranteed to run on the main Qt thread."""
+        if self._controller:
+            self._controller._on_cancel_recording()
 
     @Slot(bool)
     def _on_action_mode_changed(self, is_action_mode: bool) -> None:
@@ -216,8 +230,17 @@ class JustTalkApp:
             level_callback=lambda rms: self.bridge.level_changed.emit(rms),
         )
         self.model_manager = ModelManager()
-        self.stt_engine = WhisperSTTEngine(self.model_manager)
+        provider = getattr(self.config, "stt_provider", "whisper") or "whisper"
+        if provider == "whisper":
+            self.stt_engine = WhisperSTTEngine(self.model_manager)
+        else:
+            self.stt_engine = create_stt_engine_for_config(self.config, self.model_manager)
+        self.stt = self.stt_engine
         self.nepali_conformer = NepaliConformerEngine(self.model_manager)
+        self.native_stt_engine = get_native_stt_engine()
+        self._last_partial_transcript = ""
+        self._streaming_thread: Optional[threading.Thread] = None
+
         provider_id = getattr(self.config, "ai_provider", "gemini") or "gemini"
         model = getattr(self.config, "ai_model", "") or self.config.gemini_model
         if provider_id == "ollama":
@@ -230,7 +253,7 @@ class JustTalkApp:
             api_key=CredentialManager.get_provider_api_key(provider_id),
             model_name=model,
             custom_base_url=custom_base,
-            timeout=getattr(self.config, "formatting_budget_sec", 3.0),
+            timeout=getattr(self.config, "formatting_budget_sec", 2.0),
         )
         self.inserter = TextInserter()
         self.audio_ducker = SystemAudioDucker()
@@ -240,6 +263,8 @@ class JustTalkApp:
 
         self._is_action_mode = False
         self._record_start_time = 0.0
+        self._has_detected_speech = False
+        self._last_speech_time = 0.0
 
     def get_app_icon(self) -> QIcon:
         """Resolve application icon from assets directory."""
@@ -277,6 +302,9 @@ class JustTalkApp:
         # guarantees the slot runs on the main thread even when emit() fires from C threads.
         self.bridge.level_changed.connect(
             self.overlay.update_audio_level, Qt.ConnectionType.QueuedConnection
+        )
+        self.bridge.partial_transcript.connect(
+            self.overlay.update_partial_transcript, Qt.ConnectionType.QueuedConnection
         )
         self.bridge.state_listening.connect(
             self.overlay.show_listening, Qt.ConnectionType.QueuedConnection
@@ -352,12 +380,15 @@ class JustTalkApp:
                 print(f"[Main] Microphone access prompt: {mic_msg}", file=sys.stderr)
                 PermissionsManager.request_microphone()
 
-        # 7. Warm up Whisper model in background
-        custom_stt = self.config.custom_stt_model_path if getattr(self.config, "stt_model_source", "bundled") == "custom" else None
-        threading.Thread(
-            target=lambda: self.stt_engine.load(self.config.model_tier, custom_target=custom_stt),
-            daemon=True,
-        ).start()
+        # 7. Warm up speech engine (only download/load background thread if Whisper is selected)
+        if getattr(self.config, "stt_provider", "os_native") == "whisper":
+            custom_stt = self.config.custom_stt_model_path if getattr(self.config, "stt_model_source", "bundled") == "custom" else None
+            threading.Thread(
+                target=lambda: self.stt_engine.load(self.config.model_tier, custom_target=custom_stt),
+                daemon=True,
+            ).start()
+        else:
+            self.stt_engine.load()
 
         # 8. Start keyboard shortcuts
         # The shortcut callbacks fire from a Quartz CFRunLoop thread (not the Qt thread).
@@ -370,6 +401,7 @@ class JustTalkApp:
             on_start_recording=lambda action: self.bridge.start_recording_requested.emit(action),
             on_stop_recording=lambda: self.bridge.stop_recording_requested.emit(),
             on_action_mode_changed=lambda is_action: self.bridge.action_mode_changed.emit(is_action),
+            on_cancel_recording=lambda: self.bridge.cancel_recording_requested.emit(),
         )
         self.shortcut_manager.start()
 
@@ -445,15 +477,38 @@ class JustTalkApp:
 
     def _poll_audio_level(self) -> None:
         """Poll current RMS level from recorder on main Qt thread and update visualizer."""
-        if self.recorder and self.recorder.is_recording and self.overlay:
+        if self.recorder and self.recorder.is_recording:
             lvl = self.recorder.get_audio_level()
-            self.overlay.update_audio_level(lvl)
+            if self.overlay:
+                self.overlay.update_audio_level(lvl)
+
+            now = time.time()
+            vad_thresh = getattr(self.vad, "energy_threshold", 0.015)
+            if lvl >= vad_thresh:
+                self._has_detected_speech = True
+                self._last_speech_time = now
+            elif self._has_detected_speech:
+                # Silence auto-commit: if speech was detected and user paused for 4.5s in toggle mode
+                if not getattr(self.config, "push_to_talk", False):
+                    silence_sec = now - self._last_speech_time
+                    if silence_sec >= 4.5:
+                        print(f"[Record] Silence auto-commit ({silence_sec:.1f}s silence after speech)", file=sys.stderr)
+                        self.bridge.stop_recording_requested.emit()
+                        return
+
+            # Safety limit: max recording duration (default 60s)
+            max_sec = getattr(self.config, "max_recording_sec", 60.0) or 60.0
+            if now - self._record_start_time >= max_sec:
+                print(f"[Record] Max recording limit reached ({max_sec:.1f}s), auto-stopping.", file=sys.stderr)
+                self.bridge.stop_recording_requested.emit()
 
     @Slot(bool)
     def on_start_recording(self, is_action_mode: bool = False) -> None:
         """Triggered on the main Qt thread when push-to-talk shortcut is pressed."""
         self._is_action_mode = is_action_mode
         self._record_start_time = time.time()
+        self._has_detected_speech = False
+        self._last_speech_time = time.time()
         self.inserter.capture_active_target()
 
         # Temporarily mute computer audio (music, YouTube, movies, Reels) while holding shortcut
@@ -470,7 +525,65 @@ class JustTalkApp:
             self.bridge.state_error.emit("Microphone error")
         else:
             self._level_timer.start()
+            self._start_streaming_worker()
             print("[Record] Microphone stream opened successfully.", file=sys.stderr)
+
+    def _start_streaming_worker(self) -> None:
+        """Start background live streaming STT thread to stream partial words to the overlay HUD."""
+        self._last_partial_transcript = ""
+        self._streaming_thread = threading.Thread(
+            target=self._streaming_stt_loop,
+            daemon=True,
+        )
+        self._streaming_thread.start()
+
+    def _streaming_stt_loop(self) -> None:
+        """Continuously decode partial audio buffers while speaking and emit words in real-time to overlay."""
+        min_samples = int(16000 * 0.35)  # 350ms minimum audio before partial decoding begins
+        last_audio_samples = 0
+
+        while self.recorder and self.recorder.is_recording:
+            time.sleep(0.18)  # ~180ms polling rate for responsive live streaming
+            if not self.recorder or not self.recorder.is_recording:
+                break
+
+            cur_audio = self.recorder.get_current_audio()
+            if cur_audio is None or len(cur_audio) < min_samples:
+                continue
+
+            # Only decode if buffer has grown by at least 150ms of new audio
+            if len(cur_audio) - last_audio_samples < int(16000 * 0.15):
+                continue
+
+            last_audio_samples = len(cur_audio)
+
+            try:
+                cur_lang = getattr(self.config, "language", "en")
+                lang = None if cur_lang in ("auto", "none", "en", "ne_en", "", None) else cur_lang
+                task = "transcribe"
+
+                partial_text = ""
+                # Priority 1: If Whisper is loaded, use it for partials
+                if self.stt_engine and self.stt_engine.is_loaded():
+                    partial_text = self.stt_engine.transcribe(
+                        cur_audio,
+                        language=lang,
+                        task=task,
+                    )
+                # Priority 2: Use native OS speech engine (zero download)
+                elif hasattr(self, "native_stt_engine") and self.native_stt_engine:
+                    partial_text = self.native_stt_engine.transcribe(
+                        cur_audio,
+                        language=lang,
+                        task=task,
+                    )
+
+                if partial_text and partial_text.strip() and self.recorder and self.recorder.is_recording:
+                    cleaned = partial_text.strip()
+                    self._last_partial_transcript = cleaned
+                    self.bridge.partial_transcript.emit(cleaned)
+            except Exception:
+                pass
 
     def on_action_mode_changed(self, is_action_mode: bool) -> None:
         """Triggered on the main Qt thread when Shift is pressed/released while already holding push-to-talk."""
@@ -480,13 +593,15 @@ class JustTalkApp:
             self.overlay.set_action_mode(is_action_mode)
 
     def _on_cancel_recording(self) -> None:
-        """User cancelled recording via the overlay [ ✕ ] button."""
+        """User cancelled recording via the overlay [ ✕ ] button or Escape key."""
         self._level_timer.stop()
         if hasattr(self, "audio_ducker"):
             self.audio_ducker.unmute()
         if self.overlay:
             self.overlay.update_audio_level(0.0)
         self.recorder.stop()
+        if hasattr(self, "inserter"):
+            self.inserter.cancel_draft()
         if self.shortcut_manager:
             self.shortcut_manager.reset_state()
         self.bridge.state_error.emit("Cancelled")
@@ -542,10 +657,11 @@ class JustTalkApp:
 
         # Voice Activity Detection: Filter out accidental taps and pure silence
         vad_result = self.vad.is_speech_present(audio)
-        print(f"[Record] VAD result: speech_present={vad_result} "
+        has_partial = bool(self._last_partial_transcript and self._last_partial_transcript.strip())
+        print(f"[Record] VAD result: speech_present={vad_result}, has_partial={has_partial} "
               f"(threshold={self.vad.energy_threshold}, min_dur={self.vad.min_speech_duration_sec}s)", file=sys.stderr)
 
-        if not vad_result:
+        if not vad_result and not has_partial:
             if duration_sec >= 0.25:
                 print(f"[Record] Audio energy too quiet (RMS={rms:.6f}, Peak={peak:.6f}) → 'Voice too quiet'", file=sys.stderr)
                 self.bridge.state_error.emit("Voice too quiet")
@@ -568,8 +684,15 @@ class JustTalkApp:
         try:
             start_time = time.time()
 
-            # 0. Check if STT model is loaded or downloading
-            if not self.stt_engine.is_loaded():
+            # 0a. Detect editing context (non-blocking, falls back to "text" on any error)
+            try:
+                _ctx_info = detect_context()
+                detected_context = _ctx_info.context
+            except Exception:
+                detected_context = "text"
+
+            # 0b. Check if STT model is loaded or downloading (only needed for local Whisper)
+            if getattr(self.config, "stt_provider", "os_native") == "whisper" and not self.stt_engine.is_loaded():
                 if getattr(self.stt_engine, "is_loading", False):
                     msg = getattr(self.stt_engine, "loading_status", "Loading speech model...")
                     self.bridge.state_processing.emit(msg)
@@ -685,16 +808,21 @@ class JustTalkApp:
 
 
             if not raw_text or not raw_text.strip():
-                print("[STT] Whisper returned empty transcription → 'No speech recognized'", file=sys.stderr)
-                self.bridge.state_error.emit("No speech recognized")
-                return
+                if self._last_partial_transcript and self._last_partial_transcript.strip():
+                    raw_text = self._last_partial_transcript.strip()
+                    print(f"[STT] Recovered transcription from live partial stream: '{raw_text}'", file=sys.stderr)
+                else:
+                    print("[STT] Transcription returned empty → 'No speech recognized'", file=sys.stderr)
+                    self.bridge.state_error.emit("No speech recognized")
+                    return
 
             raw_text = raw_text.strip()
             print(f"[STT Raw (task={task}, lang={lang})]: {raw_text}")
 
             # 4. Action Routing & Intent Detection
+            conventions = getattr(self.config, "conventions", {})
             if is_action_mode:
-                intent = ActionRouter.parse_intent(raw_text, is_action_mode=True)
+                intent = ActionRouter.parse_intent(raw_text, is_action_mode=True, context=detected_context, conventions=conventions)
                 action_name = intent.action_type
                 final_text = intent.target_payload
             elif is_translation_mode:
@@ -702,37 +830,46 @@ class JustTalkApp:
                     action_type="translate",
                     target_payload=raw_text,
                     target_language="English",
-                    system_instruction=build_prompt("translate", target_language="English"),
+                    system_instruction=build_prompt("translate", target_language="English", context=detected_context, conventions=conventions),
                 )
                 action_name = "translate"
                 final_text = raw_text
             else:
-                intent = ActionRouter.parse_intent(raw_text, is_action_mode=False)
+                intent = ActionRouter.parse_intent(raw_text, is_action_mode=False, context=detected_context, conventions=conventions)
                 action_name = intent.action_type
                 final_text = intent.target_payload
             is_offline_fallback = False
 
-            # Typeless Two-Phase Fast Emission: Phase 1 (Immediate Draft Emission)
-            has_text_target = CaretLocator.has_active_text_target()
-            two_phase_active = (
-                getattr(self.config, "two_phase_emission", True)
-                and use_gemini
-                and has_text_target
-                and not is_translation_mode
-                and action_name != "translate"
-            )
+            # Phase 1: Fast Typeless Draft Emission into Active Target
+            # If two_phase_emission is enabled and not in action mode, insert the raw speech instantly!
+            two_phase = getattr(self.config, "two_phase_emission", True)
             draft_emitted = False
+            draft_text = ""
+            active_app = self.inserter.get_active_app_name()
 
-            if two_phase_active:
-                print(f"[TwoPhase] Phase 1: Immediately emitting draft text ({len(final_text)} chars)", file=sys.stderr)
-                draft_ok, _, _ = self.inserter.insert(final_text, restore_clipboard=False)
-                draft_emitted = draft_ok
+            if two_phase and not is_action_mode and action_name != "translate":
+                # Quick clean of obvious stutters/whitespace for the draft
+                draft_text = GeminiFormatter.light_local_cleanup(final_text)
+                if draft_text:
+                    inserted_ok, status, active_app = self.inserter.insert(
+                        draft_text,
+                        restore_clipboard=False,  # Don't restore yet; we may replace with polished version
+                        replace_previous=False,
+                    )
+                    if inserted_ok and status == "inserted":
+                        draft_emitted = True
+                        print(
+                            f"[TwoPhase] Phase 1: Draft text emitted into '{active_app}' in {int((time.time() - start_time) * 1000)}ms",
+                            file=sys.stderr,
+                        )
+                        self.bridge.state_processing.emit("Polishing...")
 
-            # 5. Gemini / AI Formatting Layer
+            # 5. Gemini / AI Formatting Layer (Strict 2.0s circuit breaker)
             if use_gemini:
-                self.bridge.state_processing.emit(
-                    "Translating..." if (action_name == "translate" or intent.action_type == "translate") else "Cleaning..."
-                )
+                if not draft_emitted:
+                    self.bridge.state_processing.emit(
+                        "Translating..." if (action_name == "translate" or intent.action_type == "translate") else "Cleaning..."
+                    )
                 cleaned, success, msg = self.gemini.format_text(
                     raw_text=final_text,
                     style=self.config.prompt_style,
@@ -741,9 +878,10 @@ class JustTalkApp:
                 if success and cleaned:
                     final_text = cleaned
                 else:
-                    final_text = cleaned
+                    # Circuit breaker triggered or formatting error: instantly insert raw dictation
+                    final_text = GeminiFormatter.light_local_cleanup(final_text)
                     is_offline_fallback = True
-                    print(f"[Gemini Fallback]: {CredentialManager.redact(msg)}")
+                    print(f"[Gemini Fallback/Timeout]: {CredentialManager.redact(msg)}")
                     if self.tray:
                         try:
                             QTimer.singleShot(0, self.tray.refresh_menu)
@@ -753,22 +891,31 @@ class JustTalkApp:
                 final_text = GeminiFormatter.light_local_cleanup(final_text)
                 is_offline_fallback = True
 
-            # 6. Text Insertion (or Phase 2 In-Place Polish)
-            if draft_emitted and final_text != raw_text:
-                print(f"[TwoPhase] Phase 2: In-place updating text with polished AI output ({len(final_text)} chars)", file=sys.stderr)
-                # Paste polished text
-                inserted_ok, status, active_app = self.inserter.insert(
-                    final_text,
-                    restore_clipboard=self.config.restore_clipboard,
-                    replace_previous=True,
-                )
-            elif not draft_emitted:
-                inserted_ok, status, active_app = self.inserter.insert(
-                    final_text,
-                    restore_clipboard=self.config.restore_clipboard,
-                )
+            # 6. Final Insertion: In-Place Polish replacement or single-phase insertion
+            if draft_emitted:
+                if final_text != draft_text:
+                    # In-place polish: replace the draft with the polished text via undo + paste
+                    print(f"[TwoPhase] Phase 2: Replacing draft with polished text in '{active_app}'", file=sys.stderr)
+                    inserted_ok, status, active_app = self.inserter.insert(
+                        final_text,
+                        restore_clipboard=self.config.restore_clipboard,
+                        replace_previous=True,
+                    )
+                else:
+                    # Draft is already identical to final text! Just restore clipboard if requested
+                    inserted_ok = True
+                    status = "inserted"
+                    if self.config.restore_clipboard:
+                        orig_clip = getattr(self.inserter, "_original_clipboard", None)
+                        if orig_clip is not None:
+                            ClipboardManager.restore_after_delay(orig_clip, 1.0)
+                    self.inserter._has_active_draft = False
             else:
-                inserted_ok, status, active_app = True, "inserted", self.inserter.get_active_app_name()
+                # Standard single-phase insertion (for action mode, translation mode, or if two_phase is disabled)
+                inserted_ok, status, active_app = self.inserter.insert(
+                    final_text,
+                    restore_clipboard=self.config.restore_clipboard,
+                )
 
             total_latency_ms = int((time.time() - start_time) * 1000)
 
@@ -792,6 +939,8 @@ class JustTalkApp:
                     status=status_to_save,
                     duration_ms=total_latency_ms,
                     speaker=identified_speaker,
+                    context=detected_context,
+                    duration_sec=round(len(audio) / 16000, 2) if audio is not None else 0.0,
                 )
             except Exception as db_err:
                 print(f"[Database] Failed to record history: {db_err}", file=sys.stderr)
@@ -805,6 +954,8 @@ class JustTalkApp:
 
         except Exception as e:
             print(f"[Pipeline] Uncaught error in audio pipeline: {e}", file=sys.stderr)
+            if hasattr(self, "inserter"):
+                self.inserter.cancel_draft()
             try:
                 self.bridge.state_error.emit("Processing error")
             except Exception:
@@ -856,12 +1007,31 @@ class JustTalkApp:
         # Sync autostart
         AutostartManager.set_autostart(self.config.launch_at_startup)
 
-        # Reload model if tier or custom model changed
-        custom_stt = self.config.custom_stt_model_path if getattr(self.config, "stt_model_source", "bundled") == "custom" else None
-        threading.Thread(
-            target=lambda: self.stt_engine.load(self.config.model_tier, custom_target=custom_stt),
-            daemon=True,
-        ).start()
+        # Hot-swap or reload STT engine if provider/tier changed
+        self.stt_engine = create_stt_engine_for_config(self.config, self.model_manager)
+        if getattr(self.config, "stt_provider", "os_native") == "whisper":
+            custom_stt = self.config.custom_stt_model_path if getattr(self.config, "stt_model_source", "bundled") == "custom" else None
+            threading.Thread(
+                target=lambda: self.stt_engine.load(self.config.model_tier, custom_target=custom_stt),
+                daemon=True,
+            ).start()
+        else:
+            self.stt_engine.load()
+
+    def set_stt_provider(self, provider_id: str) -> None:
+        """Hot-swap the active speech-to-text engine at runtime without restart."""
+        print(f"[App] Hot-swapping STT provider to: {provider_id}", file=sys.stderr)
+        self.config.stt_provider = provider_id
+        self.config.save()
+        self.stt_engine = create_stt_engine_for_config(self.config, self.model_manager)
+        if provider_id == "whisper":
+            custom_stt = self.config.custom_stt_model_path if getattr(self.config, "stt_model_source", "bundled") == "custom" else None
+            threading.Thread(
+                target=lambda: self.stt_engine.load(self.config.model_tier, custom_target=custom_stt),
+                daemon=True,
+            ).start()
+        else:
+            self.stt_engine.load()
 
     def quit(self) -> None:
         """Clean shutdown."""

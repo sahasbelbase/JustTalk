@@ -823,6 +823,16 @@ class OnboardingWindow(QDialog):
         self.add_lang_combo.setCurrentIndex(0)
 
     def _update_model_status_display(self) -> None:
+        if getattr(self.config, "stt_provider", "os_native") != "whisper":
+            self.model_status_badge.setText("✓ Ready Instantly (Zero Download)")
+            self.model_status_badge.setStyleSheet("color: #30D158;")
+            self.model_progress_bar.setValue(100)
+            self.model_detail_lbl.setText("Built-in zero-download speech recognition active. Ready immediately!")
+            self.download_model_btn.hide()
+            if hasattr(self, "model_sub_lbl"):
+                self.model_sub_lbl.setText("Zero-download speech engine active. No heavy model downloads needed!")
+            return
+
         required_tiers = self.model_manager.get_models_for_languages(
             self.config.spoken_languages, self.config.model_tier
         )
@@ -870,6 +880,10 @@ class OnboardingWindow(QDialog):
             self.download_model_btn.setText(f"Download Needed Models (~{missing_mb} MB)")
 
     def _start_model_download(self) -> None:
+        if getattr(self.config, "stt_provider", "os_native") != "whisper":
+            self.model_progress_signal.emit(100.0, "✓ Ready immediately (Zero Download)!")
+            return
+
         if self._is_downloading_model:
             return
         self._is_downloading_model = True

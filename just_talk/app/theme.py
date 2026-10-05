@@ -92,6 +92,9 @@ DARK_TOKENS = ColorTokens(
 class ThemeManager:
     """Central manager for fonts, color schemes, stylesheets, and OS theme sync."""
 
+    LIGHT_TOKENS = LIGHT_TOKENS
+    DARK_TOKENS = DARK_TOKENS
+
     _fonts_loaded = False
     _ui_font_family = "Lato"
     _display_font_family = "Lato"

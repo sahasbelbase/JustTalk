@@ -19,9 +19,17 @@ class TextInserter:
         self._keyboard = Controller()
         self._target_hwnd = None
         self._target_app = None
+        self._original_clipboard: Optional[str] = None
+        self._has_active_draft: bool = False
 
     def capture_active_target(self) -> None:
-        """Capture the currently focused window or application at the instant recording begins."""
+        """Capture the currently focused window or application and clipboard at the instant recording begins."""
+        try:
+            self._original_clipboard = ClipboardManager.get_text()
+        except Exception:
+            self._original_clipboard = None
+        self._has_active_draft = False
+
         if sys.platform == "darwin":
             try:
                 from AppKit import NSWorkspace
@@ -306,7 +314,8 @@ class TextInserter:
             return True, "inserted", "System"
 
         active_app = self.get_active_app_name()
-        original_clipboard = ClipboardManager.get_text()
+        current_clipboard = ClipboardManager.get_text()
+        orig_to_restore = self._original_clipboard if self._original_clipboard is not None else current_clipboard
 
         # Step 1: Put formatted text onto clipboard
         set_ok = ClipboardManager.set_text(text)
@@ -322,10 +331,10 @@ class TextInserter:
         # Step 3: Reactivate the original target application
         self._reactivate_target_window()
 
-        # Step 3: If in-place replacement (Phase 2), undo previous draft first
-        if replace_previous:
+        # Step 3b: If in-place replacement (Phase 2), undo previous draft first
+        if replace_previous or self._has_active_draft:
             self.undo_last_paste()
-            time.sleep(0.03)
+            time.sleep(0.04)
 
         # Step 4: Synthesize simulated paste keystroke
         try:
@@ -333,17 +342,40 @@ class TextInserter:
             if not paste_ok:
                 raise RuntimeError("All paste mechanisms failed")
 
-            # Step 5: Restore prior clipboard in background thread after target app consumes paste
-            if restore_clipboard and original_clipboard != text:
-                restore_delay = max(1.0, min(2.5, 1.0 + len(text) * 0.001))
-                threading.Thread(
-                    target=ClipboardManager.restore_after_delay,
-                    args=(original_clipboard, restore_delay),
-                    daemon=True,
-                ).start()
+            if not restore_clipboard:
+                # Active draft emitted: keep flag set and DO NOT restore clipboard yet
+                self._has_active_draft = True
+            else:
+                self._has_active_draft = False
+                # Step 5: Restore prior clipboard in background thread after target app consumes paste
+                if orig_to_restore is not None and orig_to_restore != text:
+                    restore_delay = max(1.0, min(2.5, 1.0 + len(text) * 0.001))
+                    threading.Thread(
+                        target=ClipboardManager.restore_after_delay,
+                        args=(orig_to_restore, restore_delay),
+                        daemon=True,
+                    ).start()
 
             return True, "inserted", active_app
 
         except Exception as e:
             print(f"[TextInserter] Keystroke synthesis error: {e}. Falling back to clipboard.", file=sys.stderr)
             return True, "clipboard", active_app
+
+    def cancel_draft(self) -> None:
+        """Undo any lingering draft paste and restore user's original clipboard."""
+        if self._has_active_draft:
+            try:
+                self._reactivate_target_window()
+                self.undo_last_paste()
+            except Exception as e:
+                print(f"[TextInserter] Error undoing draft on cancel: {e}", file=sys.stderr)
+            self._has_active_draft = False
+
+        if self._original_clipboard is not None:
+            try:
+                ClipboardManager.set_text(self._original_clipboard)
+            except Exception as e:
+                print(f"[TextInserter] Error restoring clipboard on cancel: {e}", file=sys.stderr)
+            self._original_clipboard = None
+

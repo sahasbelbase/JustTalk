@@ -107,7 +107,7 @@ def test_translation_pipeline_routing():
             from just_talk.config import AppConfig
             from just_talk.app.main import JustTalkApp
 
-            cfg = AppConfig(speech_mode="translate", gemini_enabled=True, offline_mode=False)
+            cfg = AppConfig(stt_provider="whisper", speech_mode="translate", gemini_enabled=True, offline_mode=False)
             mock_load.return_value = cfg
 
             app = JustTalkApp()
@@ -154,3 +154,63 @@ def test_translation_pipeline_routing():
             assert recent[0].action == "translate"
             assert recent[0].raw_transcription == "yo meeting ma we will discuss project code"
             assert recent[0].processed_text == "In this meeting we will discuss the project code."
+
+
+def test_two_phase_pipeline_emission_and_polish():
+    """Verify that two-phase emission inserts raw draft instantly and polishes in-place."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = Path(tmpdir) / "test_history.db"
+        db = HistoryDatabase(db_path=db_path)
+
+        with patch("just_talk.app.main.AppConfig.load") as mock_load, \
+             patch("just_talk.app.main.HistoryDatabase", return_value=db), \
+             patch("just_talk.app.main.PermissionsManager"), \
+             patch("just_talk.app.main.VoiceActivityDetector"), \
+             patch("just_talk.app.main.AudioRecorder"), \
+             patch("just_talk.app.main.ModelManager"), \
+             patch("just_talk.app.main.WhisperSTTEngine") as mock_whisper_cls, \
+             patch("just_talk.app.main.MultiProviderFormatter") as mock_formatter_cls, \
+             patch("just_talk.app.main.TextInserter") as mock_inserter_cls, \
+             patch("just_talk.app.main.NoiseFilter"), \
+             patch("just_talk.app.main.SpeakerRecognizer"):
+
+            from just_talk.config import AppConfig
+            from just_talk.app.main import JustTalkApp
+
+            cfg = AppConfig(stt_provider="whisper", two_phase_emission=True, gemini_enabled=True, offline_mode=False)
+            mock_load.return_value = cfg
+
+            app = JustTalkApp()
+            app.config = cfg
+
+            mock_stt = mock_whisper_cls.return_value
+            mock_stt.transcribe.return_value = "we are fixing this bug today"
+
+            mock_gemini = mock_formatter_cls.return_value
+            mock_gemini.format_text.return_value = ("We are definitely fixing this bug today!", True, "")
+
+            mock_inserter = mock_inserter_cls.return_value
+            mock_inserter.get_active_app_name.return_value = "TextEdit"
+            mock_inserter.insert.return_value = (True, "inserted", "TextEdit")
+
+            import numpy as np
+            sample_audio = np.zeros(16000, dtype=np.float32)
+
+            with patch("just_talk.app.main.CaretLocator.has_active_text_target", return_value=True):
+                app._process_audio_pipeline(sample_audio, is_action_mode=False)
+
+            # Verify Two-Phase calls on TextInserter:
+            assert mock_inserter.insert.call_count == 2
+
+            # Call 1 (Phase 1 Draft): Raw text inserted immediately without restoring clipboard
+            call1 = mock_inserter.insert.call_args_list[0]
+            assert "we are fixing this bug today" in call1.args[0].lower()
+            assert call1.kwargs.get("restore_clipboard") is False
+            assert call1.kwargs.get("replace_previous") is False
+
+            # Call 2 (Phase 2 In-Place Polish): Polished text replaces draft
+            call2 = mock_inserter.insert.call_args_list[1]
+            assert call2.args[0] == "We are definitely fixing this bug today!"
+            assert call2.kwargs.get("restore_clipboard") is True
+            assert call2.kwargs.get("replace_previous") is True
+

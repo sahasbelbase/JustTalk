@@ -126,3 +126,34 @@ def test_dynamic_shift_action_mode():
     assert monitor._is_active is False
     assert len(stopped) == 1
 
+
+def test_pynput_toggle_mode():
+    import time
+
+    started = []
+    stopped = []
+
+    monitor = PynputHotkeyMonitor(
+        trigger_key="right_alt",
+        action_key="ctrl_shift_space",
+        on_start_recording=lambda is_action: started.append(is_action),
+        on_stop_recording=lambda: stopped.append(True),
+        push_to_talk=False,  # Toggle mode
+    )
+
+    # 1. Tap 1 (Press and release Right Alt) -> Should start recording
+    monitor._on_press(keyboard.Key.alt_r)
+    monitor._on_release(keyboard.Key.alt_r)
+    assert monitor._is_active is True
+    assert started == [False]
+    assert stopped == []
+
+    # Wait past 250ms debounce window
+    time.sleep(0.3)
+
+    # 2. Tap 2 (Press and release Right Alt again) -> Should stop recording
+    monitor._on_press(keyboard.Key.alt_r)
+    monitor._on_release(keyboard.Key.alt_r)
+    assert monitor._is_active is False
+    assert len(stopped) == 1
+
