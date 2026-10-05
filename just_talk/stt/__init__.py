@@ -17,29 +17,37 @@ if TYPE_CHECKING:
     from ..config import AppConfig
 
 
-def get_native_stt_engine() -> STTEngine:
-    """Return the optimal zero-download OS-native engine with cloud fallback."""
+def get_native_stt_engine(
+    model_manager: Optional[ModelManager] = None,
+    offline_mode: bool = False,
+) -> STTEngine:
+    """Return the optimal OS engine with hybrid fallback and offline mode support."""
     if sys.platform == "darwin":
-        return MacNativeSTTEngine()
+        return MacNativeSTTEngine(offline_mode=offline_mode)
     elif sys.platform == "win32":
-        return WindowsNativeSTTEngine()
-    return GoogleWebSTTEngine()
+        return WindowsNativeSTTEngine(model_manager=model_manager, offline_mode=offline_mode)
+    return GoogleWebSTTEngine(offline_mode=offline_mode)
 
 
-def create_stt_engine_for_config(config: AppConfig, model_manager: Optional[ModelManager] = None) -> STTEngine:
+def create_stt_engine_for_config(
+    config: AppConfig,
+    model_manager: Optional[ModelManager] = None,
+) -> STTEngine:
     """
     Factory function that creates the appropriate STTEngine based on user configuration.
     Guarantees zero-download, instant startup for 'os_native' and 'google_web'.
     """
     provider = getattr(config, "stt_provider", "whisper") or "whisper"
+    offline = getattr(config, "offline_mode", False)
 
     if provider == "google_web":
-        return GoogleWebSTTEngine()
+        return GoogleWebSTTEngine(offline_mode=offline)
     elif provider == "os_native":
-        return get_native_stt_engine()
+        return get_native_stt_engine(model_manager=model_manager, offline_mode=offline)
     else:
         # Default: "whisper"
         return WhisperSTTEngine(model_manager or ModelManager())
+
 
 
 __all__ = [

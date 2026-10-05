@@ -116,3 +116,41 @@ def test_get_native_stt_engine_factory():
         assert isinstance(engine, MacNativeSTTEngine)
     elif sys.platform == "win32":
         assert isinstance(engine, WindowsNativeSTTEngine)
+
+
+def test_google_web_engine_offline_mode_blocks_network():
+    engine = GoogleWebSTTEngine(offline_mode=True)
+    engine.load()
+    dummy_audio = np.zeros(16000, dtype=np.float32)
+    # When offline_mode is True, transcribe must return empty string immediately without network call
+    res = engine.transcribe(dummy_audio, language="en")
+    assert res == ""
+
+
+def test_windows_native_engine_transcribe_partial():
+    mock_local = MagicMock(spec=STTEngine)
+    mock_local.is_loaded.return_value = True
+    mock_local.transcribe.return_value = "Hello world"
+
+    engine = WindowsNativeSTTEngine(local_engine=mock_local)
+    engine.load()
+
+    dummy_audio = np.zeros(16000 * 3, dtype=np.float32)
+    partial_text = engine.transcribe_partial(dummy_audio, language="en")
+    assert partial_text == "Hello world"
+    mock_local.transcribe.assert_called_once()
+
+
+def test_windows_native_engine_offline_mode_routes_to_local_whisper():
+    mock_local = MagicMock(spec=STTEngine)
+    mock_local.is_loaded.return_value = True
+    mock_local.transcribe.return_value = "Local offline speech"
+
+    engine = WindowsNativeSTTEngine(local_engine=mock_local, offline_mode=True)
+    engine.load()
+
+    dummy_audio = np.zeros(16000 * 2, dtype=np.float32)
+    res = engine.transcribe(dummy_audio, language="en")
+    assert res == "Local offline speech"
+    mock_local.transcribe.assert_called_once()
+

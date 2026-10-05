@@ -236,9 +236,10 @@ class JustTalkApp:
         else:
             self.stt_engine = create_stt_engine_for_config(self.config, self.model_manager)
         self.stt = self.stt_engine
-        self.nepali_conformer = NepaliConformerEngine(self.model_manager)
-        self.native_stt_engine = get_native_stt_engine()
-        self._last_partial_transcript = ""
+        self.native_stt_engine = get_native_stt_engine(
+            model_manager=self.model_manager,
+            offline_mode=getattr(self.config, "offline_mode", False),
+        )
         self._streaming_thread: Optional[threading.Thread] = None
 
         provider_id = getattr(self.config, "ai_provider", "gemini") or "gemini"
@@ -563,20 +564,35 @@ class JustTalkApp:
                 task = "transcribe"
 
                 partial_text = ""
-                # Priority 1: If Whisper is loaded, use it for partials
+                # Priority 1: Main STT engine (Whisper or specialized)
                 if self.stt_engine and self.stt_engine.is_loaded():
-                    partial_text = self.stt_engine.transcribe(
-                        cur_audio,
-                        language=lang,
-                        task=task,
-                    )
-                # Priority 2: Use native OS speech engine (zero download)
+                    if hasattr(self.stt_engine, "transcribe_partial"):
+                        partial_text = self.stt_engine.transcribe_partial(
+                            cur_audio,
+                            language=lang,
+                            task=task,
+                        )
+                    elif sys.platform == "darwin" or isinstance(self.stt_engine, WhisperSTTEngine):
+                        partial_text = self.stt_engine.transcribe(
+                            cur_audio,
+                            language=lang,
+                            task=task,
+                        )
+                # Priority 2: Use native OS speech engine (macOS SFSpeechRecognizer or Windows hybrid Whisper)
                 elif hasattr(self, "native_stt_engine") and self.native_stt_engine:
-                    partial_text = self.native_stt_engine.transcribe(
-                        cur_audio,
-                        language=lang,
-                        task=task,
-                    )
+                    if hasattr(self.native_stt_engine, "transcribe_partial"):
+                        partial_text = self.native_stt_engine.transcribe_partial(
+                            cur_audio,
+                            language=lang,
+                            task=task,
+                        )
+                    elif sys.platform == "darwin":
+                        partial_text = self.native_stt_engine.transcribe(
+                            cur_audio,
+                            language=lang,
+                            task=task,
+                        )
+
 
                 if partial_text and partial_text.strip() and self.recorder and self.recorder.is_recording:
                     cleaned = partial_text.strip()
@@ -835,7 +851,28 @@ class JustTalkApp:
                 action_name = "translate"
                 final_text = raw_text
             else:
-                intent = ActionRouter.parse_intent(raw_text, is_action_mode=False, context=detected_context, conventions=conventions)
+                cur_lang = (getattr(self.config, "language", "en") or "").lower()
+                is_nepali = cur_lang in ("ne", "ne_en") or any(
+                    ord(c) >= 0x0900 and ord(c) <= 0x097F for c in raw_text
+                )
+                nepali_mode = None
+                if is_nepali:
+                    rec_mode = getattr(_ctx_info, "recommended_nepali_mode", "romanized")
+                    nepali_mode = self.config.resolve_nepali_mode(rec_mode)
+                    print(
+                        f"[Nepglish] Context routing: app='{getattr(_ctx_info, 'app_name', 'Unknown')}', "
+                        f"mode='{nepali_mode}', style='{getattr(self.config, 'romanized_style', 'cha')}'",
+                        file=sys.stderr,
+                    )
+
+                intent = ActionRouter.parse_intent(
+                    raw_text,
+                    is_action_mode=False,
+                    context=detected_context,
+                    conventions=conventions,
+                    nepali_mode=nepali_mode,
+                    romanized_style=getattr(self.config, "romanized_style", "cha"),
+                )
                 action_name = intent.action_type
                 final_text = intent.target_payload
             is_offline_fallback = False

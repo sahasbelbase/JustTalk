@@ -101,9 +101,18 @@ class AppConfig:
     language: str = "en"  # Active language: "en", "ne_en", "ne", "es", "fr", "de", "zh", "auto"
     spoken_languages: list[str] = field(default_factory=lambda: ["en"])  # Languages the user actively speaks
     nepali_asr_engine: str = "whisper"  # Default: "whisper" (100% out-of-the-box, no tokens needed) or "conformer"
+    nepali_output_mode: str = "auto"  # "auto" (context-aware), "romanized", "devanagari", "english"
+    romanized_style: str = "cha"  # "cha" [Default], "chha", "xa"
     speech_mode: str = "transcribe"  # "transcribe" (write what I say) or "translate" (translate speech to English)
     audio_device_index: Optional[int] = None
     push_to_talk: bool = False  # False: Tap-to-Toggle (Tap to start, Tap to stop) [Default], True: hold to speak
+
+    def resolve_nepali_mode(self, recommended_mode: Optional[str] = None) -> str:
+        """Resolve active Nepali output mode based on configuration and app context."""
+        if getattr(self, "nepali_output_mode", "auto") != "auto":
+            return self.nepali_output_mode
+        return recommended_mode or "romanized"
+
 
     def get_required_model_tiers(self, for_current_provider: bool = False) -> list[str]:
         """Compute the minimal set of model tiers required for user's selected spoken languages."""

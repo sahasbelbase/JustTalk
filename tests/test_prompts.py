@@ -50,3 +50,28 @@ def test_strict_preservation_directives():
 
     translate = build_prompt("translate", target_language="English")
     assert "do not summarize" in translate.lower()
+
+
+def test_nepglish_prompt_custom_styles():
+    prompt_cha = build_prompt("nepglish", romanized_style="cha")
+    assert "Romanized Nepali (Nepglish)" in prompt_cha
+    assert "'cha'" in prompt_cha
+    assert "k cha" in prompt_cha
+    assert "thik cha" in prompt_cha
+
+    prompt_chha = build_prompt("romanized", romanized_style="chha")
+    assert "'chha'" in prompt_chha
+    assert "k chha" in prompt_chha
+
+    prompt_xa = build_prompt("ne_romanized", romanized_style="xa")
+    assert "'xa'" in prompt_xa
+    assert "k xa" in prompt_xa
+
+
+def test_devanagari_prompt():
+    prompt_dev = build_prompt("devanagari")
+    assert "Nepali Devanagari" in prompt_dev
+    assert "नेपाली लिपि" in prompt_dev
+    assert "purnabiram" in prompt_dev
+    assert "do not summarize" in prompt_dev.lower()
+

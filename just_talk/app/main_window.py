@@ -58,7 +58,149 @@ from .history_view import HistoryView
 from .home_view import DashboardWidget
 
 
+class CollapsibleSettingsSection(QFrame):
+    """
+    A collapsible, searchable settings section card with clear visual hierarchy.
+    Header contains title, optional badge/subtitle, and expand/collapse chevron.
+    Clicking header toggles body visibility.
+    Supports recursive search filtering for all child labels, buttons, and inputs.
+    """
+
+    def __init__(
+        self,
+        title: str,
+        subtitle: str = "",
+        badge: str = "",
+        default_expanded: bool = True,
+        parent: Optional[QWidget] = None,
+    ) -> None:
+        super().__init__(parent)
+        self.title = title
+        self.subtitle = subtitle
+        self.default_expanded = default_expanded
+        self.setObjectName("card")
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(16, 12, 16, 14)
+        main_layout.setSpacing(8)
+
+        # Clickable Header Button
+        self.header_btn = QPushButton()
+        self.header_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.header_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.header_btn.setStyleSheet("""
+            QPushButton {
+                border: none;
+                background: transparent;
+                text-align: left;
+                padding: 4px 6px;
+                border-radius: 6px;
+            }
+            QPushButton:hover {
+                background: rgba(255, 255, 255, 0.05);
+            }
+        """)
+
+        h_layout = QHBoxLayout(self.header_btn)
+        h_layout.setContentsMargins(0, 0, 0, 0)
+        h_layout.setSpacing(10)
+
+        # Title and subtitle in vertical box
+        text_box = QVBoxLayout()
+        text_box.setSpacing(2)
+
+        title_row = QHBoxLayout()
+        title_row.setSpacing(8)
+
+        self.title_lbl = QLabel(title)
+        self.title_lbl.setFont(ThemeManager.get_ui_font(14, weight=QFont.Weight.DemiBold))
+        title_row.addWidget(self.title_lbl)
+
+        if badge:
+            self.badge_lbl = QLabel(f" {badge} ")
+            self.badge_lbl.setStyleSheet("""
+                background-color: rgba(108, 142, 239, 0.18);
+                color: #6C8EEF;
+                border: 1px solid rgba(108, 142, 239, 0.35);
+                border-radius: 4px;
+                font-size: 10px;
+                font-weight: 600;
+                padding: 1px 6px;
+            """)
+            title_row.addWidget(self.badge_lbl)
+
+        title_row.addStretch()
+        text_box.addLayout(title_row)
+
+        if subtitle:
+            self.sub_lbl = QLabel(subtitle)
+            self.sub_lbl.setObjectName("mutedLabel")
+            self.sub_lbl.setFont(ThemeManager.get_ui_font(11))
+            self.sub_lbl.setWordWrap(True)
+            text_box.addWidget(self.sub_lbl)
+
+        h_layout.addLayout(text_box, 1)
+
+        # Chevron indicator
+        self.chevron_lbl = QLabel("▼" if default_expanded else "▶")
+        self.chevron_lbl.setFont(ThemeManager.get_ui_font(12, weight=QFont.Weight.Bold))
+        self.chevron_lbl.setStyleSheet("color: rgba(255, 255, 255, 0.45); padding-right: 4px;")
+        h_layout.addWidget(self.chevron_lbl)
+
+        main_layout.addWidget(self.header_btn)
+
+        # Divider line between header and content
+        self.header_divider = QFrame()
+        self.header_divider.setFrameShape(QFrame.Shape.HLine)
+        self.header_divider.setFrameShadow(QFrame.Shadow.Sunken)
+        self.header_divider.setStyleSheet("background-color: rgba(255, 255, 255, 0.05); max-height: 1px; margin-top: 2px;")
+        main_layout.addWidget(self.header_divider)
+
+        # Content Widget
+        self.content_widget = QWidget()
+        self.content_layout = QVBoxLayout(self.content_widget)
+        self.content_layout.setContentsMargins(4, 6, 4, 4)
+        self.content_layout.setSpacing(12)
+        main_layout.addWidget(self.content_widget)
+
+        self.header_btn.clicked.connect(self.toggle_expanded)
+        self.set_expanded(default_expanded)
+
+    def toggle_expanded(self) -> None:
+        self.set_expanded(not self.content_widget.isVisible())
+
+    def set_expanded(self, expanded: bool) -> None:
+        self.content_widget.setVisible(expanded)
+        self.header_divider.setVisible(expanded)
+        self.chevron_lbl.setText("▼" if expanded else "▶")
+
+    def matches_search(self, query: str) -> bool:
+        if not query:
+            return True
+        q = query.lower()
+        if q in self.title.lower() or (self.subtitle and q in self.subtitle.lower()):
+            return True
+        for w in self.content_widget.findChildren(QWidget):
+            if hasattr(w, "text") and callable(w.text):
+                try:
+                    txt = w.text()
+                    if txt and q in txt.lower():
+                        return True
+                except Exception:
+                    pass
+            if hasattr(w, "placeholderText") and callable(w.placeholderText):
+                try:
+                    pt = w.placeholderText()
+                    if pt and q in pt.lower():
+                        return True
+                except Exception:
+                    pass
+        return False
+
+
 class MainWindow(QMainWindow):
+
     """
     Main desktop window for Just Talk.
     Provides dual-mode behavior: lives in menu bar / system tray, but can open as a
@@ -1045,18 +1187,98 @@ class MainWindow(QMainWindow):
 
         container = QWidget()
         layout = QVBoxLayout(container)
-        layout.setContentsMargins(36, 30, 36, 30)
-        layout.setSpacing(18)
+        layout.setContentsMargins(36, 26, 36, 32)
+        layout.setSpacing(14)
 
-        # Header
+        self.settings_sections: list[CollapsibleSettingsSection] = []
+
+        # Top Header Bar
+        header_row = QVBoxLayout()
+        header_row.setSpacing(4)
         header = QLabel("Settings")
         header.setFont(ThemeManager.get_display_font(28, weight=QFont.Weight.Bold))
-        layout.addWidget(header)
+        header_row.addWidget(header)
 
-        # Section 1: General & Shortcuts
-        sec1, sec1_layout = self._create_settings_section("Trigger & General")
+        header_desc = QLabel("Configure voice shortcuts, speech recognition, Nepglish output, and AI preferences.")
+        header_desc.setObjectName("mutedLabel")
+        header_desc.setFont(ThemeManager.get_ui_font(13))
+        header_row.addWidget(header_desc)
+        layout.addLayout(header_row)
+
+        # ---------------------------------------------------------------------
+        # Top Search Bar for Quick Navigation
+        # ---------------------------------------------------------------------
+        search_card = QFrame()
+        search_card.setObjectName("card")
+        search_card.setStyleSheet("""
+            QFrame#card {
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 10px;
+                background-color: rgba(255, 255, 255, 0.035);
+            }
+        """)
+        search_box = QHBoxLayout(search_card)
+        search_box.setContentsMargins(12, 6, 12, 6)
+        search_box.setSpacing(10)
+
+        search_icon = QLabel("🔍")
+        search_icon.setStyleSheet("font-size: 14px; color: rgba(255, 255, 255, 0.5);")
+        search_box.addWidget(search_icon)
+
+        self.settings_search_input = QLineEdit()
+        self.settings_search_input.setPlaceholderText("Search settings (e.g. shortcut, nepali, offline, whisper, gemini, mic)...")
+        self.settings_search_input.setStyleSheet("""
+            QLineEdit {
+                border: none;
+                background: transparent;
+                font-size: 13px;
+                padding: 4px 0;
+            }
+        """)
+        self.settings_search_input.textChanged.connect(self._on_settings_search_changed)
+        search_box.addWidget(self.settings_search_input, 1)
+
+        self.settings_search_clear_btn = QPushButton("✕")
+        self.settings_search_clear_btn.setFixedSize(22, 22)
+        self.settings_search_clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.settings_search_clear_btn.setStyleSheet("""
+            QPushButton {
+                border: none;
+                border-radius: 11px;
+                background: rgba(255, 255, 255, 0.1);
+                color: rgba(255, 255, 255, 0.6);
+                font-size: 11px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: rgba(255, 255, 255, 0.2);
+                color: white;
+            }
+        """)
+        self.settings_search_clear_btn.hide()
+        self.settings_search_clear_btn.clicked.connect(self.settings_search_input.clear)
+        search_box.addWidget(self.settings_search_clear_btn)
+
+        layout.addWidget(search_card)
+
+        # Search match counter
+        self.settings_search_count_lbl = QLabel("")
+        self.settings_search_count_lbl.setObjectName("mutedLabel")
+        self.settings_search_count_lbl.setFont(ThemeManager.get_ui_font(11))
+        self.settings_search_count_lbl.hide()
+        layout.addWidget(self.settings_search_count_lbl)
+
+        # ---------------------------------------------------------------------
+        # Section 1: Trigger & Keyboard Shortcuts
+        # ---------------------------------------------------------------------
+        sec1, sec1_layout = self._create_settings_section(
+            "⌨️  Trigger & Keyboard Shortcuts",
+            subtitle="Configure keyboard hotkeys, tap-to-toggle, and audio muting behavior.",
+            badge="Recommended",
+            default_expanded=True,
+        )
         s1_form = QFormLayout()
-        s1_form.setSpacing(12)
+        s1_form.setSpacing(14)
         s1_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         s1_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
 
@@ -1099,32 +1321,34 @@ class MainWindow(QMainWindow):
         self.ptt_check.toggled.connect(self._on_ptt_toggled)
         s1_form.addRow("Trigger Mode:", self.ptt_check)
 
-        self.retention_combo = QComboBox()
-        self.retention_combo.addItem("30 Days (Default)", 30)
-        self.retention_combo.addItem("7 Days", 7)
-        self.retention_combo.addItem("15 Days", 15)
-        self.retention_combo.addItem("60 Days", 60)
-        self.retention_combo.addItem("90 Days", 90)
-        self.retention_combo.addItem("Never Delete", 0)
-        s1_form.addRow("History Retention:", self.retention_combo)
+        self.mute_audio_check = QCheckBox("Auto-Mute Computer Sound (Silences background music, movies, & Reels while speaking)")
+        self.mute_audio_check.setChecked(getattr(self.config, "mute_audio_while_recording", True))
+        self.mute_audio_check.toggled.connect(self._on_mute_audio_toggled)
+        s1_form.addRow("Background Audio:", self.mute_audio_check)
 
-        self.startup_check = QCheckBox("Launch Just Talk automatically on system login")
-        s1_form.addRow("Startup:", self.startup_check)
-
-        self.minimized_check = QCheckBox("Start minimized in menu bar / system tray")
-        s1_form.addRow("Window State:", self.minimized_check)
+        self.two_phase_check = QCheckBox("Typeless Fast Emission (Insert draft words instantly in 200ms, then polish with AI)")
+        self.two_phase_check.setChecked(getattr(self.config, "two_phase_emission", True))
+        self.two_phase_check.toggled.connect(self._on_two_phase_toggled)
+        s1_form.addRow("Typeless Emission:", self.two_phase_check)
 
         sec1_layout.addLayout(s1_form)
         layout.addWidget(sec1)
+        layout.addWidget(self._create_section_divider())
 
-        # Section 2: Speech-to-Text & Microphone
-        sec2, sec2_layout = self._create_settings_section("Voice & Speech Recognition")
+        # ---------------------------------------------------------------------
+        # Section 2: Voice & Speech Recognition
+        # ---------------------------------------------------------------------
+        sec2, sec2_layout = self._create_settings_section(
+            "🎙️  Voice & Speech Recognition",
+            subtitle="Microphone input, STT inference engines, and privacy modes.",
+            badge="Zero-Download",
+            default_expanded=True,
+        )
         s2_form = QFormLayout()
-        s2_form.setSpacing(12)
+        s2_form.setSpacing(14)
         s2_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         s2_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
 
-        # Speech-to-Text Engine Selection
         self.stt_provider_combo = QComboBox()
         self.stt_provider_combo.addItem("OS Native (Apple/Windows Dictation) [Default · Zero Download]", "os_native")
         self.stt_provider_combo.addItem("Google Web Speech (Free Cloud · Instant Nepali & 120+ languages)", "google_web")
@@ -1136,7 +1360,7 @@ class MainWindow(QMainWindow):
         self.stt_provider_combo.currentIndexChanged.connect(self._on_stt_provider_changed)
         s2_form.addRow("Speech Engine:", self.stt_provider_combo)
 
-        # Microphone selection and live testing row
+        # Microphone Row
         mic_row = QHBoxLayout()
         mic_row.setSpacing(8)
         self.device_combo = QComboBox()
@@ -1151,7 +1375,7 @@ class MainWindow(QMainWindow):
         mic_row.addWidget(self.mic_test_btn)
         s2_form.addRow("Microphone:", mic_row)
 
-        # Microphone live test meter and status
+        # Microphone Live Meter
         self.mic_test_container = QWidget()
         mic_test_layout = QVBoxLayout(self.mic_test_container)
         mic_test_layout.setContentsMargins(0, 4, 0, 4)
@@ -1183,6 +1407,125 @@ class MainWindow(QMainWindow):
         self.mic_test_container.hide()
         s2_form.addRow("", self.mic_test_container)
 
+        # Privacy Mode Toggle
+        self.offline_mode_check = QCheckBox("Pure Offline Mode (Strict Privacy: 100% on-device, blocks all cloud STT and audio egress)")
+        self.offline_mode_check.setChecked(getattr(self.config, "offline_mode", False))
+        self.offline_mode_check.toggled.connect(self._on_offline_mode_toggled)
+        s2_form.addRow("Privacy Mode:", self.offline_mode_check)
+
+        self.speech_mode_combo = QComboBox()
+        self.speech_mode_combo.addItem("✍️ Write in My Language (Transcribe)", "transcribe")
+        self.speech_mode_combo.addItem("🌐 Translate Speech to English (Translate)", "translate")
+        cur_mode = getattr(self.config, "speech_mode", "transcribe")
+        m_idx = self.speech_mode_combo.findData(cur_mode)
+        if m_idx >= 0:
+            self.speech_mode_combo.setCurrentIndex(m_idx)
+        self.speech_mode_combo.currentIndexChanged.connect(self._on_speech_mode_setting_changed)
+        s2_form.addRow("Speech Output Mode:", self.speech_mode_combo)
+
+        self.language_combo = SearchableLanguageComboBox()
+        cur_lang = getattr(self.config, "language", "en")
+        self.language_combo.set_current_language(cur_lang)
+        self.language_combo.language_changed.connect(self._on_language_setting_changed)
+        s2_form.addRow("Spoken Language:", self.language_combo)
+
+        self.vocab_input = QLineEdit()
+        self.vocab_input.setPlaceholderText("e.g. JustTalk, Python, Kubernetes, PyTorch, GraphQL")
+        self.vocab_input.setText(getattr(self.config, "custom_vocabulary", ""))
+        self.vocab_input.textChanged.connect(self._on_custom_vocabulary_changed)
+        s2_form.addRow("Custom Vocabulary:", self.vocab_input)
+
+        vocab_desc = QLabel("Personal names, brands, acronyms, or jargon (comma-separated). Primes Whisper's language decoder so these terms are never misheard.")
+        vocab_desc.setObjectName("mutedLabel")
+        vocab_desc.setWordWrap(True)
+        s2_form.addRow("", vocab_desc)
+
+        sec2_layout.addLayout(s2_form)
+        layout.addWidget(sec2)
+        layout.addWidget(self._create_section_divider())
+
+        # ---------------------------------------------------------------------
+        # Section 3: Nepglish & Nepali Output Modes
+        # ---------------------------------------------------------------------
+        sec_nepali, sec_nepali_layout = self._create_settings_section(
+            "🇳🇵  Nepglish & Nepali Output Modes",
+            subtitle="Smart auto-formatting for Romanized Nepali, Devanagari script, or English translation.",
+            badge="Context-Aware",
+            default_expanded=True,
+        )
+        nep_form = QFormLayout()
+        nep_form.setSpacing(14)
+        nep_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        nep_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+
+        self.nepali_output_mode_combo = QComboBox()
+        self.nepali_output_mode_combo.addItem("Auto (Smart App-Aware Context) [Recommended]", "auto")
+        self.nepali_output_mode_combo.addItem("Romanized Nepali (Nepglish) everywhere", "romanized")
+        self.nepali_output_mode_combo.addItem("Devanagari Script (नेपाली लिपि) everywhere", "devanagari")
+        self.nepali_output_mode_combo.addItem("Translate to English everywhere", "english")
+        nep_idx = self.nepali_output_mode_combo.findData(getattr(self.config, "nepali_output_mode", "auto"))
+        if nep_idx >= 0:
+            self.nepali_output_mode_combo.setCurrentIndex(nep_idx)
+        self.nepali_output_mode_combo.currentIndexChanged.connect(self._on_nepali_output_mode_changed)
+        nep_form.addRow("Nepali Output Mode:", self.nepali_output_mode_combo)
+
+        self.romanized_style_combo = QComboBox()
+        self.romanized_style_combo.addItem("Standard 'cha' (e.g. 'k cha', 'thik cha') [Recommended]", "cha")
+        self.romanized_style_combo.addItem("Classic 'chha' (e.g. 'k chha', 'thik chha')", "chha")
+        self.romanized_style_combo.addItem("Modern 'xa' (e.g. 'k xa', 'thik xa')", "xa")
+        rom_idx = self.romanized_style_combo.findData(getattr(self.config, "romanized_style", "cha"))
+        if rom_idx >= 0:
+            self.romanized_style_combo.setCurrentIndex(rom_idx)
+        self.romanized_style_combo.currentIndexChanged.connect(self._on_romanized_style_changed)
+        nep_form.addRow("Romanization Spelling:", self.romanized_style_combo)
+
+        # Context explanation card
+        context_card = QFrame()
+        context_card.setStyleSheet("""
+            QFrame {
+                background-color: rgba(255, 255, 255, 0.03);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 8px;
+                padding: 10px;
+            }
+        """)
+        cc_layout = QVBoxLayout(context_card)
+        cc_layout.setContentsMargins(10, 8, 10, 8)
+        cc_layout.setSpacing(4)
+
+        cc_title = QLabel("💡 Smart App-Aware Auto Routing:")
+        cc_title.setFont(ThemeManager.get_ui_font(12, weight=QFont.Weight.Bold))
+        cc_layout.addWidget(cc_title)
+
+        cc_text = QLabel(
+            "• 💬 Chat Apps (WhatsApp, Messenger, Telegram, Discord, Slack) → Romanized Nepglish ('k cha bro')\n"
+            "• 📄 Documents & Notes (Word, Pages, Google Docs, Notion) → Formal Devanagari ('के छ ब्रो')\n"
+            "• 💻 Code & Terminals (VS Code, Cursor, Terminal, iTerm) → Translated English ('What's up bro')"
+        )
+        cc_text.setObjectName("mutedLabel")
+        cc_text.setFont(ThemeManager.get_ui_font(11))
+        cc_layout.addWidget(cc_text)
+
+        nep_form.addRow("", context_card)
+
+        sec_nepali_layout.addLayout(nep_form)
+        layout.addWidget(sec_nepali)
+        layout.addWidget(self._create_section_divider())
+
+        # ---------------------------------------------------------------------
+        # Section 4: Spoken Languages & Model Tiers
+        # ---------------------------------------------------------------------
+        sec_langs, sec_langs_layout = self._create_settings_section(
+            "🌍  Spoken Languages & Model Tiers",
+            subtitle="Manage downloaded model weights, language packs, and custom Hugging Face targets.",
+            badge="On-Demand",
+            default_expanded=False,
+        )
+        s_lang_form = QFormLayout()
+        s_lang_form.setSpacing(14)
+        s_lang_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        s_lang_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+
         # Spoken Languages Checkbox Grid
         spoken_langs_container = QWidget()
         sl_layout = QVBoxLayout(spoken_langs_container)
@@ -1212,7 +1555,6 @@ class MainWindow(QMainWindow):
 
         sl_layout.addWidget(grid_container)
 
-        # Search combo for additional languages
         search_row = QHBoxLayout()
         search_lbl = QLabel("Search more languages:")
         search_lbl.setObjectName("mutedLabel")
@@ -1226,7 +1568,7 @@ class MainWindow(QMainWindow):
         search_row.addWidget(self.settings_add_lang_combo, 1)
         sl_layout.addLayout(search_row)
 
-        s2_form.addRow("Spoken Languages:", spoken_langs_container)
+        s_lang_form.addRow("Spoken Languages:", spoken_langs_container)
 
         # Model Source (Bundled vs Bring Your Own Model)
         source_row = QHBoxLayout()
@@ -1241,7 +1583,7 @@ class MainWindow(QMainWindow):
         source_row.addWidget(self.source_bundled_radio)
         source_row.addWidget(self.source_custom_radio)
         source_row.addStretch()
-        s2_form.addRow("Speech Model Source:", source_row)
+        s_lang_form.addRow("Speech Model Source:", source_row)
 
         # 1. Custom BYOM STT Container
         self.custom_stt_container = QWidget()
@@ -1288,7 +1630,7 @@ class MainWindow(QMainWindow):
         self.custom_stt_status.hide()
         custom_layout.addWidget(self.custom_stt_status)
 
-        s2_form.addRow("Custom Model Target:", self.custom_stt_container)
+        s_lang_form.addRow("Custom Model Target:", self.custom_stt_container)
 
         # 2. Bundled Models Container
         self.bundled_model_container = QWidget()
@@ -1296,7 +1638,6 @@ class MainWindow(QMainWindow):
         bundled_layout.setContentsMargins(0, 0, 0, 0)
         bundled_layout.setSpacing(10)
 
-        # Nepali ASR Engine Option
         self.nepali_engine_combo = QComboBox()
         self.nepali_engine_combo.addItem("OpenAI Whisper (Default · Out-of-the-Box · 100% Offline)", "whisper")
         self.nepali_engine_combo.addItem("Ampixa NepaliConformer (Experimental · Requires Hugging Face Access)", "conformer")
@@ -1325,7 +1666,6 @@ class MainWindow(QMainWindow):
         tier_row.addWidget(self.tier_combo, 1)
         bundled_layout.addLayout(tier_row)
 
-        # Responsive Model Storage & Download Card
         storage_row = QVBoxLayout()
         storage_row.setSpacing(8)
 
@@ -1376,9 +1716,8 @@ class MainWindow(QMainWindow):
         storage_row.addWidget(self.model_error_label)
 
         bundled_layout.addLayout(storage_row)
-        s2_form.addRow("Bundled Models:", self.bundled_model_container)
+        s_lang_form.addRow("Bundled Models:", self.bundled_model_container)
 
-        # Initial visibility toggle
         if stt_source == "custom":
             self.bundled_model_container.hide()
             self.custom_stt_container.show()
@@ -1386,55 +1725,28 @@ class MainWindow(QMainWindow):
             self.bundled_model_container.show()
             self.custom_stt_container.hide()
 
-        self.speech_mode_combo = QComboBox()
-        self.speech_mode_combo.addItem("✍️ Write in My Language (Transcribe)", "transcribe")
-        self.speech_mode_combo.addItem("🌐 Translate Speech to English (Translate)", "translate")
-        cur_mode = getattr(self.config, "speech_mode", "transcribe")
-        m_idx = self.speech_mode_combo.findData(cur_mode)
-        if m_idx >= 0:
-            self.speech_mode_combo.setCurrentIndex(m_idx)
-        self.speech_mode_combo.currentIndexChanged.connect(self._on_speech_mode_setting_changed)
-        s2_form.addRow("Speech Output Mode:", self.speech_mode_combo)
+        sec_langs_layout.addLayout(s_lang_form)
+        layout.addWidget(sec_langs)
+        layout.addWidget(self._create_section_divider())
 
-        self.language_combo = SearchableLanguageComboBox()
-        cur_lang = getattr(self.config, "language", "en")
-        self.language_combo.set_current_language(cur_lang)
-        self.language_combo.language_changed.connect(self._on_language_setting_changed)
-        s2_form.addRow("Spoken Language:", self.language_combo)
-
-        self.vocab_input = QLineEdit()
-        self.vocab_input.setPlaceholderText("e.g. JustTalk, Python, Kubernetes, PyTorch, GraphQL")
-        self.vocab_input.setText(getattr(self.config, "custom_vocabulary", ""))
-        self.vocab_input.textChanged.connect(self._on_custom_vocabulary_changed)
-        s2_form.addRow("Custom Vocabulary:", self.vocab_input)
-
-        vocab_desc = QLabel("Personal names, brands, acronyms, or jargon (comma-separated). Primes Whisper's language decoder so these terms are never misheard.")
-        vocab_desc.setObjectName("mutedLabel")
-        vocab_desc.setWordWrap(True)
-        s2_form.addRow("", vocab_desc)
+        # ---------------------------------------------------------------------
+        # Section 5: Speaker Recognition & Voice Isolation
+        # ---------------------------------------------------------------------
+        sec_spk, sec_spk_layout = self._create_settings_section(
+            "👤  Speaker Recognition & Voice Isolation",
+            subtitle="DeepFilterNet noise suppression and multi-speaker profile verification.",
+            badge="WeSpeaker CAM++",
+            default_expanded=False,
+        )
+        spk_form = QFormLayout()
+        spk_form.setSpacing(14)
+        spk_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        spk_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
 
         self.voice_isolation_check = QCheckBox("Voice & Echo Isolation (DeepFilterNet v3: eliminate background noise & laptop speakers)")
         self.voice_isolation_check.setChecked(getattr(self.config, "voice_isolation_enabled", True))
         self.voice_isolation_check.toggled.connect(self._on_voice_isolation_toggled)
-        s2_form.addRow("Voice Isolation:", self.voice_isolation_check)
-
-        self.mute_audio_check = QCheckBox("Auto-Mute Computer Sound (Silences background music, movies, & Reels while holding voice key)")
-        self.mute_audio_check.setChecked(getattr(self.config, "mute_audio_while_recording", True))
-        self.mute_audio_check.toggled.connect(self._on_mute_audio_toggled)
-        s2_form.addRow("Background Audio:", self.mute_audio_check)
-
-        self.two_phase_check = QCheckBox("Typeless Fast Emission (Insert draft words instantly in 250ms, then polish with AI)")
-        self.two_phase_check.setChecked(getattr(self.config, "two_phase_emission", True))
-        self.two_phase_check.toggled.connect(self._on_two_phase_toggled)
-        s2_form.addRow("Typeless Emission:", self.two_phase_check)
-
-        sec2_layout.addLayout(s2_form)
-        layout.addWidget(sec2)
-
-        # Section: Voice Profiles & Speaker Identification (WeSpeaker CAM++)
-        sec_spk, sec_spk_layout = self._create_settings_section("Speaker Recognition & Voice Profiles (WeSpeaker CAM++)")
-        spk_form = QFormLayout()
-        spk_form.setSpacing(12)
+        spk_form.addRow("Voice Isolation:", self.voice_isolation_check)
 
         self.speaker_id_check = QCheckBox("Identify speaker profiles and tag history (e.g. [Speaker 1]: ...)")
         self.speaker_id_check.setChecked(getattr(self.config, "speaker_id_enabled", True))
@@ -1446,7 +1758,6 @@ class MainWindow(QMainWindow):
         self.target_isolation_check.toggled.connect(self._on_target_isolation_toggled)
         spk_form.addRow("Voice Isolation Filter:", self.target_isolation_check)
 
-        # Profile container
         self.profiles_container = QVBoxLayout()
         self._refresh_profiles_list()
         spk_form.addRow("Enrolled Profiles:", self.profiles_container)
@@ -1458,21 +1769,38 @@ class MainWindow(QMainWindow):
 
         sec_spk_layout.addLayout(spk_form)
         layout.addWidget(sec_spk)
+        layout.addWidget(self._create_section_divider())
 
-        # Section 3: Multi-Provider AI Formatting
-        sec3, sec3_layout = self._create_settings_section("AI Formatting Layer (Gemini, Claude, OpenAI, Grok, Groq, OpenRouter, Custom)")
+        # ---------------------------------------------------------------------
+        # Section 6: Multi-Provider AI Formatting
+        # ---------------------------------------------------------------------
+        sec3, sec3_layout = self._create_settings_section(
+            "✨  AI Formatting Layer",
+            subtitle="Configure Gemini, Claude, OpenAI, Ollama, Groq, or OpenRouter for grammar polishing.",
+            badge="Multi-Provider",
+            default_expanded=False,
+        )
 
-        # Embedded AI Formatting View
         self.ai_view = AIFormattingView(self.config, self.gemini, parent=self)
         self.ai_view.config_changed.connect(self._on_ai_config_changed)
         sec3_layout.addWidget(self.ai_view)
 
         layout.addWidget(sec3)
+        layout.addWidget(self._create_section_divider())
 
-        # Section 4: Appearance & Themes
-        sec4, sec4_layout = self._create_settings_section("Appearance & Theme")
+        # ---------------------------------------------------------------------
+        # Section 7: Appearance & Window Preferences
+        # ---------------------------------------------------------------------
+        sec4, sec4_layout = self._create_settings_section(
+            "🎨  Appearance & Window Preferences",
+            subtitle="Theme selection, window minimization, and history retention.",
+            badge="UI",
+            default_expanded=False,
+        )
         s4_form = QFormLayout()
-        s4_form.setSpacing(12)
+        s4_form.setSpacing(14)
+        s4_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        s4_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
 
         self.theme_combo = QComboBox()
         self.theme_combo.addItem("System (Sync with OS Dark / Light)", "system")
@@ -1481,25 +1809,52 @@ class MainWindow(QMainWindow):
         self.theme_combo.currentIndexChanged.connect(self._on_theme_changed)
         s4_form.addRow("Theme:", self.theme_combo)
 
+        self.minimized_check = QCheckBox("Start minimized in menu bar / system tray")
+        s4_form.addRow("Window State:", self.minimized_check)
+
+        self.retention_combo = QComboBox()
+        self.retention_combo.addItem("30 Days (Default)", 30)
+        self.retention_combo.addItem("7 Days", 7)
+        self.retention_combo.addItem("15 Days", 15)
+        self.retention_combo.addItem("60 Days", 60)
+        self.retention_combo.addItem("90 Days", 90)
+        self.retention_combo.addItem("Never Delete", 0)
+        s4_form.addRow("History Retention:", self.retention_combo)
+
         sec4_layout.addLayout(s4_form)
         layout.addWidget(sec4)
+        layout.addWidget(self._create_section_divider())
 
-        # Section 5: Onboarding & Help
-        sec5, sec5_layout = self._create_settings_section("Tutorial & Onboarding")
+        # ---------------------------------------------------------------------
+        # Section 8: Tutorial, System & Software Updates
+        # ---------------------------------------------------------------------
+        sec6, sec6_layout = self._create_settings_section(
+            "🚀  Tutorial, System & Software Updates",
+            subtitle="Startup behavior, interactive tutorial replay, and 1-click in-place updates.",
+            badge=f"v{__version__}",
+            default_expanded=False,
+        )
+        s6_form = QFormLayout()
+        s6_form.setSpacing(14)
+        s6_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        s6_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
 
+        self.startup_check = QCheckBox("Launch Just Talk automatically on system login")
+        s6_form.addRow("Startup:", self.startup_check)
+
+        replay_box = QVBoxLayout()
+        replay_box.setSpacing(4)
         replay_desc = QLabel("Re-run the interactive first-time walkthrough to test your microphone, permissions, and keyboard triggers.")
         replay_desc.setObjectName("mutedLabel")
-        sec5_layout.addWidget(replay_desc)
+        replay_desc.setFont(ThemeManager.get_ui_font(11))
+        replay_box.addWidget(replay_desc)
 
-        replay_btn = QPushButton("Replay Onboarding Tutorial")
+        replay_btn = QPushButton("Replay Onboarding Walkthrough")
         replay_btn.setObjectName("secondaryBtn")
         replay_btn.clicked.connect(lambda: self.replay_tutorial_requested.emit())
-        sec5_layout.addWidget(replay_btn)
+        replay_box.addWidget(replay_btn)
+        s6_form.addRow("Tutorial:", replay_box)
 
-        layout.addWidget(sec5)
-
-        # Section 6: Software Updates & Version
-        sec6, sec6_layout = self._create_settings_section("Software Updates")
         u_row = QHBoxLayout()
         self.update_status_label = QLabel(f"Current version: v{__version__}")
         self.update_status_label.setObjectName("mutedLabel")
@@ -1511,7 +1866,7 @@ class MainWindow(QMainWindow):
 
         u_row.addWidget(self.update_status_label, 1)
         u_row.addWidget(self.check_update_btn)
-        sec6_layout.addLayout(u_row)
+        s6_form.addRow("Updates:", u_row)
 
         self.update_action_box = QWidget()
         self.update_action_box.hide()
@@ -1540,15 +1895,21 @@ class MainWindow(QMainWindow):
 
         uab_layout.addWidget(self.install_update_btn)
         uab_layout.addWidget(self.update_progress_bar)
-        sec6_layout.addWidget(self.update_action_box)
+        s6_form.addRow("", self.update_action_box)
 
+        sec6_layout.addLayout(s6_form)
         layout.addWidget(sec6)
 
-        # Save Button
+        # ---------------------------------------------------------------------
+        # Save Preferences Action Bar
+        # ---------------------------------------------------------------------
+        layout.addSpacing(10)
         bottom_box = QHBoxLayout()
         bottom_box.addStretch()
         save_btn = QPushButton("Save Preferences")
         save_btn.setObjectName("primaryBtn")
+        save_btn.setMinimumHeight(36)
+        save_btn.setStyleSheet("font-weight: bold; padding: 8px 24px; font-size: 13px;")
         save_btn.clicked.connect(self._on_save_settings)
         bottom_box.addWidget(save_btn)
         layout.addLayout(bottom_box)
@@ -1559,17 +1920,80 @@ class MainWindow(QMainWindow):
         self._load_settings_values()
         return scroll
 
-    def _create_settings_section(self, title: str) -> tuple[QFrame, QVBoxLayout]:
-        frame = QFrame()
-        frame.setObjectName("card")
-        layout = QVBoxLayout(frame)
-        layout.setContentsMargins(16, 14, 16, 14)
-        layout.setSpacing(10)
+    def _create_settings_section(
+        self,
+        title: str,
+        subtitle: str = "",
+        badge: str = "",
+        default_expanded: bool = True,
+    ) -> tuple[CollapsibleSettingsSection, QVBoxLayout]:
+        sec = CollapsibleSettingsSection(
+            title=title,
+            subtitle=subtitle,
+            badge=badge,
+            default_expanded=default_expanded,
+            parent=self,
+        )
+        if not hasattr(self, "settings_sections"):
+            self.settings_sections = []
+        self.settings_sections.append(sec)
+        return sec, sec.content_layout
 
-        lbl = QLabel(title)
-        lbl.setFont(ThemeManager.get_ui_font(13, weight=QFont.Weight.DemiBold))
-        layout.addWidget(lbl)
-        return frame, layout
+    def _create_section_divider(self) -> QFrame:
+        div = QFrame()
+        div.setFrameShape(QFrame.Shape.HLine)
+        div.setFrameShadow(QFrame.Shadow.Sunken)
+        div.setStyleSheet("background-color: rgba(255, 255, 255, 0.06); max-height: 1px; margin: 4px 0;")
+        return div
+
+    def _on_settings_search_changed(self, text: str) -> None:
+        query = text.strip().lower()
+        has_query = bool(query)
+        if hasattr(self, "settings_search_clear_btn"):
+            self.settings_search_clear_btn.setVisible(has_query)
+
+        match_count = 0
+        for sec in getattr(self, "settings_sections", []):
+            if not has_query:
+                sec.show()
+                sec.set_expanded(sec.default_expanded)
+            else:
+                matches = sec.matches_search(query)
+                sec.setVisible(matches)
+                if matches:
+                    match_count += 1
+                    sec.set_expanded(True)
+
+        if hasattr(self, "settings_search_count_lbl"):
+            if has_query:
+                self.settings_search_count_lbl.setText(
+                    f"Showing {match_count} matching section{'s' if match_count != 1 else ''}"
+                )
+                self.settings_search_count_lbl.show()
+            else:
+                self.settings_search_count_lbl.hide()
+
+    def _on_offline_mode_toggled(self, checked: bool) -> None:
+        self.config.offline_mode = checked
+        self.config.save()
+        if self.on_config_changed_callback:
+            self.on_config_changed_callback(self.config)
+
+    def _on_nepali_output_mode_changed(self, index: int) -> None:
+        if hasattr(self, "nepali_output_mode_combo"):
+            mode = self.nepali_output_mode_combo.currentData()
+            self.config.nepali_output_mode = mode
+            self.config.save()
+            if self.on_config_changed_callback:
+                self.on_config_changed_callback(self.config)
+
+    def _on_romanized_style_changed(self, index: int) -> None:
+        if hasattr(self, "romanized_style_combo"):
+            style = self.romanized_style_combo.currentData()
+            self.config.romanized_style = style
+            self.config.save()
+            if self.on_config_changed_callback:
+                self.on_config_changed_callback(self.config)
 
     def _populate_audio_devices(self) -> None:
         self.device_combo.clear()
@@ -1584,10 +2008,43 @@ class MainWindow(QMainWindow):
             self.shortcut_combo.setCurrentIndex(idx)
         self.ptt_check.setChecked(self.config.push_to_talk)
 
+        if hasattr(self, "mute_audio_check"):
+            self.mute_audio_check.setChecked(getattr(self.config, "mute_audio_while_recording", True))
+        if hasattr(self, "two_phase_check"):
+            self.two_phase_check.setChecked(getattr(self.config, "two_phase_emission", True))
+
         if hasattr(self, "stt_provider_combo"):
             prov_idx = self.stt_provider_combo.findData(getattr(self.config, "stt_provider", "os_native"))
             if prov_idx >= 0:
                 self.stt_provider_combo.setCurrentIndex(prov_idx)
+
+        if hasattr(self, "offline_mode_check"):
+            self.offline_mode_check.setChecked(getattr(self.config, "offline_mode", False))
+
+        if hasattr(self, "speech_mode_combo"):
+            m_idx = self.speech_mode_combo.findData(getattr(self.config, "speech_mode", "transcribe"))
+            if m_idx >= 0:
+                self.speech_mode_combo.setCurrentIndex(m_idx)
+
+        if hasattr(self, "language_combo") and self.language_combo is not None:
+            self.language_combo.set_current_language(getattr(self.config, "language", "en"))
+
+        if hasattr(self, "nepali_output_mode_combo"):
+            nep_idx = self.nepali_output_mode_combo.findData(getattr(self.config, "nepali_output_mode", "auto"))
+            if nep_idx >= 0:
+                self.nepali_output_mode_combo.setCurrentIndex(nep_idx)
+
+        if hasattr(self, "romanized_style_combo"):
+            rom_idx = self.romanized_style_combo.findData(getattr(self.config, "romanized_style", "cha"))
+            if rom_idx >= 0:
+                self.romanized_style_combo.setCurrentIndex(rom_idx)
+
+        if hasattr(self, "voice_isolation_check"):
+            self.voice_isolation_check.setChecked(getattr(self.config, "voice_isolation_enabled", True))
+        if hasattr(self, "speaker_id_check"):
+            self.speaker_id_check.setChecked(getattr(self.config, "speaker_id_enabled", True))
+        if hasattr(self, "target_isolation_check"):
+            self.target_isolation_check.setChecked(getattr(self.config, "target_speaker_isolation", False))
 
         ret_idx = self.retention_combo.findData(self.config.history_retention_days)
         if ret_idx >= 0:
@@ -2213,8 +2670,26 @@ class MainWindow(QMainWindow):
     def _on_save_settings(self) -> None:
         self.config.shortcut = self.shortcut_combo.currentData()
         self.config.push_to_talk = self.ptt_check.isChecked()
+        if hasattr(self, "mute_audio_check"):
+            self.config.mute_audio_while_recording = self.mute_audio_check.isChecked()
+        if hasattr(self, "two_phase_check"):
+            self.config.two_phase_emission = self.two_phase_check.isChecked()
         if hasattr(self, "stt_provider_combo"):
             self.config.stt_provider = self.stt_provider_combo.currentData() or "os_native"
+        if hasattr(self, "offline_mode_check"):
+            self.config.offline_mode = self.offline_mode_check.isChecked()
+        if hasattr(self, "nepali_output_mode_combo"):
+            self.config.nepali_output_mode = self.nepali_output_mode_combo.currentData() or "auto"
+        if hasattr(self, "romanized_style_combo"):
+            self.config.romanized_style = self.romanized_style_combo.currentData() or "cha"
+        if hasattr(self, "voice_isolation_check"):
+            self.config.voice_isolation_enabled = self.voice_isolation_check.isChecked()
+        if hasattr(self, "speaker_id_check"):
+            self.config.speaker_id_enabled = self.speaker_id_check.isChecked()
+        if hasattr(self, "target_isolation_check"):
+            self.config.target_speaker_isolation = self.target_isolation_check.isChecked()
+        if hasattr(self, "vocab_input"):
+            self.config.custom_vocabulary = self.vocab_input.text().strip()
         self.config.history_retention_days = self.retention_combo.currentData()
         self.config.launch_at_startup = self.startup_check.isChecked()
         self.config.start_minimized = self.minimized_check.isChecked()
@@ -2338,7 +2813,7 @@ class MainWindow(QMainWindow):
             self.update_progress_bar.setValue(0)
 
         cache_dir = UpdateChecker.get_updates_cache_dir()
-        filename = info.asset_name or ("JustTalk-macOS.dmg" if sys.platform == "darwin" else "JustTalk-Setup.exe")
+        filename = info.asset_name or ("JustTalk-macOS.dmg" if sys.platform == "darwin" else "JustTalk-Windows.exe")
         target_path = cache_dir / filename
 
         def worker():

@@ -137,7 +137,7 @@ class UpdateChecker:
             asset_name = "JustTalk-macOS.dmg"
             download_url = f"https://github.com/{GITHUB_REPO}/releases/download/{latest_tag}/{asset_name}"
         elif sys.platform == "win32":
-            asset_name = "JustTalk-Setup-1.0.0.exe"
+            asset_name = "JustTalk-Windows.exe"
             download_url = f"https://github.com/{GITHUB_REPO}/releases/download/{latest_tag}/{asset_name}"
 
         return UpdateInfo(
@@ -229,8 +229,10 @@ class UpdateChecker:
                     # Detach DMG
                     subprocess.run(["hdiutil", "detach", mount_point, "-force"], capture_output=True)
 
-                    # Relaunch newly installed app
-                    subprocess.Popen(["open", "-n", str(dest_app)])
+                    # Relaunch newly installed app cleanly (terminate current process so single-instance lock releases)
+                    current_pid = os.getpid()
+                    relaunch_script = f"sleep 0.5; kill -9 {current_pid} 2>/dev/null; open -n '{dest_app}'"
+                    subprocess.Popen(["bash", "-c", relaunch_script])
                     return True
                 else:
                     # Fallback: Just open DMG in Finder so user sees drag-to-Applications

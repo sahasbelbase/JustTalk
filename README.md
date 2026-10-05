@@ -21,7 +21,7 @@ Download the latest version of Just Talk directly for your operating system:
 | Operating System | Package Format | Direct Download Link | Release Page |
 | :--- | :--- | :--- | :--- |
 | **macOS** (Apple Silicon & Intel) | `.dmg` Disk Image | [⬇️ **Download JustTalk-macOS.dmg**](https://github.com/sahasbelbase/JustTalk/releases/latest/download/JustTalk-macOS.dmg) | [GitHub Releases](https://github.com/sahasbelbase/JustTalk/releases/latest) |
-| **Windows** (Windows 10 / 11 64-bit) | `.exe` Setup Installer | [⬇️ **Download JustTalk-Setup-2.0.1.exe**](https://github.com/sahasbelbase/JustTalk/releases/latest/download/JustTalk-Setup-2.0.1.exe) | [GitHub Releases](https://github.com/sahasbelbase/JustTalk/releases/latest) |
+| **Windows** (Windows 10 / 11 64-bit) | `.exe` Setup Installer | [⬇️ **Download JustTalk-Windows.exe**](https://github.com/sahasbelbase/JustTalk/releases/latest/download/JustTalk-Windows.exe) | [GitHub Releases](https://github.com/sahasbelbase/JustTalk/releases/latest) |
 
 > 💡 **Looking for all releases or release notes?** Visit the [Just Talk Releases Page](https://github.com/sahasbelbase/JustTalk/releases/latest).
 
@@ -126,7 +126,7 @@ For detailed, step-by-step instructions, see **[macOS Installation Guide](packag
 ### 🪟 Windows Installation & Setup
 For detailed, step-by-step instructions, see **[Windows Installation Guide](packaging/windows/INSTALL_WINDOWS.md)**.
 
-1. **Download Pre-Built Installer**: Download [**JustTalk-Setup-2.0.1.exe**](https://github.com/sahasbelbase/JustTalk/releases/latest/download/JustTalk-Setup-2.0.1.exe) (or get it from [GitHub Releases](https://github.com/sahasbelbase/JustTalk/releases/latest)) and run the setup wizard.
+1. **Download Pre-Built Installer**: Download [**JustTalk-Windows.exe**](https://github.com/sahasbelbase/JustTalk/releases/latest/download/JustTalk-Windows.exe) (or get it from [GitHub Releases](https://github.com/sahasbelbase/JustTalk/releases/latest)) and run the setup wizard.
    - Installs to `%LOCALAPPDATA%\Programs\Just Talk` with **no admin UAC prompt needed**.
    - Creates Start Menu, Desktop, and Windows Startup shortcuts.
    - Configures `AppUserModelID` for native Windows 10/11 taskbar pinning.

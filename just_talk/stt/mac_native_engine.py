@@ -40,8 +40,9 @@ class MacNativeSTTEngine(STTEngine):
         "ru": "ru-RU",
     }
 
-    def __init__(self, fallback_engine: Optional[STTEngine] = None) -> None:
-        self.fallback_engine = fallback_engine or GoogleWebSTTEngine()
+    def __init__(self, fallback_engine: Optional[STTEngine] = None, offline_mode: bool = False) -> None:
+        self.fallback_engine = fallback_engine or GoogleWebSTTEngine(offline_mode=offline_mode)
+        self.offline_mode = offline_mode
         self._is_loaded = False
         self._supported_locales: Set[str] = set()
         self._lock = threading.Lock()
@@ -144,7 +145,9 @@ class MacNativeSTTEngine(STTEngine):
         # 1. Check if language is supported by macOS native speech
         target_locale = self._resolve_locale(language)
         if not target_locale or not self.is_available():
-            # Graceful degradation for Nepali or unsupported languages
+            if self.offline_mode:
+                print(f"[MacNativeSTT] Offline mode is active; skipping cloud fallback for {language}.", file=sys.stderr)
+                return ""
             return self.fallback_engine.transcribe(
                 audio, language=language, task=task, initial_prompt=initial_prompt
             )
@@ -157,7 +160,9 @@ class MacNativeSTTEngine(STTEngine):
             auth_status = Speech.SFSpeechRecognizer.authorizationStatus()
             # 0 = NotDetermined, 1 = Denied, 2 = Restricted, 3 = Authorized
             if auth_status in (1, 2):
-                # User previously denied Speech Recognition permission -> degrade to Google Web
+                if self.offline_mode:
+                    print("[MacNativeSTT] macOS Speech denied in offline mode; aborting.", file=sys.stderr)
+                    return ""
                 return self.fallback_engine.transcribe(
                     audio, language=language, task=task, initial_prompt=initial_prompt
                 )
@@ -165,13 +170,17 @@ class MacNativeSTTEngine(STTEngine):
             ns_locale = NSLocale.localeWithLocaleIdentifier_(target_locale)
             recognizer = Speech.SFSpeechRecognizer.alloc().initWithLocale_(ns_locale)
             if not recognizer or not recognizer.isAvailable():
-                # Recognizer not ready or network offline for this locale
+                if self.offline_mode:
+                    print(f"[MacNativeSTT] Recognizer unavailable for {target_locale} in offline mode; aborting.", file=sys.stderr)
+                    return ""
                 return self.fallback_engine.transcribe(
                     audio, language=language, task=task, initial_prompt=initial_prompt
                 )
 
         except Exception as init_err:
             print(f"[MacNativeSTT] SFSpeechRecognizer setup failed ({init_err}), falling back...", file=sys.stderr)
+            if self.offline_mode:
+                return ""
             return self.fallback_engine.transcribe(
                 audio, language=language, task=task, initial_prompt=initial_prompt
             )
@@ -190,12 +199,34 @@ class MacNativeSTTEngine(STTEngine):
                 print(f"[MacNativeSTT] WAV write error: {write_err}", file=sys.stderr)
                 if os.path.exists(wav_path):
                     os.remove(wav_path)
+                if self.offline_mode:
+                    return ""
                 return self.fallback_engine.transcribe(audio, language=language, task=task, initial_prompt=initial_prompt)
 
         try:
             url = NSURL.fileURLWithPath_(wav_path)
             req = Speech.SFSpeechURLRecognitionRequest.alloc().initWithURL_(url)
             req.setShouldReportPartialResults_(True)
+
+            # Enforce on-device recognition if supported by Apple Speech for this locale
+            supports_on_device = False
+            if hasattr(recognizer, "supportsOnDeviceRecognition"):
+                try:
+                    supports_on_device = bool(recognizer.supportsOnDeviceRecognition())
+                except Exception:
+                    supports_on_device = False
+
+            if supports_on_device and hasattr(req, "setRequiresOnDeviceRecognition_"):
+                try:
+                    req.setRequiresOnDeviceRecognition_(True)
+                except Exception:
+                    pass
+            elif self.offline_mode and not supports_on_device:
+                # In strict offline mode, if Apple on-device recognition is not available, block audio from cloud
+                print(f"[MacNativeSTT] Offline mode is active and Apple on-device speech is unsupported for {target_locale}; blocking egress.", file=sys.stderr)
+                if os.path.exists(wav_path):
+                    os.remove(wav_path)
+                return ""
 
             done_event = threading.Event()
             transcription_text = []

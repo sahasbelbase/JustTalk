@@ -89,3 +89,26 @@ def test_updates_cache_dir(tmp_path):
         cache_dir = UpdateChecker.get_updates_cache_dir()
         assert cache_dir.exists()
         assert cache_dir.name == "updates"
+
+
+def test_platform_asset_names():
+    mock_opener = MagicMock()
+    http_error = urllib.error.HTTPError(
+        url="https://github.com/sahasbelbase/JustTalk/releases/latest",
+        code=302,
+        msg="Found",
+        hdrs={"Location": "https://github.com/sahasbelbase/JustTalk/releases/tag/v2.1.0"},
+        fp=None,
+    )
+    mock_opener.open.side_effect = http_error
+
+    with patch("urllib.request.build_opener", return_value=mock_opener):
+        with patch("sys.platform", "win32"):
+            win_info = UpdateChecker.check_for_updates(current_version="2.0.0")
+            assert win_info.asset_name == "JustTalk-Windows.exe"
+            assert "JustTalk-Windows.exe" in win_info.download_url
+
+        with patch("sys.platform", "darwin"):
+            mac_info = UpdateChecker.check_for_updates(current_version="2.0.0")
+            assert mac_info.asset_name == "JustTalk-macOS.dmg"
+            assert "JustTalk-macOS.dmg" in mac_info.download_url

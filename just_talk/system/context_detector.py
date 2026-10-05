@@ -71,6 +71,19 @@ _APP_CTX_MAP: dict[str, str] = {
 }
 
 
+# ── Chat / Messaging apps → Romanized Nepali ('cha' convention) ─────────────
+_CHAT_APPS = {
+    "whatsapp", "messenger", "telegram", "discord", "slack", "messages",
+    "viber", "signal", "teams", "skype", "wechat", "line", "instagram", "facebook"
+}
+
+# ── Document / Formal Writing apps → Devanagari script ─────────────────────
+_DOC_APPS = {
+    "pages", "microsoft word", "word", "libreoffice", "google docs", "notion",
+    "notes", "textedit", "scrivener", "obsidian", "docs"
+}
+
+
 @dataclass
 class ContextInfo:
     """Result of a context detection pass."""
@@ -78,6 +91,7 @@ class ContextInfo:
     context: str = "text"    # One of: sql, python, javascript, typescript, java, csharp, go, rust, php, text
     app_name: str = "Unknown"
     file_ext: str = ""
+    recommended_nepali_mode: str = "romanized"  # "romanized", "devanagari", or "english"
 
 
 def detect_context() -> ContextInfo:
@@ -229,4 +243,22 @@ def _build_context(app_name: str, file_ext: str) -> ContextInfo:
                 ctx = label
                 break
 
-    return ContextInfo(context=ctx, app_name=app_name, file_ext=file_ext)
+    # Determine recommended Nepali output mode
+    nepali_mode = "romanized"
+    lower_app = app_name.lower()
+
+    if any(k in lower_app for k in _DOC_APPS):
+        nepali_mode = "devanagari"
+    elif ctx != "text" or any(k in lower_app for k in ("code", "terminal", "iterm", "cmd", "powershell", "warp")):
+        nepali_mode = "english"
+    else:
+        # Default for chat, messaging, and general apps is Romanized Nepglish
+        nepali_mode = "romanized"
+
+    return ContextInfo(
+        context=ctx,
+        app_name=app_name,
+        file_ext=file_ext,
+        recommended_nepali_mode=nepali_mode,
+    )
+

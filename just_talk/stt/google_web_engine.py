@@ -37,8 +37,9 @@ class GoogleWebSTTEngine(STTEngine):
         "ru": "ru-RU",
     }
 
-    def __init__(self, timeout_sec: float = 8.0) -> None:
+    def __init__(self, timeout_sec: float = 8.0, offline_mode: bool = False) -> None:
         self.timeout_sec = timeout_sec
+        self.offline_mode = offline_mode
         self._recognizer = None
         self._is_loaded = False
         self._lock = threading.Lock()
@@ -92,6 +93,10 @@ class GoogleWebSTTEngine(STTEngine):
         Returns raw transcribed text or empty string on silence/error.
         """
         if audio is None or len(audio) == 0:
+            return ""
+
+        if getattr(self, "offline_mode", False):
+            print("[GoogleWebSTT] Offline mode is active; blocking cloud audio egress.", file=sys.stderr)
             return ""
 
         if not self._is_loaded or self._recognizer is None:

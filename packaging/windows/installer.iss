@@ -65,6 +65,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: checkedonce
 Name: "startupicon"; Description: "Launch Just Talk automatically on Windows startup"; GroupDescription: "Startup options:"; Flags: checkedonce
+Name: "downloadmodel"; Description: "Pre-download on-device Whisper model (~460 MB) for instant offline speech & live streaming"; GroupDescription: "Speech Models:"; Flags: checkedonce
 
 [Files]
 ; Main application binaries produced by PyInstaller
@@ -99,6 +100,8 @@ Type: filesandordirs; Name: "{app}\__pycache__"
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   UninsSrc, UninsDst: String;
+  ModelDir, PsScript: String;
+  ResultCode: Integer;
 begin
   if CurStep = ssPostInstall then
   begin
@@ -108,8 +111,27 @@ begin
     begin
       FileCopy(UninsSrc, UninsDst, False);
     end;
+
+    // Optional setup download for on-device Whisper model
+    if WizardIsTaskSelected('downloadmodel') then
+    begin
+      ModelDir := ExpandConstant('{localappdata}\JustTalk\models\small');
+      if not DirExists(ModelDir) then
+      begin
+        PsScript := 'powershell -NoProfile -WindowStyle Hidden -Command "' +
+          '$dest = [System.IO.Path]::Combine($env:LOCALAPPDATA, ''JustTalk\models\small''); ' +
+          'if (-not (Test-Path $dest)) { New-Item -ItemType Directory -Force -Path $dest | Out-Null; ' +
+          'Invoke-WebRequest -Uri ''https://huggingface.co/Systran/faster-whisper-small/resolve/main/config.json'' -OutFile (Join-Path $dest ''config.json'') -UseBasicParsing; ' +
+          'Invoke-WebRequest -Uri ''https://huggingface.co/Systran/faster-whisper-small/resolve/main/tokenizer.json'' -OutFile (Join-Path $dest ''tokenizer.json'') -UseBasicParsing; ' +
+          'Invoke-WebRequest -Uri ''https://huggingface.co/Systran/faster-whisper-small/resolve/main/vocabulary.txt'' -OutFile (Join-Path $dest ''vocabulary.txt'') -UseBasicParsing; ' +
+          'Invoke-WebRequest -Uri ''https://huggingface.co/Systran/faster-whisper-small/resolve/main/model.bin'' -OutFile (Join-Path $dest ''model.bin'') -UseBasicParsing; }' +
+          '"';
+        Exec('cmd.exe', '/c start /b ' + PsScript, '', SW_HIDE, ewNoWait, ResultCode);
+      end;
+    end;
   end;
 end;
+
 
 // Ask user if they wish to purge configuration and history data upon uninstallation
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);

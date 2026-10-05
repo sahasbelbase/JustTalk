@@ -102,9 +102,13 @@ jobs:
           name: JustTalk-Windows-Setup-EXE
           path: release_assets/
 
-      - name: Generate SHA256 Checksums
+      - name: Generate Compatibility Assets & SHA256 Checksums
         run: |
           cd release_assets
+          # Duplicate JustTalk-Windows.exe as JustTalk-Setup-1.0.0.exe for legacy v1/v2 clients
+          if [ -f JustTalk-Windows.exe ]; then
+            cp JustTalk-Windows.exe JustTalk-Setup-1.0.0.exe
+          fi
           sha256sum * > SHA256SUMS.txt
           cat SHA256SUMS.txt
 

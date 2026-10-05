@@ -43,10 +43,19 @@ class ActionRouter:
     ]
 
     @classmethod
-    def parse_intent(cls, raw_text: str, is_action_mode: bool = False, context: str = "text", conventions: dict = None) -> ActionIntent:
+    def parse_intent(
+        cls,
+        raw_text: str,
+        is_action_mode: bool = False,
+        context: str = "text",
+        conventions: dict = None,
+        nepali_mode: Optional[str] = None,
+        romanized_style: str = "cha",
+    ) -> ActionIntent:
         """
         Parse raw speech into a structured ActionIntent.
         If is_action_mode is True, checks for command patterns first.
+        If nepali_mode is specified ('romanized', 'devanagari', 'english'), applies specialized prompt.
         """
         text = raw_text.strip()
         if not text:
@@ -99,9 +108,45 @@ class ActionRouter:
                     system_instruction=build_prompt("concise", context=context, conventions=conventions),
                 )
 
+        # 4. Nepali-specific output modes (Nepglish Romanized, Devanagari, or English)
+        if nepali_mode == "romanized":
+            return ActionIntent(
+                action_type="format",
+                target_payload=text,
+                system_instruction=build_prompt(
+                    "nepglish",
+                    romanized_style=romanized_style,
+                    context=context,
+                    conventions=conventions,
+                ),
+            )
+        elif nepali_mode == "devanagari":
+            return ActionIntent(
+                action_type="format",
+                target_payload=text,
+                system_instruction=build_prompt(
+                    "devanagari",
+                    context=context,
+                    conventions=conventions,
+                ),
+            )
+        elif nepali_mode == "english":
+            return ActionIntent(
+                action_type="translate",
+                target_payload=text,
+                target_language="English",
+                system_instruction=build_prompt(
+                    "translate",
+                    target_language="English",
+                    context=context,
+                    conventions=conventions,
+                ),
+            )
+
         # Default standard subtle cleanup
         return ActionIntent(
             action_type="format",
             target_payload=text,
             system_instruction=build_prompt("subtle", context=context, conventions=conventions),
         )
+
