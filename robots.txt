@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://justtalk.sahasbelbase.com/sitemap.xml
+Sitemap: https://sahasbelbase.github.io/JustTalk/sitemap.xml
