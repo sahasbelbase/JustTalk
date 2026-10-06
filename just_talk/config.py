@@ -62,12 +62,12 @@ SUPPORTED_LANGUAGES: list[tuple[str, str]] = [
 ]
 
 CORE_SPOKEN_LANGUAGES: list[dict[str, str]] = [
-    {"code": "en", "name": "English", "native": "English", "flag": "🇬🇧 / 🇺🇸", "desc": "Default · Fast & lightweight"},
-    {"code": "ne", "name": "Nepali & Nepglish", "native": "नेपाली", "flag": "🇳🇵", "desc": "Multilingual Whisper (100% Offline & Free)"},
-    {"code": "de", "name": "German", "native": "Deutsch", "flag": "🇩🇪", "desc": "Multilingual model"},
-    {"code": "fr", "name": "French", "native": "Français", "flag": "🇫🇷", "desc": "Multilingual model"},
-    {"code": "es", "name": "Spanish", "native": "Español", "flag": "🇪🇸", "desc": "Multilingual model"},
-    {"code": "zh", "name": "Mandarin Chinese", "native": "中文 (普通话)", "flag": "🇨🇳", "desc": "Multilingual model"},
+    {"code": "en", "name": "English", "native": "English", "desc": "Default · Fast & lightweight"},
+    {"code": "ne", "name": "Nepali & Nepglish", "native": "नेपाली", "desc": "Multilingual Whisper (100% Offline & Free)"},
+    {"code": "de", "name": "German", "native": "Deutsch", "desc": "Multilingual model"},
+    {"code": "fr", "name": "French", "native": "Français", "desc": "Multilingual model"},
+    {"code": "es", "name": "Spanish", "native": "Español", "desc": "Multilingual model"},
+    {"code": "zh", "name": "Mandarin Chinese", "native": "中文 (普通话)", "desc": "Multilingual model"},
 ]
 
 ADDITIONAL_LANGUAGES: list[tuple[str, str]] = [
@@ -176,7 +176,7 @@ class AppConfig:
     # Shortcuts
     shortcut: str = field(default_factory=get_default_shortcut)
     action_shortcut: str = field(default_factory=get_default_action_shortcut)
-    max_recording_sec: float = 60.0  # Stuck-key safety limit
+    max_recording_sec: float = 300.0  # Stuck-key safety limit
 
     # Text Insertion & Clipboard
     restore_clipboard: bool = True  # Restore prior clipboard contents after paste

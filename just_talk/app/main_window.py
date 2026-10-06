@@ -8,7 +8,7 @@ import threading
 from pathlib import Path
 from typing import Callable, Optional
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QCloseEvent, QFont, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -56,6 +56,23 @@ from .theme import ThemeManager
 from .conventions_view import ConventionsView
 from .history_view import HistoryView
 from .home_view import DashboardWidget
+from . import icons
+from .ui_thread import run_on_ui_thread
+
+
+class _ClickableFrame(QFrame):
+    """Frame that acts like a flat button (hover highlight + clicked signal)."""
+
+    clicked = Signal()
+
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+
+    def mouseReleaseEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.position().toPoint()):
+            self.clicked.emit()
+        super().mouseReleaseEvent(event)
 
 
 class CollapsibleSettingsSection(QFrame):
@@ -78,32 +95,21 @@ class CollapsibleSettingsSection(QFrame):
         self.title = title
         self.subtitle = subtitle
         self.default_expanded = default_expanded
-        self.setObjectName("card")
+        self.setObjectName("settingsSection")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(16, 12, 16, 14)
-        main_layout.setSpacing(8)
+        main_layout.setContentsMargins(10, 8, 10, 8)
+        main_layout.setSpacing(6)
 
-        # Clickable Header Button
-        self.header_btn = QPushButton()
+        # Clickable Header
+        self.header_btn = _ClickableFrame()
+        self.header_btn.setObjectName("sectionHeader")
         self.header_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.header_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.header_btn.setStyleSheet("""
-            QPushButton {
-                border: none;
-                background: transparent;
-                text-align: left;
-                padding: 4px 6px;
-                border-radius: 6px;
-            }
-            QPushButton:hover {
-                background: rgba(255, 255, 255, 0.05);
-            }
-        """)
 
         h_layout = QHBoxLayout(self.header_btn)
-        h_layout.setContentsMargins(0, 0, 0, 0)
+        h_layout.setContentsMargins(8, 6, 8, 6)
         h_layout.setSpacing(10)
 
         # Title and subtitle in vertical box
@@ -118,17 +124,9 @@ class CollapsibleSettingsSection(QFrame):
         title_row.addWidget(self.title_lbl)
 
         if badge:
-            self.badge_lbl = QLabel(f" {badge} ")
-            self.badge_lbl.setStyleSheet("""
-                background-color: rgba(108, 142, 239, 0.18);
-                color: #6C8EEF;
-                border: 1px solid rgba(108, 142, 239, 0.35);
-                border-radius: 4px;
-                font-size: 10px;
-                font-weight: 600;
-                padding: 1px 6px;
-            """)
-            title_row.addWidget(self.badge_lbl)
+            self.badge_lbl = QLabel(badge)
+            self.badge_lbl.setObjectName("sectionBadge")
+            title_row.addWidget(self.badge_lbl, 0, Qt.AlignmentFlag.AlignVCenter)
 
         title_row.addStretch()
         text_box.addLayout(title_row)
@@ -137,30 +135,26 @@ class CollapsibleSettingsSection(QFrame):
             self.sub_lbl = QLabel(subtitle)
             self.sub_lbl.setObjectName("mutedLabel")
             self.sub_lbl.setFont(ThemeManager.get_ui_font(11))
-            self.sub_lbl.setWordWrap(True)
             text_box.addWidget(self.sub_lbl)
 
         h_layout.addLayout(text_box, 1)
 
         # Chevron indicator
-        self.chevron_lbl = QLabel("▼" if default_expanded else "▶")
-        self.chevron_lbl.setFont(ThemeManager.get_ui_font(12, weight=QFont.Weight.Bold))
-        self.chevron_lbl.setStyleSheet("color: rgba(255, 255, 255, 0.45); padding-right: 4px;")
-        h_layout.addWidget(self.chevron_lbl)
+        self.chevron_lbl = QLabel()
+        self.chevron_lbl.setObjectName("sectionChevron")
+        h_layout.addWidget(self.chevron_lbl, 0, Qt.AlignmentFlag.AlignVCenter)
 
         main_layout.addWidget(self.header_btn)
 
         # Divider line between header and content
         self.header_divider = QFrame()
-        self.header_divider.setFrameShape(QFrame.Shape.HLine)
-        self.header_divider.setFrameShadow(QFrame.Shadow.Sunken)
-        self.header_divider.setStyleSheet("background-color: rgba(255, 255, 255, 0.05); max-height: 1px; margin-top: 2px;")
+        self.header_divider.setObjectName("sectionDivider")
         main_layout.addWidget(self.header_divider)
 
         # Content Widget
         self.content_widget = QWidget()
         self.content_layout = QVBoxLayout(self.content_widget)
-        self.content_layout.setContentsMargins(4, 6, 4, 4)
+        self.content_layout.setContentsMargins(16, 10, 16, 10)
         self.content_layout.setSpacing(12)
         main_layout.addWidget(self.content_widget)
 
@@ -173,7 +167,7 @@ class CollapsibleSettingsSection(QFrame):
     def set_expanded(self, expanded: bool) -> None:
         self.content_widget.setVisible(expanded)
         self.header_divider.setVisible(expanded)
-        self.chevron_lbl.setText("▼" if expanded else "▶")
+        self.chevron_lbl.setPixmap(icons.pixmap("chevron-down" if expanded else "chevron-right", icons.ICON_MUTED, 18))
 
     def matches_search(self, query: str) -> bool:
         if not query:
@@ -280,6 +274,10 @@ class MainWindow(QMainWindow):
         """
         if getattr(self, "_is_testing_mic", False):
             self._stop_mic_test()
+        if getattr(QApplication.instance(), "is_quitting", False):
+            # Real quit (Cmd+Q, tray Quit, logout/shutdown): refusing here would cancel it
+            event.accept()
+            return
         event.ignore()
         self.hide()
         self.update_activation_policy(is_visible=False)
@@ -343,7 +341,7 @@ class MainWindow(QMainWindow):
 
     def _create_sidebar(self) -> QWidget:
         sidebar = QWidget()
-        sidebar.setFixedWidth(130)
+        sidebar.setFixedWidth(172)
         sidebar.setObjectName("sidebar")
 
         layout = QVBoxLayout(sidebar)
@@ -384,7 +382,7 @@ class MainWindow(QMainWindow):
         self.nav_group = QButtonGroup(self)
         self.nav_group.setExclusive(True)
 
-        self.nav_home = QPushButton("⌂  Home")
+        self.nav_home = QPushButton("Home")
         self.nav_home.setObjectName("navBtn")
         self.nav_home.setCheckable(True)
         self.nav_home.setChecked(True)
@@ -392,26 +390,29 @@ class MainWindow(QMainWindow):
         self.nav_group.addButton(self.nav_home, 0)
         layout.addWidget(self.nav_home)
 
-        self.nav_history = QPushButton("⏱  History")
+        self.nav_history = QPushButton("History")
         self.nav_history.setObjectName("navBtn")
         self.nav_history.setCheckable(True)
         self.nav_history.clicked.connect(lambda: self.switch_screen("history"))
         self.nav_group.addButton(self.nav_history, 1)
         layout.addWidget(self.nav_history)
 
-        self.nav_conventions = QPushButton("✨  Conventions")
+        self.nav_conventions = QPushButton("Conventions")
         self.nav_conventions.setObjectName("navBtn")
         self.nav_conventions.setCheckable(True)
         self.nav_conventions.clicked.connect(lambda: self.switch_screen("conventions"))
         self.nav_group.addButton(self.nav_conventions, 2)
         layout.addWidget(self.nav_conventions)
 
-        self.nav_settings = QPushButton("⚙  Settings")
+        self.nav_settings = QPushButton("Settings")
         self.nav_settings.setObjectName("navBtn")
         self.nav_settings.setCheckable(True)
         self.nav_settings.clicked.connect(lambda: self.switch_screen("settings"))
         self.nav_group.addButton(self.nav_settings, 3)
         layout.addWidget(self.nav_settings)
+        for nav_btn in (self.nav_home, self.nav_history, self.nav_conventions, self.nav_settings):
+            nav_btn.setIconSize(QSize(18, 18))
+        self.refresh_theme_icons()
 
         layout.addStretch()
 
@@ -431,13 +432,24 @@ class MainWindow(QMainWindow):
         status_row.addStretch()
         layout.addLayout(status_row)
 
-        self.sidebar_key_label = QLabel(self._get_shortcut_display())
+        self.sidebar_key_label = QLabel(f"Shortcut: {self._get_shortcut_display()}")
         self.sidebar_key_label.setObjectName("mutedLabel")
         self.sidebar_key_label.setFont(ThemeManager.get_mono_font(10))
         self.sidebar_key_label.setContentsMargins(2, 2, 0, 4)
         layout.addWidget(self.sidebar_key_label)
 
         return sidebar
+
+    def refresh_theme_icons(self) -> None:
+        """Tint sidebar icons with the active theme's accent (call after a theme change)."""
+        accent = ThemeManager.get_tokens(ThemeManager.is_dark(self.config.appearance)).accent
+        for btn, name in (
+            (self.nav_home, "home"),
+            (self.nav_history, "history"),
+            (self.nav_conventions, "conventions"),
+            (self.nav_settings, "settings"),
+        ):
+            btn.setIcon(icons.icon(name, active_color=accent))
 
     def switch_screen(self, screen_name: str) -> None:
         """Switch active screen in stacked widget."""
@@ -473,6 +485,7 @@ class MainWindow(QMainWindow):
 
         # 1. New Dashboard
         self.dashboard = DashboardWidget(self.db, self.config, self)
+        self.dashboard.shortcut_hint.setText(self._get_trigger_hint(short=True))
         layout.addWidget(self.dashboard)
 
         # 2. Update Available Banner (hidden by default)
@@ -489,7 +502,7 @@ class MainWindow(QMainWindow):
         ub_layout = QHBoxLayout(self.update_banner)
         ub_layout.setContentsMargins(14, 10, 14, 10)
         ub_layout.setSpacing(10)
-        self.update_banner_label = QLabel("⚡ Just Talk update available!")
+        self.update_banner_label = QLabel("A new version of Just Talk is available.")
         self.update_banner_label.setFont(ThemeManager.get_ui_font(12, weight=QFont.Weight.Medium))
         self.update_banner_btn = QPushButton("Update Now")
         self.update_banner_btn.setObjectName("primaryBtn")
@@ -507,7 +520,7 @@ class MainWindow(QMainWindow):
         hero_layout.setSpacing(10)
 
         hero_header = QHBoxLayout()
-        hero_title = QLabel("Push-to-Talk Shortcut")
+        hero_title = QLabel("Dictation Shortcut")
         hero_title.setFont(ThemeManager.get_ui_font(13, weight=QFont.Weight.DemiBold))
         hero_header.addWidget(hero_title)
         hero_header.addStretch()
@@ -523,7 +536,8 @@ class MainWindow(QMainWindow):
 
         hero_desc_layout = QVBoxLayout()
         hero_desc_layout.setSpacing(2)
-        hero_desc = QLabel("Hold to talk · Release to insert")
+        hero_desc = QLabel(self._get_trigger_hint(short=False))
+        self.hero_desc = hero_desc
         hero_desc.setFont(ThemeManager.get_ui_font(13, weight=QFont.Weight.Medium))
         hero_desc_sub = QLabel("Speaks into Slack, VS Code, Chrome, or any focused application.")
         hero_desc_sub.setObjectName("mutedLabel")
@@ -572,12 +586,12 @@ class MainWindow(QMainWindow):
 
         mode_btn_row = QHBoxLayout()
         mode_btn_row.setSpacing(10)
-        self.home_mode_transcribe_btn = QPushButton("✍️ Write in My Language")
+        self.home_mode_transcribe_btn = QPushButton("Write in my language")
         self.home_mode_transcribe_btn.setCheckable(True)
         self.home_mode_transcribe_btn.setChecked(getattr(self.config, "speech_mode", "transcribe") != "translate")
         self.home_mode_transcribe_btn.clicked.connect(lambda: self._set_home_speech_mode("transcribe"))
 
-        self.home_mode_translate_btn = QPushButton("🌐 Translate to English")
+        self.home_mode_translate_btn = QPushButton("Translate to English")
         self.home_mode_translate_btn.setCheckable(True)
         self.home_mode_translate_btn.setChecked(getattr(self.config, "speech_mode", "transcribe") == "translate")
         self.home_mode_translate_btn.clicked.connect(lambda: self._set_home_speech_mode("translate"))
@@ -637,8 +651,8 @@ class MainWindow(QMainWindow):
         hdc_layout.setSpacing(8)
 
         hdc_header = QHBoxLayout()
-        hdc_icon_lbl = QLabel("⬇")
-        hdc_icon_lbl.setFont(ThemeManager.get_ui_font(16))
+        hdc_icon_lbl = QLabel()
+        hdc_icon_lbl.setPixmap(icons.pixmap("download", icons.ICON_ACCENT, 18))
         hdc_header.addWidget(hdc_icon_lbl)
 
         self.home_download_title = QLabel("Downloading speech model…")
@@ -728,7 +742,7 @@ class MainWindow(QMainWindow):
         recent_header.addWidget(recent_title)
 
         recent_header.addStretch()
-        view_all_btn = QPushButton("View all in History →")
+        view_all_btn = QPushButton("View all history")
         view_all_btn.setObjectName("flatBtn")
         view_all_btn.clicked.connect(lambda: self.switch_screen("history"))
         recent_header.addWidget(view_all_btn)
@@ -804,17 +818,17 @@ class MainWindow(QMainWindow):
                     missing.append("Accessibility")
                 if not input_ok:
                     missing.append("Input Monitoring")
-                self.home_fn_msg.setText(f"⚠️ Permissions required: {', '.join(missing)} needed for global hold-to-talk.")
+                self.home_fn_msg.setText(f"{' and '.join(missing)} permission is needed for the global shortcut.")
                 self.home_fn_msg.setStyleSheet("color: #FF9F0A;")
                 self.home_fn_fix_btn.setText("Grant Permission")
                 self.home_fn_fix_btn.show()
             elif not fn_ok:
-                self.home_fn_msg.setText("⚠️ Pressing Fn opens macOS Emoji window.")
+                self.home_fn_msg.setText("Pressing Fn opens the macOS Emoji picker. Fix it in Settings › Shortcut.")
                 self.home_fn_msg.setStyleSheet("color: #FF9F0A;")
                 self.home_fn_fix_btn.setText("1-Click Fix")
                 self.home_fn_fix_btn.show()
             else:
-                self.home_fn_msg.setText("✓ Global shortcuts active across all applications.")
+                self.home_fn_msg.setText("Shortcut active in every app.")
                 self.home_fn_msg.setStyleSheet("color: #30D158;")
                 self.home_fn_fix_btn.hide()
 
@@ -860,7 +874,11 @@ class MainWindow(QMainWindow):
         # 4. Update shortcut display
         sc_text = self._get_shortcut_display()
         self.hero_keycap.setText(sc_text)
-        self.sidebar_key_label.setText(sc_text)
+        self.sidebar_key_label.setText(f"Shortcut: {sc_text}")
+        if hasattr(self, "hero_desc"):
+            self.hero_desc.setText(self._get_trigger_hint(short=False))
+        if hasattr(self, "dashboard") and hasattr(self.dashboard, "shortcut_hint"):
+            self.dashboard.shortcut_hint.setText(self._get_trigger_hint(short=True))
 
         # 5. Populate recent history snippets
         self._populate_recent_home_items()
@@ -914,7 +932,7 @@ class MainWindow(QMainWindow):
     def _on_home_download_progress_raw(self, tier_id: str, pct: float, msg: str) -> None:
         """Called on a background thread from ModelManager. Must dispatch to Qt thread via QTimer."""
         # QTimer.singleShot is thread-safe and queues the call to the main Qt thread.
-        QTimer.singleShot(0, lambda: self._on_home_download_update(tier_id, pct, msg))
+        run_on_ui_thread(lambda: self._on_home_download_update(tier_id, pct, msg))
 
     def _on_home_download_update(self, tier_id: str, pct: float, msg: str) -> None:
         """Update the Home screen download progress card on the Qt main thread."""
@@ -948,7 +966,7 @@ class MainWindow(QMainWindow):
                     border-radius: 10px;
                 }
             """)
-            self.home_download_title.setText(f"✓ {display} — Ready!")
+            self.home_download_title.setText(f"{display} is ready")
             self.home_download_pct_lbl.setText("100%")
             self.home_download_pct_lbl.setStyleSheet("color: #30D158;")
             self.home_download_bar.setValue(100)
@@ -1199,62 +1217,41 @@ class MainWindow(QMainWindow):
         header.setFont(ThemeManager.get_display_font(28, weight=QFont.Weight.Bold))
         header_row.addWidget(header)
 
-        header_desc = QLabel("Configure voice shortcuts, speech recognition, Nepglish output, and AI preferences.")
+        desc_row = QHBoxLayout()
+        header_desc = QLabel("Changes save automatically.")
         header_desc.setObjectName("mutedLabel")
         header_desc.setFont(ThemeManager.get_ui_font(13))
-        header_row.addWidget(header_desc)
+        desc_row.addWidget(header_desc)
+        desc_row.addStretch()
+        self.settings_saved_lbl = QLabel("")
+        self.settings_saved_lbl.setObjectName("savedIndicator")
+        desc_row.addWidget(self.settings_saved_lbl)
+        header_row.addLayout(desc_row)
         layout.addLayout(header_row)
 
         # ---------------------------------------------------------------------
         # Top Search Bar for Quick Navigation
         # ---------------------------------------------------------------------
         search_card = QFrame()
-        search_card.setObjectName("card")
-        search_card.setStyleSheet("""
-            QFrame#card {
-                border: 1px solid rgba(255, 255, 255, 0.12);
-                border-radius: 10px;
-                background-color: rgba(255, 255, 255, 0.035);
-            }
-        """)
+        search_card.setObjectName("searchField")
         search_box = QHBoxLayout(search_card)
-        search_box.setContentsMargins(12, 6, 12, 6)
-        search_box.setSpacing(10)
+        search_box.setContentsMargins(12, 2, 8, 2)
+        search_box.setSpacing(8)
 
-        search_icon = QLabel("🔍")
-        search_icon.setStyleSheet("font-size: 14px; color: rgba(255, 255, 255, 0.5);")
+        search_icon = QLabel()
+        search_icon.setPixmap(icons.pixmap("search", icons.ICON_MUTED, 16))
         search_box.addWidget(search_icon)
 
         self.settings_search_input = QLineEdit()
-        self.settings_search_input.setPlaceholderText("Search settings (e.g. shortcut, nepali, offline, whisper, gemini, mic)...")
-        self.settings_search_input.setStyleSheet("""
-            QLineEdit {
-                border: none;
-                background: transparent;
-                font-size: 13px;
-                padding: 4px 0;
-            }
-        """)
+        self.settings_search_input.setPlaceholderText("Search settings")
         self.settings_search_input.textChanged.connect(self._on_settings_search_changed)
         search_box.addWidget(self.settings_search_input, 1)
 
-        self.settings_search_clear_btn = QPushButton("✕")
-        self.settings_search_clear_btn.setFixedSize(22, 22)
+        self.settings_search_clear_btn = QPushButton()
+        self.settings_search_clear_btn.setIcon(icons.icon("close", size=12))
+        self.settings_search_clear_btn.setObjectName("searchClear")
+        self.settings_search_clear_btn.setFixedSize(20, 20)
         self.settings_search_clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.settings_search_clear_btn.setStyleSheet("""
-            QPushButton {
-                border: none;
-                border-radius: 11px;
-                background: rgba(255, 255, 255, 0.1);
-                color: rgba(255, 255, 255, 0.6);
-                font-size: 11px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background: rgba(255, 255, 255, 0.2);
-                color: white;
-            }
-        """)
         self.settings_search_clear_btn.hide()
         self.settings_search_clear_btn.clicked.connect(self.settings_search_input.clear)
         search_box.addWidget(self.settings_search_clear_btn)
@@ -1272,9 +1269,9 @@ class MainWindow(QMainWindow):
         # Section 1: Trigger & Keyboard Shortcuts
         # ---------------------------------------------------------------------
         sec1, sec1_layout = self._create_settings_section(
-            "⌨️  Trigger & Keyboard Shortcuts",
-            subtitle="Configure keyboard hotkeys, tap-to-toggle, and audio muting behavior.",
-            badge="Recommended",
+            "Shortcut",
+            subtitle="How you start and stop dictation.",
+            badge="",
             default_expanded=True,
         )
         s1_form = QFormLayout()
@@ -1284,13 +1281,13 @@ class MainWindow(QMainWindow):
 
         self.shortcut_combo = QComboBox()
         if sys.platform == "darwin":
-            self.shortcut_combo.addItem("Function / Globe Key (Fn) [Recommended]", "fn")
-            self.shortcut_combo.addItem("Right Option Key", "right_alt")
+            self.shortcut_combo.addItem("Fn / Globe key", "fn")
+            self.shortcut_combo.addItem("Right Option", "right_alt")
             self.shortcut_combo.addItem("Control + Space", "ctrl_space")
             self.shortcut_combo.addItem("Option + Space", "alt_space")
             self.shortcut_combo.addItem("Control + Shift + Space", "ctrl_shift_space")
         else:
-            self.shortcut_combo.addItem("Right Alt Key [Recommended]", "right_alt")
+            self.shortcut_combo.addItem("Right Alt", "right_alt")
             self.shortcut_combo.addItem("Control + Space", "ctrl_space")
             self.shortcut_combo.addItem("Alt + Space", "alt_space")
             self.shortcut_combo.addItem("Control + Shift + Space", "ctrl_shift_space")
@@ -1298,50 +1295,56 @@ class MainWindow(QMainWindow):
 
         if sys.platform == "darwin":
             kb_row = QHBoxLayout()
+            kb_row.setSpacing(8)
             self.fn_fix_status = QLabel("")
             self.fn_fix_status.setFont(ThemeManager.get_ui_font(12))
             self.fn_fix_status.setWordWrap(True)
-            self.fn_fix_btn = QPushButton("1-Click Fix (Stop Emoji Popup)")
-            self.fn_fix_btn.setObjectName("secondaryBtn")
-            self.fn_fix_btn.setStyleSheet("background-color: #6C8EEF; color: white; border: none; font-weight: bold; padding: 4px 10px;")
+            self.fn_fix_btn = QPushButton("Disable Emoji picker")
+            self.fn_fix_btn.setObjectName("primaryBtn")
             self.fn_fix_btn.clicked.connect(self._on_fix_fn_emoji_clicked)
             kb_row.addWidget(self.fn_fix_status)
             kb_row.addWidget(self.fn_fix_btn)
 
-            kb_btn = QPushButton("macOS Settings...")
+            kb_btn = QPushButton("Keyboard Settings…")
             kb_btn.setObjectName("secondaryBtn")
-            kb_btn.setStyleSheet("font-size: 11px; padding: 3px 8px;")
             kb_btn.clicked.connect(PermissionsManager.open_keyboard_settings)
             kb_row.addWidget(kb_btn)
             kb_row.addStretch()
             s1_form.addRow("Fn Key Behavior:", kb_row)
 
-        self.ptt_check = QCheckBox("Hold-to-Talk (Uncheck for Tap-to-Start / Tap-to-Stop Toggle Mode)")
+        self.ptt_check = QCheckBox("Hold the shortcut while speaking")
         self.ptt_check.setChecked(self.config.push_to_talk)
         self.ptt_check.toggled.connect(self._on_ptt_toggled)
-        s1_form.addRow("Trigger Mode:", self.ptt_check)
+        s1_form.addRow("Trigger Mode:", self._with_help(
+            self.ptt_check,
+            "Turn off to tap once to start and tap again to stop. "
+            "In tap mode, recording also stops after 8 seconds of silence.",
+        ))
 
-        self.mute_audio_check = QCheckBox("Auto-Mute Computer Sound (Silences background music, movies, & Reels while speaking)")
+        self.mute_audio_check = QCheckBox("Mute computer sound while dictating")
         self.mute_audio_check.setChecked(getattr(self.config, "mute_audio_while_recording", True))
         self.mute_audio_check.toggled.connect(self._on_mute_audio_toggled)
-        s1_form.addRow("Background Audio:", self.mute_audio_check)
+        s1_form.addRow("Background Audio:", self._with_help(
+            self.mute_audio_check, "Silences music, videos and Reels so they aren't picked up."
+        ))
 
-        self.two_phase_check = QCheckBox("Typeless Fast Emission (Insert draft words instantly in 200ms, then polish with AI)")
+        self.two_phase_check = QCheckBox("Type a draft instantly, then polish it")
         self.two_phase_check.setChecked(getattr(self.config, "two_phase_emission", True))
         self.two_phase_check.toggled.connect(self._on_two_phase_toggled)
-        s1_form.addRow("Typeless Emission:", self.two_phase_check)
+        s1_form.addRow("Fast Typing:", self._with_help(
+            self.two_phase_check, "Inserts your words within ~200 ms, then swaps in the AI-polished text."
+        ))
 
         sec1_layout.addLayout(s1_form)
         layout.addWidget(sec1)
-        layout.addWidget(self._create_section_divider())
 
         # ---------------------------------------------------------------------
         # Section 2: Voice & Speech Recognition
         # ---------------------------------------------------------------------
         sec2, sec2_layout = self._create_settings_section(
-            "🎙️  Voice & Speech Recognition",
-            subtitle="Microphone input, STT inference engines, and privacy modes.",
-            badge="Zero-Download",
+            "Voice & Speech",
+            subtitle="Microphone, speech engine, language and privacy.",
+            badge="",
             default_expanded=True,
         )
         s2_form = QFormLayout()
@@ -1350,9 +1353,9 @@ class MainWindow(QMainWindow):
         s2_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
 
         self.stt_provider_combo = QComboBox()
-        self.stt_provider_combo.addItem("OS Native (Apple/Windows Dictation) [Default · Zero Download]", "os_native")
-        self.stt_provider_combo.addItem("Google Web Speech (Free Cloud · Instant Nepali & 120+ languages)", "google_web")
-        self.stt_provider_combo.addItem("Local Whisper / BYOM (Offline · Requires Model Download)", "whisper")
+        self.stt_provider_combo.addItem("Built-in (Apple / Windows)", "os_native")
+        self.stt_provider_combo.addItem("Google Web Speech — cloud, 120+ languages", "google_web")
+        self.stt_provider_combo.addItem("Whisper on this device — download required", "whisper")
         cur_prov = getattr(self.config, "stt_provider", "os_native") or "os_native"
         p_idx = self.stt_provider_combo.findData(cur_prov)
         if p_idx >= 0:
@@ -1368,7 +1371,7 @@ class MainWindow(QMainWindow):
         self._populate_audio_devices()
         mic_row.addWidget(self.device_combo, 1)
 
-        self.mic_test_btn = QPushButton("🎤 Test Mic")
+        self.mic_test_btn = QPushButton("Test microphone")
         self.mic_test_btn.setObjectName("secondaryBtn")
         self.mic_test_btn.setMinimumHeight(32)
         self.mic_test_btn.clicked.connect(self._toggle_mic_test)
@@ -1388,9 +1391,9 @@ class MainWindow(QMainWindow):
         self.mic_level_bar.setFixedHeight(8)
         self.mic_level_bar.setStyleSheet("""
             QProgressBar {
-                border: 1px solid rgba(255, 255, 255, 0.12);
+                border: 1px solid rgba(128, 128, 128, 0.25);
                 border-radius: 4px;
-                background-color: rgba(255, 255, 255, 0.06);
+                background-color: rgba(128, 128, 128, 0.15);
             }
             QProgressBar::chunk {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #30D158, stop:0.8 #FFD60A, stop:1 #FF453A);
@@ -1408,14 +1411,16 @@ class MainWindow(QMainWindow):
         s2_form.addRow("", self.mic_test_container)
 
         # Privacy Mode Toggle
-        self.offline_mode_check = QCheckBox("Pure Offline Mode (Strict Privacy: 100% on-device, blocks all cloud STT and audio egress)")
+        self.offline_mode_check = QCheckBox("Pure offline mode")
         self.offline_mode_check.setChecked(getattr(self.config, "offline_mode", False))
         self.offline_mode_check.toggled.connect(self._on_offline_mode_toggled)
-        s2_form.addRow("Privacy Mode:", self.offline_mode_check)
+        s2_form.addRow("Privacy Mode:", self._with_help(
+            self.offline_mode_check, "Audio never leaves this device. Cloud speech services are blocked."
+        ))
 
         self.speech_mode_combo = QComboBox()
-        self.speech_mode_combo.addItem("✍️ Write in My Language (Transcribe)", "transcribe")
-        self.speech_mode_combo.addItem("🌐 Translate Speech to English (Translate)", "translate")
+        self.speech_mode_combo.addItem("Write in my language", "transcribe")
+        self.speech_mode_combo.addItem("Translate to English", "translate")
         cur_mode = getattr(self.config, "speech_mode", "transcribe")
         m_idx = self.speech_mode_combo.findData(cur_mode)
         if m_idx >= 0:
@@ -1433,24 +1438,21 @@ class MainWindow(QMainWindow):
         self.vocab_input.setPlaceholderText("e.g. JustTalk, Python, Kubernetes, PyTorch, GraphQL")
         self.vocab_input.setText(getattr(self.config, "custom_vocabulary", ""))
         self.vocab_input.textChanged.connect(self._on_custom_vocabulary_changed)
-        s2_form.addRow("Custom Vocabulary:", self.vocab_input)
-
-        vocab_desc = QLabel("Personal names, brands, acronyms, or jargon (comma-separated). Primes Whisper's language decoder so these terms are never misheard.")
-        vocab_desc.setObjectName("mutedLabel")
-        vocab_desc.setWordWrap(True)
-        s2_form.addRow("", vocab_desc)
+        s2_form.addRow("Custom Vocabulary:", self._with_help(
+            self.vocab_input,
+            "Names, brands, acronyms or jargon, separated by commas, so they're spelled right.",
+        ))
 
         sec2_layout.addLayout(s2_form)
         layout.addWidget(sec2)
-        layout.addWidget(self._create_section_divider())
 
         # ---------------------------------------------------------------------
         # Section 3: Nepglish & Nepali Output Modes
         # ---------------------------------------------------------------------
         sec_nepali, sec_nepali_layout = self._create_settings_section(
-            "🇳🇵  Nepglish & Nepali Output Modes",
-            subtitle="Smart auto-formatting for Romanized Nepali, Devanagari script, or English translation.",
-            badge="Context-Aware",
+            "Nepali Output",
+            subtitle="Romanized Nepali, Devanagari, or English — per app.",
+            badge="",
             default_expanded=True,
         )
         nep_form = QFormLayout()
@@ -1459,10 +1461,10 @@ class MainWindow(QMainWindow):
         nep_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
 
         self.nepali_output_mode_combo = QComboBox()
-        self.nepali_output_mode_combo.addItem("Auto (Smart App-Aware Context) [Recommended]", "auto")
-        self.nepali_output_mode_combo.addItem("Romanized Nepali (Nepglish) everywhere", "romanized")
-        self.nepali_output_mode_combo.addItem("Devanagari Script (नेपाली लिपि) everywhere", "devanagari")
-        self.nepali_output_mode_combo.addItem("Translate to English everywhere", "english")
+        self.nepali_output_mode_combo.addItem("Automatic — based on the app", "auto")
+        self.nepali_output_mode_combo.addItem("Romanized Nepali everywhere", "romanized")
+        self.nepali_output_mode_combo.addItem("Devanagari everywhere", "devanagari")
+        self.nepali_output_mode_combo.addItem("English everywhere", "english")
         nep_idx = self.nepali_output_mode_combo.findData(getattr(self.config, "nepali_output_mode", "auto"))
         if nep_idx >= 0:
             self.nepali_output_mode_combo.setCurrentIndex(nep_idx)
@@ -1470,9 +1472,9 @@ class MainWindow(QMainWindow):
         nep_form.addRow("Nepali Output Mode:", self.nepali_output_mode_combo)
 
         self.romanized_style_combo = QComboBox()
-        self.romanized_style_combo.addItem("Standard 'cha' (e.g. 'k cha', 'thik cha') [Recommended]", "cha")
-        self.romanized_style_combo.addItem("Classic 'chha' (e.g. 'k chha', 'thik chha')", "chha")
-        self.romanized_style_combo.addItem("Modern 'xa' (e.g. 'k xa', 'thik xa')", "xa")
+        self.romanized_style_combo.addItem("Standard — k cha, thik cha", "cha")
+        self.romanized_style_combo.addItem("Classic — k chha, thik chha", "chha")
+        self.romanized_style_combo.addItem("Modern — k xa, thik xa", "xa")
         rom_idx = self.romanized_style_combo.findData(getattr(self.config, "romanized_style", "cha"))
         if rom_idx >= 0:
             self.romanized_style_combo.setCurrentIndex(rom_idx)
@@ -1481,44 +1483,37 @@ class MainWindow(QMainWindow):
 
         # Context explanation card
         context_card = QFrame()
-        context_card.setStyleSheet("""
-            QFrame {
-                background-color: rgba(255, 255, 255, 0.03);
-                border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 8px;
-                padding: 10px;
-            }
-        """)
+        context_card.setObjectName("infoCard")
+        context_card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         cc_layout = QVBoxLayout(context_card)
-        cc_layout.setContentsMargins(10, 8, 10, 8)
-        cc_layout.setSpacing(4)
+        cc_layout.setContentsMargins(14, 10, 14, 12)
+        cc_layout.setSpacing(6)
 
-        cc_title = QLabel("💡 Smart App-Aware Auto Routing:")
-        cc_title.setFont(ThemeManager.get_ui_font(12, weight=QFont.Weight.Bold))
+        cc_title = QLabel("How Auto picks the output")
+        cc_title.setFont(ThemeManager.get_ui_font(12, weight=QFont.Weight.DemiBold))
         cc_layout.addWidget(cc_title)
 
-        cc_text = QLabel(
-            "• 💬 Chat Apps (WhatsApp, Messenger, Telegram, Discord, Slack) → Romanized Nepglish ('k cha bro')\n"
-            "• 📄 Documents & Notes (Word, Pages, Google Docs, Notion) → Formal Devanagari ('के छ ब्रो')\n"
-            "• 💻 Code & Terminals (VS Code, Cursor, Terminal, iTerm) → Translated English ('What's up bro')"
-        )
-        cc_text.setObjectName("mutedLabel")
-        cc_text.setFont(ThemeManager.get_ui_font(11))
-        cc_layout.addWidget(cc_text)
+        for app_kind, result in (
+            ("Chat apps — WhatsApp, Messenger, Telegram, Discord, Slack", "Romanized Nepglish · 'k cha bro'"),
+            ("Documents — Word, Pages, Google Docs, Notion", "Devanagari · 'के छ ब्रो'"),
+            ("Code & terminals — VS Code, Cursor, Terminal, iTerm", "English · 'What's up bro'"),
+        ):
+            row_lbl = QLabel(f"{app_kind}  →  <b>{result}</b>")
+            row_lbl.setObjectName("helpText")
+            cc_layout.addWidget(row_lbl)
 
         nep_form.addRow("", context_card)
 
         sec_nepali_layout.addLayout(nep_form)
         layout.addWidget(sec_nepali)
-        layout.addWidget(self._create_section_divider())
 
         # ---------------------------------------------------------------------
         # Section 4: Spoken Languages & Model Tiers
         # ---------------------------------------------------------------------
         sec_langs, sec_langs_layout = self._create_settings_section(
-            "🌍  Spoken Languages & Model Tiers",
-            subtitle="Manage downloaded model weights, language packs, and custom Hugging Face targets.",
-            badge="On-Demand",
+            "Languages & Models",
+            subtitle="Languages you speak and the on-device models they need.",
+            badge="",
             default_expanded=False,
         )
         s_lang_form = QFormLayout()
@@ -1547,7 +1542,7 @@ class MainWindow(QMainWindow):
         active_spoken = set(getattr(self.config, "spoken_languages", ["en"]) or ["en"])
 
         for idx, item in enumerate(CORE_SPOKEN_LANGUAGES):
-            chk = QCheckBox(f"{item['flag']} {item['name']} ({item['native']})")
+            chk = QCheckBox(item['name'] if item['native'] == item['name'] else f"{item['name']}  ·  {item['native']}")
             chk.setChecked(item["code"] in active_spoken)
             chk.toggled.connect(self._on_settings_spoken_languages_changed)
             self.settings_lang_checkboxes[item["code"]] = chk
@@ -1572,8 +1567,9 @@ class MainWindow(QMainWindow):
 
         # Model Source (Bundled vs Bring Your Own Model)
         source_row = QHBoxLayout()
-        self.source_bundled_radio = QRadioButton("Bundled Tiers (Recommended)")
-        self.source_custom_radio = QRadioButton("Bring Your Own Model (BYOM)")
+        source_row.setSpacing(20)
+        self.source_bundled_radio = QRadioButton("Built-in models")
+        self.source_custom_radio = QRadioButton("Your own model")
         stt_source = getattr(self.config, "stt_model_source", "bundled")
         if stt_source == "custom":
             self.source_custom_radio.setChecked(True)
@@ -1631,6 +1627,7 @@ class MainWindow(QMainWindow):
         custom_layout.addWidget(self.custom_stt_status)
 
         s_lang_form.addRow("Custom Model Target:", self.custom_stt_container)
+        self._lang_form = s_lang_form
 
         # 2. Bundled Models Container
         self.bundled_model_container = QWidget()
@@ -1639,8 +1636,8 @@ class MainWindow(QMainWindow):
         bundled_layout.setSpacing(10)
 
         self.nepali_engine_combo = QComboBox()
-        self.nepali_engine_combo.addItem("OpenAI Whisper (Default · Out-of-the-Box · 100% Offline)", "whisper")
-        self.nepali_engine_combo.addItem("Ampixa NepaliConformer (Experimental · Requires Hugging Face Access)", "conformer")
+        self.nepali_engine_combo.addItem("Whisper — offline", "whisper")
+        self.nepali_engine_combo.addItem("NepaliConformer — experimental, needs Hugging Face access", "conformer")
         cur_nep_eng = getattr(self.config, "nepali_asr_engine", "whisper")
         n_idx = self.nepali_engine_combo.findData(cur_nep_eng)
         if n_idx >= 0:
@@ -1683,9 +1680,9 @@ class MainWindow(QMainWindow):
         self.model_progress_bar.setFixedHeight(8)
         self.model_progress_bar.setStyleSheet("""
             QProgressBar {
-                border: 1px solid rgba(255, 255, 255, 0.12);
+                border: 1px solid rgba(128, 128, 128, 0.25);
                 border-radius: 4px;
-                background-color: rgba(255, 255, 255, 0.06);
+                background-color: rgba(128, 128, 128, 0.15);
             }
             QProgressBar::chunk {
                 background-color: #6C8EEF;
@@ -1718,24 +1715,18 @@ class MainWindow(QMainWindow):
         bundled_layout.addLayout(storage_row)
         s_lang_form.addRow("Bundled Models:", self.bundled_model_container)
 
-        if stt_source == "custom":
-            self.bundled_model_container.hide()
-            self.custom_stt_container.show()
-        else:
-            self.bundled_model_container.show()
-            self.custom_stt_container.hide()
+        self._show_model_source(stt_source == "custom")
 
         sec_langs_layout.addLayout(s_lang_form)
         layout.addWidget(sec_langs)
-        layout.addWidget(self._create_section_divider())
 
         # ---------------------------------------------------------------------
         # Section 5: Speaker Recognition & Voice Isolation
         # ---------------------------------------------------------------------
         sec_spk, sec_spk_layout = self._create_settings_section(
-            "👤  Speaker Recognition & Voice Isolation",
-            subtitle="DeepFilterNet noise suppression and multi-speaker profile verification.",
-            badge="WeSpeaker CAM++",
+            "Voice Isolation",
+            subtitle="Noise removal and speaker recognition.",
+            badge="",
             default_expanded=False,
         )
         spk_form = QFormLayout()
@@ -1743,41 +1734,46 @@ class MainWindow(QMainWindow):
         spk_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         spk_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
 
-        self.voice_isolation_check = QCheckBox("Voice & Echo Isolation (DeepFilterNet v3: eliminate background noise & laptop speakers)")
+        self.voice_isolation_check = QCheckBox("Remove background noise and echo")
         self.voice_isolation_check.setChecked(getattr(self.config, "voice_isolation_enabled", True))
         self.voice_isolation_check.toggled.connect(self._on_voice_isolation_toggled)
-        spk_form.addRow("Voice Isolation:", self.voice_isolation_check)
+        spk_form.addRow("Noise Removal:", self._with_help(
+            self.voice_isolation_check, "DeepFilterNet v3 cleans up room noise and laptop-speaker echo."
+        ))
 
-        self.speaker_id_check = QCheckBox("Identify speaker profiles and tag history (e.g. [Speaker 1]: ...)")
+        self.speaker_id_check = QCheckBox("Identify who is speaking")
         self.speaker_id_check.setChecked(getattr(self.config, "speaker_id_enabled", True))
         self.speaker_id_check.toggled.connect(self._on_speaker_id_toggled)
-        spk_form.addRow("Speaker Identification:", self.speaker_id_check)
+        spk_form.addRow("Speaker ID:", self._with_help(
+            self.speaker_id_check, "Tags history entries with enrolled voices, e.g. [Speaker 1]."
+        ))
 
-        self.target_isolation_check = QCheckBox("Filter & drop speech from unrecognized background voices")
+        self.target_isolation_check = QCheckBox("Ignore unrecognized voices")
         self.target_isolation_check.setChecked(getattr(self.config, "target_speaker_isolation", False))
         self.target_isolation_check.toggled.connect(self._on_target_isolation_toggled)
-        spk_form.addRow("Voice Isolation Filter:", self.target_isolation_check)
+        spk_form.addRow("Background Voices:", self._with_help(
+            self.target_isolation_check, "Drops speech from voices that don't match an enrolled profile."
+        ))
 
         self.profiles_container = QVBoxLayout()
         self._refresh_profiles_list()
         spk_form.addRow("Enrolled Profiles:", self.profiles_container)
 
-        self.enroll_btn = QPushButton("➕ Enroll New Voice Profile (4s calibration)")
+        self.enroll_btn = QPushButton("Enroll a voice  ·  4 s")
         self.enroll_btn.setObjectName("secondaryBtn")
         self.enroll_btn.clicked.connect(self._on_enroll_voice_clicked)
         spk_form.addRow("", self.enroll_btn)
 
         sec_spk_layout.addLayout(spk_form)
         layout.addWidget(sec_spk)
-        layout.addWidget(self._create_section_divider())
 
         # ---------------------------------------------------------------------
         # Section 6: Multi-Provider AI Formatting
         # ---------------------------------------------------------------------
         sec3, sec3_layout = self._create_settings_section(
-            "✨  AI Formatting Layer",
-            subtitle="Configure Gemini, Claude, OpenAI, Ollama, Groq, or OpenRouter for grammar polishing.",
-            badge="Multi-Provider",
+            "AI Formatting",
+            subtitle="Punctuation, filler removal and cleanup by your AI provider.",
+            badge="",
             default_expanded=False,
         )
 
@@ -1786,15 +1782,14 @@ class MainWindow(QMainWindow):
         sec3_layout.addWidget(self.ai_view)
 
         layout.addWidget(sec3)
-        layout.addWidget(self._create_section_divider())
 
         # ---------------------------------------------------------------------
         # Section 7: Appearance & Window Preferences
         # ---------------------------------------------------------------------
         sec4, sec4_layout = self._create_settings_section(
-            "🎨  Appearance & Window Preferences",
-            subtitle="Theme selection, window minimization, and history retention.",
-            badge="UI",
+            "Appearance",
+            subtitle="Theme, window behaviour and history retention.",
+            badge="",
             default_expanded=False,
         )
         s4_form = QFormLayout()
@@ -1803,34 +1798,33 @@ class MainWindow(QMainWindow):
         s4_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
 
         self.theme_combo = QComboBox()
-        self.theme_combo.addItem("System (Sync with OS Dark / Light)", "system")
-        self.theme_combo.addItem("Soft Graphite (Dark)", "dark")
-        self.theme_combo.addItem("Clean Paper (Light)", "light")
+        self.theme_combo.addItem("Match system", "system")
+        self.theme_combo.addItem("Dark", "dark")
+        self.theme_combo.addItem("Light", "light")
         self.theme_combo.currentIndexChanged.connect(self._on_theme_changed)
         s4_form.addRow("Theme:", self.theme_combo)
 
-        self.minimized_check = QCheckBox("Start minimized in menu bar / system tray")
-        s4_form.addRow("Window State:", self.minimized_check)
+        self.minimized_check = QCheckBox("Start hidden in the menu bar")
+        s4_form.addRow("Window State:", self._with_help(self.minimized_check))
 
         self.retention_combo = QComboBox()
-        self.retention_combo.addItem("30 Days (Default)", 30)
-        self.retention_combo.addItem("7 Days", 7)
-        self.retention_combo.addItem("15 Days", 15)
-        self.retention_combo.addItem("60 Days", 60)
-        self.retention_combo.addItem("90 Days", 90)
-        self.retention_combo.addItem("Never Delete", 0)
+        self.retention_combo.addItem("30 days", 30)
+        self.retention_combo.addItem("7 days", 7)
+        self.retention_combo.addItem("15 days", 15)
+        self.retention_combo.addItem("60 days", 60)
+        self.retention_combo.addItem("90 days", 90)
+        self.retention_combo.addItem("Keep forever", 0)
         s4_form.addRow("History Retention:", self.retention_combo)
 
         sec4_layout.addLayout(s4_form)
         layout.addWidget(sec4)
-        layout.addWidget(self._create_section_divider())
 
         # ---------------------------------------------------------------------
         # Section 8: Tutorial, System & Software Updates
         # ---------------------------------------------------------------------
         sec6, sec6_layout = self._create_settings_section(
-            "🚀  Tutorial, System & Software Updates",
-            subtitle="Startup behavior, interactive tutorial replay, and 1-click in-place updates.",
+            "Updates & Startup",
+            subtitle="New versions, launch at login and the walkthrough.",
             badge=f"v{__version__}",
             default_expanded=False,
         )
@@ -1839,17 +1833,17 @@ class MainWindow(QMainWindow):
         s6_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         s6_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
 
-        self.startup_check = QCheckBox("Launch Just Talk automatically on system login")
-        s6_form.addRow("Startup:", self.startup_check)
+        self.startup_check = QCheckBox("Open Just Talk at login")
+        s6_form.addRow("Startup:", self._with_help(self.startup_check))
 
         replay_box = QVBoxLayout()
         replay_box.setSpacing(4)
-        replay_desc = QLabel("Re-run the interactive first-time walkthrough to test your microphone, permissions, and keyboard triggers.")
+        replay_desc = QLabel("Walk through microphone, permissions and shortcut setup again.")
         replay_desc.setObjectName("mutedLabel")
         replay_desc.setFont(ThemeManager.get_ui_font(11))
         replay_box.addWidget(replay_desc)
 
-        replay_btn = QPushButton("Replay Onboarding Walkthrough")
+        replay_btn = QPushButton("Replay walkthrough")
         replay_btn.setObjectName("secondaryBtn")
         replay_btn.clicked.connect(lambda: self.replay_tutorial_requested.emit())
         replay_box.addWidget(replay_btn)
@@ -1860,7 +1854,7 @@ class MainWindow(QMainWindow):
         self.update_status_label.setObjectName("mutedLabel")
         self.update_status_label.setFont(ThemeManager.get_ui_font(12))
 
-        self.check_update_btn = QPushButton("Check for Updates")
+        self.check_update_btn = QPushButton("Check for updates")
         self.check_update_btn.setObjectName("secondaryBtn")
         self.check_update_btn.clicked.connect(self._on_check_updates_clicked)
 
@@ -1874,7 +1868,7 @@ class MainWindow(QMainWindow):
         uab_layout.setContentsMargins(0, 4, 0, 0)
         uab_layout.setSpacing(6)
 
-        self.install_update_btn = QPushButton("⚡ Update to Latest Version Now")
+        self.install_update_btn = QPushButton("Install update")
         self.install_update_btn.setObjectName("primaryBtn")
         self.install_update_btn.clicked.connect(self._on_install_update_clicked)
 
@@ -1882,9 +1876,9 @@ class MainWindow(QMainWindow):
         self.update_progress_bar.hide()
         self.update_progress_bar.setStyleSheet("""
             QProgressBar {
-                border: 1px solid rgba(255, 255, 255, 0.12);
+                border: 1px solid rgba(128, 128, 128, 0.25);
                 border-radius: 4px;
-                background-color: rgba(255, 255, 255, 0.06);
+                background-color: rgba(128, 128, 128, 0.15);
                 text-align: center;
             }
             QProgressBar::chunk {
@@ -1900,25 +1894,97 @@ class MainWindow(QMainWindow):
         sec6_layout.addLayout(s6_form)
         layout.addWidget(sec6)
 
-        # ---------------------------------------------------------------------
-        # Save Preferences Action Bar
-        # ---------------------------------------------------------------------
-        layout.addSpacing(10)
-        bottom_box = QHBoxLayout()
-        bottom_box.addStretch()
-        save_btn = QPushButton("Save Preferences")
-        save_btn.setObjectName("primaryBtn")
-        save_btn.setMinimumHeight(36)
-        save_btn.setStyleSheet("font-weight: bold; padding: 8px 24px; font-size: 13px;")
-        save_btn.clicked.connect(self._on_save_settings)
-        bottom_box.addWidget(save_btn)
-        layout.addLayout(bottom_box)
-
         layout.addStretch()
         scroll.setWidget(container)
 
-        self._load_settings_values()
+        self._align_settings_form_labels()
+
+        self._loading_settings = True
+        try:
+            self._load_settings_values()
+        finally:
+            self._loading_settings = False
+
+        # Everything else already applies instantly; these used to need a "Save" click.
+        self.shortcut_combo.currentIndexChanged.connect(self._autosave_settings)
+        self.device_combo.currentIndexChanged.connect(self._autosave_settings)
+        self.theme_combo.currentIndexChanged.connect(self._autosave_settings)
+        self.retention_combo.currentIndexChanged.connect(self._autosave_settings)
+        self.startup_check.toggled.connect(self._autosave_settings)
+        self.minimized_check.toggled.connect(self._autosave_settings)
+        self.vocab_input.editingFinished.connect(self._autosave_settings)
         return scroll
+
+    def _with_help(self, field: QWidget, help_text: str = "") -> QWidget:
+        """Stack a short muted explanation under a settings control."""
+        box = QWidget()
+        v = QVBoxLayout(box)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(3)
+        v.addWidget(field)
+        if help_text:
+            help_lbl = QLabel(help_text)
+            help_lbl.setObjectName("helpText")
+            help_lbl.setWordWrap(True)
+            v.addWidget(help_lbl)
+        box.setProperty("firstLineWidget", field)
+        # Take the full field width so the help text wraps (and is sized) correctly
+        box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        return box
+
+    def _align_settings_form_labels(self) -> None:
+        """Give every settings form the same label column and line labels up with the first line of their field."""
+        forms = []
+        for sec in getattr(self, "settings_sections", []):
+            for lay in sec.content_widget.findChildren(QFormLayout):
+                forms.append(lay)
+            if isinstance(sec.content_layout, QFormLayout):
+                forms.append(sec.content_layout)
+            for i in range(sec.content_layout.count()):
+                item = sec.content_layout.itemAt(i)
+                if item and isinstance(item.layout(), QFormLayout):
+                    forms.append(item.layout())
+
+        labels = []
+        for form in dict.fromkeys(forms):
+            form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
+            form.setHorizontalSpacing(18)
+            form.setVerticalSpacing(14)
+            for row in range(form.rowCount()):
+                label_item = form.itemAt(row, QFormLayout.ItemRole.LabelRole)
+                field_item = form.itemAt(row, QFormLayout.ItemRole.FieldRole)
+                lbl = label_item.widget() if label_item else None
+                if not isinstance(lbl, QLabel) or field_item is None:
+                    continue
+                labels.append(lbl)
+                lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
+                first = field_item.widget()
+                if first is not None and first.property("firstLineWidget") is not None:
+                    first = first.property("firstLineWidget")
+                if first is not None:
+                    line_h = first.sizeHint().height()
+                else:
+                    sub = field_item.layout()
+                    line_h = max(
+                        (sub.itemAt(i).sizeHint().height() for i in range(sub.count())), default=0
+                    ) if sub is not None else 0
+                # Labels sit at the top of the row; nudge whichever side is shorter so
+                # the label is centred on the field's first line.
+                diff = min(line_h, 40) - lbl.sizeHint().height()
+                if diff >= 0:
+                    lbl.setContentsMargins(0, diff // 2, 0, 0)
+                elif field_item.widget() is not None and field_item.widget().layout() is not None:
+                    field_item.widget().layout().setContentsMargins(0, (-diff) // 2, 0, 0)
+
+        if labels:
+            width = max(lbl.sizeHint().width() for lbl in labels)
+            for lbl in labels:
+                lbl.setMinimumWidth(width)
+
+    def _autosave_settings(self, *_args) -> None:
+        if getattr(self, "_loading_settings", False):
+            return
+        self._on_save_settings(quiet=True)
 
     def _create_settings_section(
         self,
@@ -1938,13 +2004,6 @@ class MainWindow(QMainWindow):
             self.settings_sections = []
         self.settings_sections.append(sec)
         return sec, sec.content_layout
-
-    def _create_section_divider(self) -> QFrame:
-        div = QFrame()
-        div.setFrameShape(QFrame.Shape.HLine)
-        div.setFrameShadow(QFrame.Shadow.Sunken)
-        div.setStyleSheet("background-color: rgba(255, 255, 255, 0.06); max-height: 1px; margin: 4px 0;")
-        return div
 
     def _on_settings_search_changed(self, text: str) -> None:
         query = text.strip().lower()
@@ -1975,6 +2034,9 @@ class MainWindow(QMainWindow):
 
     def _on_offline_mode_toggled(self, checked: bool) -> None:
         self.config.offline_mode = checked
+        # Cloud AI formatting can't run offline
+        if checked and hasattr(self, "ai_view"):
+            self.ai_view.enable_check.setChecked(False)
         self.config.save()
         if self.on_config_changed_callback:
             self.on_config_changed_callback(self.config)
@@ -2067,12 +2129,9 @@ class MainWindow(QMainWindow):
         if hasattr(self, "source_custom_radio") and hasattr(self, "source_bundled_radio"):
             if stt_src == "custom":
                 self.source_custom_radio.setChecked(True)
-                self.bundled_model_container.hide()
-                self.custom_stt_container.show()
             else:
                 self.source_bundled_radio.setChecked(True)
-                self.bundled_model_container.show()
-                self.custom_stt_container.hide()
+            self._show_model_source(stt_src == "custom")
 
         if hasattr(self, "custom_stt_input"):
             self.custom_stt_input.setText(getattr(self.config, "custom_stt_model_path", ""))
@@ -2152,8 +2211,8 @@ class MainWindow(QMainWindow):
 
         for p in profiles:
             p_row = QHBoxLayout()
-            name_lbl = QLabel(f"🎙️ {p['name']}")
-            name_lbl.setStyleSheet("font-weight: 600; color: #FFFFFF;")
+            name_lbl = QLabel(p['name'])
+            name_lbl.setStyleSheet("font-weight: 600;")
             p_row.addWidget(name_lbl)
 
             date_lbl = QLabel(f"Added {p['created_at'][:10]}")
@@ -2242,22 +2301,22 @@ class MainWindow(QMainWindow):
         code = self.settings_add_lang_combo.currentData()
         name = self.settings_add_lang_combo.currentText()
         if code and code not in self.settings_lang_checkboxes:
-            chk = QCheckBox(f"🌐 {name}")
+            chk = QCheckBox(name)
             chk.setChecked(True)
             chk.toggled.connect(self._on_settings_spoken_languages_changed)
             self.settings_lang_checkboxes[code] = chk
             self._on_settings_spoken_languages_changed()
         self.settings_add_lang_combo.setCurrentIndex(0)
 
+    def _show_model_source(self, custom: bool) -> None:
+        """Show either the BYOM row or the bundled-models row (label included)."""
+        self._lang_form.setRowVisible(self.custom_stt_container, custom)
+        self._lang_form.setRowVisible(self.bundled_model_container, not custom)
+
     def _on_stt_source_toggled(self, checked: bool) -> None:
         is_custom = self.source_custom_radio.isChecked()
         self.config.stt_model_source = "custom" if is_custom else "bundled"
-        if is_custom:
-            self.bundled_model_container.hide()
-            self.custom_stt_container.show()
-        else:
-            self.bundled_model_container.show()
-            self.custom_stt_container.hide()
+        self._show_model_source(is_custom)
         self.config.save()
         if self.on_config_changed_callback:
             self.on_config_changed_callback(self.config)
@@ -2284,7 +2343,7 @@ class MainWindow(QMainWindow):
     def _on_validate_custom_stt(self) -> None:
         target = self.custom_stt_input.text().strip()
         if not target:
-            self.custom_stt_status.setText("⚠️ Please enter a Hugging Face repo ID or select a local model directory.")
+            self.custom_stt_status.setText("Enter a Hugging Face repo ID or choose a local model folder.")
             self.custom_stt_status.setStyleSheet("color: #FF9F0A; font-size: 12px;")
             self.custom_stt_status.show()
             return
@@ -2317,13 +2376,13 @@ class MainWindow(QMainWindow):
                 self.custom_test_btn.setEnabled(True)
                 self.custom_test_btn.setText("Validate & Test")
                 if is_valid:
-                    self.custom_stt_status.setText(f"✓ {reason}")
+                    self.custom_stt_status.setText(reason)
                     self.custom_stt_status.setStyleSheet("color: #30D158; font-size: 12px;")
                 else:
-                    self.custom_stt_status.setText(f"✗ {reason}")
+                    self.custom_stt_status.setText(reason)
                     self.custom_stt_status.setStyleSheet("color: #FF453A; font-size: 12px;")
 
-            QTimer.singleShot(0, done)
+            run_on_ui_thread(done)
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -2360,7 +2419,7 @@ class MainWindow(QMainWindow):
             self.download_btn.setEnabled(False)
             self.model_error_label.hide()
         elif downloaded and all_ready:
-            self.model_status_label.setText(f"✓ All models for your spoken languages are downloaded and ready in cache (~{info.disk_size_mb} MB).")
+            self.model_status_label.setText(f"All models for your languages are downloaded ({info.disk_size_mb} MB).")
             self.model_status_label.setStyleSheet("color: #30D158;")
             self.download_btn.setText("Re-download Model")
             self.download_btn.setStyleSheet("")
@@ -2406,9 +2465,9 @@ class MainWindow(QMainWindow):
         self.model_progress_bar.setValue(2)
         self.model_progress_bar.setStyleSheet("""
             QProgressBar {
-                border: 1px solid rgba(255, 255, 255, 0.12);
+                border: 1px solid rgba(128, 128, 128, 0.25);
                 border-radius: 4px;
-                background-color: rgba(255, 255, 255, 0.06);
+                background-color: rgba(128, 128, 128, 0.15);
             }
             QProgressBar::chunk {
                 background-color: #6C8EEF;
@@ -2428,9 +2487,9 @@ class MainWindow(QMainWindow):
                 nonlocal last_err
                 if pct < 0:
                     last_err = msg
-                    QTimer.singleShot(0, lambda m=msg: self._on_download_failed(m))
+                    run_on_ui_thread(lambda m=msg: self._on_download_failed(m))
                 else:
-                    QTimer.singleShot(0, lambda p=pct, m=msg: self._on_download_progress(p, m))
+                    run_on_ui_thread(lambda p=pct, m=msg: self._on_download_progress(p, m))
 
             all_ok = True
             for tid in targets:
@@ -2450,7 +2509,7 @@ class MainWindow(QMainWindow):
                 elif not last_err:
                     self._on_download_failed("Download interrupted. Check internet connection.")
 
-            QTimer.singleShot(0, done)
+            run_on_ui_thread(done)
 
         import threading
         threading.Thread(target=worker, daemon=True).start()
@@ -2465,7 +2524,7 @@ class MainWindow(QMainWindow):
         self.model_progress_bar.setValue(100)
         self.model_progress_bar.hide()
         self.model_error_label.hide()
-        self.model_status_label.setText(f"✓ {info.display_name} is fully downloaded and verified ({info.disk_size_mb} MB).")
+        self.model_status_label.setText(f"{info.display_name} is downloaded and verified ({info.disk_size_mb} MB).")
         self.model_status_label.setStyleSheet("color: #30D158;")
         self.download_btn.setText("Re-download Model")
         self.download_btn.setStyleSheet("")
@@ -2479,7 +2538,7 @@ class MainWindow(QMainWindow):
             QProgressBar {
                 border: 1px solid rgba(255, 69, 58, 0.3);
                 border-radius: 4px;
-                background-color: rgba(255, 255, 255, 0.06);
+                background-color: rgba(128, 128, 128, 0.15);
             }
             QProgressBar::chunk {
                 background-color: #FF453A;
@@ -2487,7 +2546,7 @@ class MainWindow(QMainWindow):
             }
         """)
         clean_err = error_msg.replace("Download failed:", "").strip()
-        self.model_error_label.setText(f"⚠️ Download Failed: {clean_err}\nCheck your internet connection and click Retry Download.")
+        self.model_error_label.setText(f"Download failed: {clean_err}\nCheck your connection and try again.")
         self.model_error_label.show()
         self.model_status_label.setText("Download interrupted.")
         self.model_status_label.setStyleSheet("color: #FF453A;")
@@ -2507,7 +2566,7 @@ class MainWindow(QMainWindow):
 
     def _start_mic_test(self) -> None:
         self._is_testing_mic = True
-        self.mic_test_btn.setText("⏹️ Stop Test")
+        self.mic_test_btn.setText("Stop test")
         self.mic_test_btn.setStyleSheet("background-color: rgba(255, 69, 58, 0.2); color: #FF453A; border: 1px solid #FF453A;")
         self.mic_test_container.show()
         self.mic_level_bar.setValue(0)
@@ -2521,7 +2580,7 @@ class MainWindow(QMainWindow):
             pct = min(100, int(rms * 450))
             if pct > 4:
                 self._mic_test_detected_voice = True
-            QTimer.singleShot(0, lambda p=pct: self._on_mic_test_level(p))
+            run_on_ui_thread(lambda p=pct: self._on_mic_test_level(p))
 
         self._mic_test_recorder = AudioRecorder(
             device_index=dev_idx,
@@ -2529,7 +2588,7 @@ class MainWindow(QMainWindow):
         )
         started = self._mic_test_recorder.start()
         if not started:
-            self.mic_test_status.setText("⚠️ Failed to open microphone. Check device permissions or reconnect hardware.")
+            self.mic_test_status.setText("Couldn't open the microphone. Check permissions or reconnect it.")
             self.mic_test_status.setStyleSheet("color: #FF453A;")
             self._stop_mic_test(reset_status=False)
             return
@@ -2546,12 +2605,12 @@ class MainWindow(QMainWindow):
             return
         self.mic_level_bar.setValue(level)
         if getattr(self, "_mic_test_detected_voice", False):
-            self.mic_test_status.setText("✓ Sound detected! Microphone is receiving audio clearly.")
+            self.mic_test_status.setText("Sound detected — your microphone is working.")
             self.mic_test_status.setStyleSheet("color: #30D158;")
 
     def _stop_mic_test(self, reset_status: bool = True) -> None:
         self._is_testing_mic = False
-        self.mic_test_btn.setText("🎤 Test Mic")
+        self.mic_test_btn.setText("Test microphone")
         self.mic_test_btn.setStyleSheet("")
         if hasattr(self, "_mic_test_timer"):
             self._mic_test_timer.stop()
@@ -2563,7 +2622,7 @@ class MainWindow(QMainWindow):
             self._mic_test_recorder = None
         self.mic_level_bar.setValue(0)
         if reset_status and not getattr(self, "_mic_test_detected_voice", False):
-            self.mic_test_status.setText("⚠️ Test finished: No voice/audio detected. Ensure microphone is not muted.")
+            self.mic_test_status.setText("No sound detected. Make sure the microphone isn't muted.")
             self.mic_test_status.setStyleSheet("color: #FF9F0A;")
 
     def _on_theme_changed(self) -> None:
@@ -2572,6 +2631,7 @@ class MainWindow(QMainWindow):
             chosen = self.theme_combo.currentData()
             self.config.appearance = chosen
             ThemeManager.apply_theme(app, chosen)
+            self.refresh_theme_icons()
 
     def _on_ai_config_changed(self) -> None:
         self.config.save()
@@ -2590,9 +2650,9 @@ class MainWindow(QMainWindow):
         transcribe_active = getattr(self.config, "speech_mode", "transcribe") != "translate"
         if transcribe_active:
             self.home_mode_transcribe_btn.setStyleSheet("background-color: #6C8EEF; color: white; border: none; font-weight: bold; border-radius: 8px; padding: 10px 14px;")
-            self.home_mode_translate_btn.setStyleSheet("background-color: rgba(255, 255, 255, 0.08); color: #8E8E93; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 10px 14px;")
+            self.home_mode_translate_btn.setStyleSheet("background-color: rgba(128, 128, 128, 0.12); color: #8E8E93; border: 1px solid rgba(128, 128, 128, 0.2); border-radius: 8px; padding: 10px 14px;")
         else:
-            self.home_mode_transcribe_btn.setStyleSheet("background-color: rgba(255, 255, 255, 0.08); color: #8E8E93; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 10px 14px;")
+            self.home_mode_transcribe_btn.setStyleSheet("background-color: rgba(128, 128, 128, 0.12); color: #8E8E93; border: 1px solid rgba(128, 128, 128, 0.2); border-radius: 8px; padding: 10px 14px;")
             self.home_mode_translate_btn.setStyleSheet("background-color: #6C8EEF; color: white; border: none; font-weight: bold; border-radius: 8px; padding: 10px 14px;")
 
     def _set_home_speech_mode(self, mode: str) -> None:
@@ -2622,19 +2682,19 @@ class MainWindow(QMainWindow):
         if mode == "translate":
             if lang_code == "ne_en":
                 self.home_mode_desc.setText(
-                    "🌐 Translate Mode: Mixed Nepali & English speech is translated seamlessly into clean, fluent English."
+                    "Mixed Nepali and English speech is translated into fluent English."
                 )
             else:
                 self.home_mode_desc.setText(
-                    "🌐 Translate Mode: Whatever you speak (Nepali, Spanish, French, etc.) is translated directly into English."
+                    "Whatever language you speak is translated into English."
                 )
         else:
             if lang_code == "ne_en":
-                self.home_mode_desc.setText("✍️ Transcribe Mode: Speak in conversational mixed Nepali & English; text is typed exactly as spoken.")
+                self.home_mode_desc.setText("Mixed Nepali and English is typed exactly as you speak it.")
             elif lang_code == "ne":
-                self.home_mode_desc.setText("✍️ Transcribe Mode: Speak in Nepali, and it types directly in Nepali Devanagari (नेपाली).")
+                self.home_mode_desc.setText("Nepali speech is typed in Devanagari (नेपाली).")
             else:
-                self.home_mode_desc.setText("✍️ Transcribe Mode: Text is typed directly in the exact language you speak.")
+                self.home_mode_desc.setText("Text is typed in the language you speak.")
 
     def _on_home_fix_fn_clicked(self) -> None:
         acc_ok = PermissionsManager.check_accessibility(prompt_if_needed=False)
@@ -2651,7 +2711,7 @@ class MainWindow(QMainWindow):
         PermissionsManager.disable_fn_emoji_popup()
         self._refresh_home_status()
         if hasattr(self, "fn_fix_status"):
-            self.fn_fix_status.setText("✓ Fixed (Emoji popup disabled)")
+            self.fn_fix_status.setText("Emoji picker disabled")
             self.fn_fix_status.setStyleSheet("color: #30D158;")
             self.fn_fix_btn.hide()
 
@@ -2667,7 +2727,7 @@ class MainWindow(QMainWindow):
             self.home_lang_combo.set_current_language(code)
         self.config_changed.emit(self.config)
 
-    def _on_save_settings(self) -> None:
+    def _on_save_settings(self, quiet: bool = False) -> None:
         self.config.shortcut = self.shortcut_combo.currentData()
         self.config.push_to_talk = self.ptt_check.isChecked()
         if hasattr(self, "mute_audio_check"):
@@ -2700,17 +2760,33 @@ class MainWindow(QMainWindow):
             self.config.speech_mode = self.speech_mode_combo.currentData()
         if hasattr(self, "language_combo"):
             self.config.language = self.language_combo.get_current_language()
+        autostart_changed = self.config.launch_at_startup != getattr(self, "_last_autostart", None)
         self.config.save()
 
         # Synchronize autostart with operating system
-        AutostartManager.set_autostart(self.config.launch_at_startup)
+        if autostart_changed:
+            AutostartManager.set_autostart(self.config.launch_at_startup)
+            self._last_autostart = self.config.launch_at_startup
 
         # Update in-memory and notify main loop
         if self.on_config_changed_callback:
             self.on_config_changed_callback(self.config)
 
         self._refresh_home_status()
-        QMessageBox.information(self, "Settings Saved", "Preferences updated successfully.")
+        if quiet:
+            self._flash_saved()
+        else:
+            QMessageBox.information(self, "Settings Saved", "Preferences updated successfully.")
+
+    def _flash_saved(self) -> None:
+        if not hasattr(self, "settings_saved_lbl"):
+            return
+        self.settings_saved_lbl.setText("Saved")
+        if not hasattr(self, "_saved_timer"):
+            self._saved_timer = QTimer(self)
+            self._saved_timer.setSingleShot(True)
+            self._saved_timer.timeout.connect(lambda: self.settings_saved_lbl.setText(""))
+        self._saved_timer.start(1800)
 
     # -------------------------------------------------------------------------
     # Helper Utilities
@@ -2722,11 +2798,20 @@ class MainWindow(QMainWindow):
             return "fn" if sys.platform == "darwin" else "Right Alt"
         elif s == "right_alt":
             return "Right Alt" if sys.platform != "darwin" else "Right Option"
+        elif s == "ctrl_space":
+            return "⌃ + Space" if sys.platform == "darwin" else "Ctrl + Space"
         elif s == "alt_space":
             return "⌥ + Space" if sys.platform == "darwin" else "Alt + Space"
         elif s == "ctrl_shift_space":
             return "⌃ + ⇧ + Space" if sys.platform == "darwin" else "Ctrl + Shift + Space"
         return s.upper()
+
+    def _get_trigger_hint(self, short: bool) -> str:
+        """Describe how to dictate with the current shortcut and trigger mode."""
+        key = self._get_shortcut_display()
+        if getattr(self.config, "push_to_talk", False):
+            return f"Hold {key} to dictate" if short else "Hold to talk · Release to insert"
+        return f"Tap {key} to dictate" if short else "Tap to start · Tap again to insert"
 
     @staticmethod
     def _get_time_greeting() -> str:
@@ -2748,7 +2833,7 @@ class MainWindow(QMainWindow):
             try:
                 info = UpdateChecker.check_for_updates()
                 if info.available:
-                    QTimer.singleShot(0, lambda: self._apply_update_info(info))
+                    run_on_ui_thread(lambda: self._apply_update_info(info))
             except Exception:
                 pass
 
@@ -2758,7 +2843,7 @@ class MainWindow(QMainWindow):
         self.latest_update_info = info
         self.update_available.emit(info)
         self.update_banner_label.setText(
-            f"⚡ Just Talk v{info.latest_version} is available! (Installed: v{__version__})"
+            f"Just Talk {info.latest_version} is available — you have {__version__}."
         )
         self.update_banner.show()
         if hasattr(self, "update_status_label"):
@@ -2769,7 +2854,7 @@ class MainWindow(QMainWindow):
         if hasattr(self, "update_action_box"):
             self.update_action_box.show()
         if hasattr(self, "install_update_btn"):
-            self.install_update_btn.setText(f"⚡ Update to v{info.latest_version} (In-Place)")
+            self.install_update_btn.setText(f"Install {info.latest_version}")
 
     def _on_check_updates_clicked(self) -> None:
         self.check_update_btn.setEnabled(False)
@@ -2787,12 +2872,12 @@ class MainWindow(QMainWindow):
                     self._apply_update_info(info)
                 else:
                     self.update_status_label.setText(
-                        f"✓ Just Talk v{__version__} is the latest version. You're up to date!"
+                        f"You're up to date ({__version__})."
                     )
                     self.update_status_label.setStyleSheet("color: #30D158;")
                     self.update_action_box.hide()
 
-            QTimer.singleShot(0, finish)
+            run_on_ui_thread(finish)
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -2819,7 +2904,7 @@ class MainWindow(QMainWindow):
         def worker():
             def progress(downloaded: int, total: int):
                 pct = int((downloaded / total) * 100) if total > 0 else 0
-                QTimer.singleShot(0, lambda p=pct: self.update_progress_bar.setValue(p))
+                run_on_ui_thread(lambda p=pct: self.update_progress_bar.setValue(p))
 
             try:
                 UpdateChecker.download_update(info.download_url, target_path, progress_callback=progress)
@@ -2835,7 +2920,7 @@ class MainWindow(QMainWindow):
                             f"Update downloaded to {target_path}.\nOpening installer to complete update...",
                         )
 
-                QTimer.singleShot(0, on_download_done)
+                run_on_ui_thread(on_download_done)
             except Exception as e:
                 def on_error(err_msg: str):
                     if hasattr(self, "update_banner_btn"):
@@ -2843,12 +2928,12 @@ class MainWindow(QMainWindow):
                         self.update_banner_btn.setText("Update Now")
                     if hasattr(self, "install_update_btn"):
                         self.install_update_btn.setEnabled(True)
-                        self.install_update_btn.setText("⚡ Retry Update")
+                        self.install_update_btn.setText("Retry update")
                     if hasattr(self, "update_status_label"):
                         self.update_status_label.setText(f"Download failed: {err_msg}")
                         self.update_status_label.setStyleSheet("color: #FF453A;")
 
-                QTimer.singleShot(0, lambda m=str(e): on_error(m))
+                run_on_ui_thread(lambda m=str(e): on_error(m))
 
         threading.Thread(target=worker, daemon=True).start()
 

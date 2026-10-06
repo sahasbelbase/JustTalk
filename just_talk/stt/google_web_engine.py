@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import sys
 import threading
-from typing import Optional
+from typing import Optional, Tuple
 
 import numpy as np
 
+from ..audio.vad import VoiceActivityDetector
 from .engine import STTEngine
+from .long_form import join_segments
 
 
 class GoogleWebSTTEngine(STTEngine):
@@ -18,6 +20,9 @@ class GoogleWebSTTEngine(STTEngine):
 
     Supports 120+ languages including English (en-US) and Nepali (ne-NP).
     """
+
+    # Longest audio sent in a single request; longer dictation is split at pauses.
+    MAX_CHUNK_SEC = 15.0
 
     # Common language mapping from JustTalk ISO/app codes to Google BCP-47 tags
     LANGUAGE_MAP = {
@@ -103,6 +108,22 @@ class GoogleWebSTTEngine(STTEngine):
             if not self.load():
                 return ""
 
+        # The free endpoint ends the utterance at the first long pause and caps request
+        # length, so long dictation is sent as pause-aligned chunks and stitched together.
+        chunks = VoiceActivityDetector.split_on_pauses(audio, max_chunk_sec=self.MAX_CHUNK_SEC)
+        target_lang = self.map_language(language)
+        parts = []
+        for chunk in chunks:
+            text, ok = self._recognize_chunk(chunk, target_lang)
+            if not ok:
+                # A network failure mid-dictation would silently drop part of the speech;
+                # return nothing so callers fall back to an engine that can do it all.
+                return ""
+            parts.append(text)
+        return join_segments(parts)
+
+    def _recognize_chunk(self, audio: np.ndarray, target_lang: str) -> Tuple[str, bool]:
+        """Recognize one chunk. Returns (text, ok); ok is False on network/unexpected errors."""
         import speech_recognition as sr
 
         # 1. Convert float32 [-1.0, 1.0] audio array to 16-bit signed PCM bytes
@@ -111,26 +132,23 @@ class GoogleWebSTTEngine(STTEngine):
             audio_data = sr.AudioData(pcm_data, sample_rate=16000, sample_width=2)
         except Exception as conv_err:
             print(f"[GoogleWebSTT] Audio conversion error: {conv_err}", file=sys.stderr)
-            return ""
+            return "", False
 
-        # 2. Resolve target language
-        target_lang = self.map_language(language)
-
-        # 3. Query Google Web Speech API with timeout and robust exception handling
+        # 2. Query Google Web Speech API with robust exception handling
         try:
             text = self._recognizer.recognize_google(
                 audio_data,
                 language=target_lang,
                 show_all=False,
             )
-            return str(text).strip() if text else ""
+            return (str(text).strip() if text else ""), True
         except sr.UnknownValueError:
             # Normal: audio was silence or unintelligible noise
-            return ""
+            return "", True
         except sr.RequestError as req_err:
             # Network issue, DNS error, or temporary rate limit
             print(f"[GoogleWebSTT] Network request error: {req_err}", file=sys.stderr)
-            return ""
+            return "", False
         except Exception as e:
             print(f"[GoogleWebSTT] Unexpected transcription error: {e}", file=sys.stderr)
-            return ""
+            return "", False

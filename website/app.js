@@ -208,8 +208,8 @@
 
       if (withAction) {
         hudPill.classList.add('action-active');
-        if (hudBadge) hudBadge.innerHTML = `<span style="font-size: 11px; font-weight: 700;">⚡</span>`;
-        if (hudStatus) hudStatus.textContent = '⚡ ACTION MODE';
+        if (hudBadge) hudBadge.innerHTML = `<span style="font-size: 11px; font-weight: 700;">A</span>`;
+        if (hudStatus) hudStatus.textContent = 'ACTION MODE';
       } else {
         hudPill.classList.remove('action-active');
         if (hudBadge) hudBadge.innerHTML = `<span class="dot-listening"></span>`;
@@ -223,7 +223,7 @@
 
     // Preview in Buffer
     if (typedTextEl) {
-      typedTextEl.textContent = withAction ? '[⚡ Action Mode — Listening to speech stream...]' : '[Listening to local audio stream...]';
+      typedTextEl.textContent = withAction ? '[Action Mode — listening...]' : '[Listening to local audio stream...]';
     }
   }
 
@@ -271,7 +271,7 @@
       } else {
         clearInterval(typingTimer);
         if (behaviorSub) {
-          behaviorSub.textContent = `✓ Active cursor populated: ${targetData.desc}`;
+          behaviorSub.textContent = `Typed into the active cursor: ${targetData.desc}`;
         }
       }
     }, 16); // High-speed typing matching realistic paste insertion
@@ -313,8 +313,8 @@
         if (keycapBtn) keycapBtn.classList.add('action-mode');
         if (hudPill) {
           hudPill.classList.add('action-active');
-          if (hudBadge) hudBadge.innerHTML = `<span style="font-size: 11px; font-weight: 700;">⚡</span>`;
-          if (hudStatus) hudStatus.textContent = '⚡ ACTION MODE';
+          if (hudBadge) hudBadge.innerHTML = `<span style="font-size: 11px; font-weight: 700;">A</span>`;
+          if (hudStatus) hudStatus.textContent = 'ACTION MODE';
         }
       }
     }

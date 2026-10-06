@@ -481,7 +481,7 @@ class ModelManager:
                 files_to_fetch.append((fn, expected_sz))
 
             if not files_to_fetch and self._verify_directory_integrity(target_dir):
-                notify(100.0, f"✓ {info.display_name} ready in cache ({total_mb:.0f} MB)!")
+                notify(100.0, f"{info.display_name} is ready ({total_mb:.0f} MB)")
                 return True
 
             start_time = time.time()
@@ -612,7 +612,7 @@ class ModelManager:
             if not self._verify_directory_integrity(target_dir):
                 raise ValueError("Model download completed but files failed integrity verification.")
 
-            notify(100.0, f"✓ {info.display_name} ready ({total_mb:.0f} MB)!")
+            notify(100.0, f"{info.display_name} is ready ({total_mb:.0f} MB)")
             print(f"[ModelManager] {info.display_name} downloaded and verified successfully.", file=sys.stderr)
             return True
 

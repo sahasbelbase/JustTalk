@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -173,6 +174,19 @@ class ThemeManager:
     def get_mono_font(cls, size: int = 12, weight: QFont.Weight = QFont.Weight.Normal) -> QFont:
         return cls.font(size=size, weight=weight, family="mono")
 
+    @staticmethod
+    def qcolor(value: str) -> QColor:
+        """
+        Convert a design-token colour to QColor. QColor can't parse CSS ``rgba(r, g, b, a)``
+        strings (it silently returns black), and several tokens use that form.
+        """
+        m = re.fullmatch(r"\s*rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)\s*", value)
+        if m:
+            r, g, b = (int(float(x)) for x in m.groups()[:3])
+            a = float(m.group(4)) if m.group(4) is not None else 1.0
+            return QColor(r, g, b, int(round(a * 255)))
+        return QColor(value)
+
     @classmethod
     def get_tokens(cls, is_dark: bool) -> ColorTokens:
         return DARK_TOKENS if is_dark else LIGHT_TOKENS
@@ -223,19 +237,19 @@ class ThemeManager:
         t = cls.get_tokens(is_dark)
         pal = QPalette()
 
-        pal.setColor(QPalette.ColorRole.Window, QColor(t.bg))
-        pal.setColor(QPalette.ColorRole.WindowText, QColor(t.text))
-        pal.setColor(QPalette.ColorRole.Base, QColor(t.bg))
-        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(t.surface))
-        pal.setColor(QPalette.ColorRole.ToolTipBase, QColor(t.surface_raised))
-        pal.setColor(QPalette.ColorRole.ToolTipText, QColor(t.text))
-        pal.setColor(QPalette.ColorRole.Text, QColor(t.text))
-        pal.setColor(QPalette.ColorRole.Button, QColor(t.surface_raised))
-        pal.setColor(QPalette.ColorRole.ButtonText, QColor(t.text))
-        pal.setColor(QPalette.ColorRole.BrightText, QColor(t.on_accent))
-        pal.setColor(QPalette.ColorRole.Highlight, QColor(t.accent))
-        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(t.on_accent))
-        pal.setColor(QPalette.ColorRole.PlaceholderText, QColor(t.text_muted))
+        pal.setColor(QPalette.ColorRole.Window, cls.qcolor(t.bg))
+        pal.setColor(QPalette.ColorRole.WindowText, cls.qcolor(t.text))
+        pal.setColor(QPalette.ColorRole.Base, cls.qcolor(t.bg))
+        pal.setColor(QPalette.ColorRole.AlternateBase, cls.qcolor(t.surface))
+        pal.setColor(QPalette.ColorRole.ToolTipBase, cls.qcolor(t.surface_raised))
+        pal.setColor(QPalette.ColorRole.ToolTipText, cls.qcolor(t.text))
+        pal.setColor(QPalette.ColorRole.Text, cls.qcolor(t.text))
+        pal.setColor(QPalette.ColorRole.Button, cls.qcolor(t.surface_raised))
+        pal.setColor(QPalette.ColorRole.ButtonText, cls.qcolor(t.text))
+        pal.setColor(QPalette.ColorRole.BrightText, cls.qcolor(t.on_accent))
+        pal.setColor(QPalette.ColorRole.Highlight, cls.qcolor(t.accent))
+        pal.setColor(QPalette.ColorRole.HighlightedText, cls.qcolor(t.on_accent))
+        pal.setColor(QPalette.ColorRole.PlaceholderText, cls.qcolor(t.text_muted))
         return pal
 
     @classmethod
@@ -259,6 +273,8 @@ class ThemeManager:
             border_subtle_solid = "rgba(0, 0, 0, 0.04)"
             text_secondary_solid = "#48484A"
             text_muted_solid = "rgba(60, 60, 67, 0.55)"
+
+        check_icon = (Path(__file__).resolve().parent.parent / "assets" / "check.svg").as_posix()
 
         return f"""
         /* ===== Global Reset ===== */
@@ -422,6 +438,23 @@ class ThemeManager:
         }}
 
         /* Flat / Ghost Button */
+        QFrame#historyCard {{
+            background-color: {surface_solid};
+            border: 1px solid {border_solid};
+            border-radius: 12px;
+        }}
+
+        QPushButton#deleteBtn {{
+            background: transparent;
+            border: none;
+            border-radius: 6px;
+            padding: 4px;
+        }}
+
+        QPushButton#deleteBtn:hover {{
+            background-color: rgba(255, 69, 58, 0.16);
+        }}
+
         QPushButton#flatBtn {{
             background-color: transparent;
             color: {text_secondary_solid};
@@ -553,7 +586,7 @@ class ThemeManager:
             width: 16px;
             height: 16px;
             border-radius: 4px;
-            border: 1.5px solid {"#444" if is_dark else "#AAA"};
+            border: 1.5px solid {"#5A5A5A" if is_dark else "#AAA"};
             background-color: transparent;
         }}
 
@@ -564,6 +597,125 @@ class ThemeManager:
         QCheckBox::indicator:checked {{
             background-color: {t.accent};
             border-color: {t.accent};
+            image: url("{check_icon}");
+        }}
+
+        /* ===== Radio Buttons ===== */
+        QRadioButton {{
+            spacing: 8px;
+            color: {t.text};
+        }}
+
+        QRadioButton::indicator {{
+            width: 13px;
+            height: 13px;
+            border-radius: 8px;
+            border: 1.5px solid {"#5A5A5A" if is_dark else "#AAA"};
+            background-color: transparent;
+        }}
+
+        QRadioButton::indicator:hover {{
+            border-color: {t.accent};
+        }}
+
+        QRadioButton::indicator:checked {{
+            width: 8px;
+            height: 8px;
+            border: 4px solid {t.accent};
+            background-color: {t.on_accent};
+        }}
+
+        /* ===== Spin Boxes ===== */
+        QAbstractSpinBox {{
+            background-color: {surface_raised_solid};
+            color: {t.text};
+            border: 1px solid {border_solid};
+            border-radius: 7px;
+            padding: 5px 8px;
+            min-height: 22px;
+            min-width: 64px;
+            font-size: 13px;
+        }}
+
+        QAbstractSpinBox:focus {{
+            border: 1px solid {"#444" if is_dark else t.accent};
+        }}
+
+        /* ===== Settings Page ===== */
+        QFrame#settingsSection {{
+            background-color: {surface_solid};
+            border: 1px solid {border_solid};
+            border-radius: 12px;
+        }}
+
+        QFrame#sectionHeader {{
+            border: none;
+            background: transparent;
+            border-radius: 8px;
+        }}
+
+        QFrame#sectionHeader:hover {{
+            background-color: {surface_raised_solid};
+        }}
+
+        QLabel#sectionChevron {{
+            color: {text_secondary_solid};
+            font-size: 20px;
+            padding-right: 4px;
+        }}
+
+        QFrame#sectionDivider {{
+            background-color: {border_solid};
+            border: none;
+            max-height: 1px;
+            min-height: 1px;
+        }}
+
+        QLabel#sectionBadge {{
+            background-color: {t.accent_soft};
+            color: {t.accent};
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            padding: 1px 6px;
+        }}
+
+        QFrame#searchField {{
+            background-color: {"#1A1A1A" if is_dark else "#FFFFFF"};
+            border: 1px solid {border_solid if is_dark else "rgba(0, 0, 0, 0.14)"};
+            border-radius: 9px;
+        }}
+
+        QFrame#searchField QLineEdit {{
+            border: none;
+            background: transparent;
+            padding: 6px 0px;
+            font-size: 13px;
+        }}
+
+        QPushButton#searchClear {{
+            border: none;
+            border-radius: 10px;
+            background-color: {surface_raised_solid};
+            color: {text_secondary_solid};
+            font-size: 10px;
+            font-weight: bold;
+        }}
+
+        QFrame#infoCard {{
+            background-color: {surface_raised_solid};
+            border: none;
+            border-radius: 8px;
+        }}
+
+        QLabel#helpText {{
+            color: {text_secondary_solid};
+            font-size: 12px;
+        }}
+
+        QLabel#savedIndicator {{
+            color: {t.success};
+            font-size: 12px;
         }}
 
         /* ===== Tables & Lists ===== */

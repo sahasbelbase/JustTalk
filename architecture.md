@@ -1,4 +1,4 @@
-# Just Talk — System Architecture & Technical Specifications 🎙️
+# Just Talk — System Architecture & Technical Specifications (v2.1.0)
 
 > **High-performance, privacy-first, on-device voice keyboard for macOS and Windows.**  
 > Think → Speak → Done.
@@ -12,7 +12,7 @@
 ### Core Architectural Principles:
 1. **Zero Audio Exfiltration (Privacy-First):** Raw speech audio is processed 100% locally on your machine using `faster-whisper` (CTranslate2). No audio bytes ever leave the device.
 2. **Sub-Second Latency:** Streaming 16kHz audio buffer, voice activity detection (VAD), and hardware-accelerated local inference guarantee minimal latency between releasing the key and text insertion.
-3. **Deterministic & Resilient AI Formatting:** If enabled, only the plain-text transcript is sent to Google Gemini for subtle punctuation, capitalization, and filler-word removal. If offline or if the API exceeds a 2.0s threshold, the system immediately falls back to raw local transcription.
+3. **Deterministic & Resilient AI Formatting:** If enabled, only the plain-text transcript is sent to the user's chosen provider (Gemini, OpenAI, Claude, Grok, Groq, OpenRouter, DeepSeek, any OpenAI-compatible API, or local Ollama) for punctuation, grammar, filler removal and self-correction resolution. The time budget scales with length (~2 s for short phrases, up to ~8 s for long dictation); on timeout or error the locally cleaned transcript is inserted instead.
 4. **Non-Intrusive Desktop Integration:** True clipboard preservation restores prior clipboard contents after simulated paste; active window detection ensures text lands where the user expects or falls back safely to the system clipboard.
 5. **Modern Native Aesthetics:** Adheres strictly to macOS Big Sur/Sonoma/Sequoia visual standards (frosted glass acrylics, SF Pro / Lato typography, smooth state animations) while fully supporting Windows 10/11 taskbar conventions.
 
@@ -35,7 +35,7 @@ graph TD
     end
 
     subgraph AI Formatting [Cloud Enhancement / Offline Fallback]
-        Router -->|Normal Mode| Gemini[Gemini API Formatter<br/>Strict 2.0s Timeout Fallback]
+        Router -->|Normal Mode| Gemini[AI Formatter (multi-provider)<br/>Length-scaled time budget + local fallback]
         Router -->|Action Mode: Fn+Shift| Actions[Intent Action Engine<br/>Translate / Summarize / Polish]
         Gemini -->|Enhanced Text| Inserter[Text Inserter]
         Actions -->|Transformed Text| Inserter
@@ -65,6 +65,9 @@ graph TD
 * **`AppBridge`:** Qt `QObject` signal bridge that decouples background worker threads (audio streaming, neural inference, API calls) from the Qt main GUI thread. Signals include `level_changed`, `state_listening`, `state_processing`, `state_inserted`, and `state_inserted_offline`.
 
 ### 3.2 UI & Design System (`just_talk/app/`)
+* **Visual language (v2.1):** no emoji in the UI. `icons.py` renders a single set of 1.5 px line icons from inline SVG, tinted with the theme accent. `theme.py` owns all colours; use `ThemeManager.qcolor()` (not `QColor()`) for token colours, because `QColor` cannot parse CSS `rgba()` strings and silently returns black.
+* **`wheel_guard.py`:** app-wide event filter — the mouse wheel over a closed dropdown/spin box scrolls the page instead of changing the value (unless the control was tabbed into).
+* **Settings** save automatically; collapsible sections share one label column and compact headers.
 * **`theme.py`:** Comprehensive macOS-inspired design system:
   * **Typography:** Embedded bundled fonts (`Lato` family, `JetBrains Mono` variable monospace) with fallback to native system fonts (`SF Pro` / `Segoe UI`).
   * **Palette:** Semantic dark/light tokens with translucent surfaces, acrylic borders, smooth hover states, and dynamic status badges.
@@ -89,6 +92,10 @@ graph TD
 
 ### 3.4 Speech-to-Text Subsystem (`just_talk/stt/`)
 * **`engine.py`:** Abstract base class establishing the contract for speech-to-text engines (`transcribe(audio: np.ndarray) -> str`).
+* **`mac_native_engine.py` (default on macOS):** Apple `SFSpeechRecognizer` (on-device when supported for the locale). Long audio is split at natural pauses (≤15 s chunks via `VoiceActivityDetector.split_on_pauses`) and each chunk's results are merged by `UtteranceTracker`, which keys every result by the audio span it covers. This handles Apple's behaviour of starting a fresh transcript after a pause, revising words, and re-sending finished utterances — without losing or duplicating text. Chunks that error or time out fall back to Google Web Speech (unless Pure Offline Mode).
+* **`windows_native_engine.py` (default on Windows):** Google Web Speech first when online, local Whisper otherwise or in Pure Offline Mode.
+* **`google_web_engine.py`:** Free Google Web Speech endpoint (sends audio to Google). Long audio is sent as pause-aligned chunks; a network failure mid-dictation returns nothing so callers fall back to an engine that can transcribe everything.
+* **`long_form.py` (`IncrementalTranscriber`):** Live-preview helper — earlier speech is transcribed once and cached, only the recent tail is re-decoded, so the HUD always shows the whole dictation.
 * **`whisper_engine.py`:** High-efficiency local transcription powered by `faster-whisper` (CTranslate2).
   * Automatically detects and utilizes Apple Silicon Metal / MPS acceleration, NVIDIA CUDA on Windows, or multi-threaded CPU execution.
   * Employs INT8 and FP16 quantization for low memory footprint and sub-second execution on standard consumer laptops.
@@ -98,12 +105,12 @@ graph TD
   * **Quality / Multilingual (`large-v3-turbo`):** ~800 MB, ~650ms latency. Supports 99+ languages.
 
 ### 3.5 AI Formatting & Intent Routing (`just_talk/ai/`)
-* **`gemini.py` (`GeminiFormatter`):** Integrates with Google AI Studio via `google-genai` / REST. Cleans raw speech into polished written prose without changing vocabulary or meaning:
-  * Removes verbal tics ("um", "uh", "you know", "like").
-  * Corrects punctuation, casing, technical terms, and homophones.
-  * **Hardened System Prompt:** Strict guardrails prevent the LLM from outputting conversational filler (e.g., "Here is your cleaned text:") or refusing dictation.
-  * **Circuit Breaker:** 2.0-second timeout circuit breaker immediately drops back to the raw local transcript if network conditions degrade.
-* **`prompts.py`:** Structured system instructions tailored for dictation styles (Subtle Cleanup, Professional Email, Concise Bullets, Code & Technical).
+* **`providers.py` (`MultiProviderFormatter`):** One formatter for every supported provider (Gemini, OpenAI, Anthropic, Grok, Groq, OpenRouter, DeepSeek, custom OpenAI-compatible endpoints, Ollama):
+  * **Time budget:** `_time_budget()` gives short phrases ~2 s and adds time for long dictation (up to ~8 s); with two-phase insertion the raw draft is already typed, so waiting costs nothing visible.
+  * **Circuit breaker:** only connection failures and API errors count toward pausing AI formatting (3 in a row → 5 min pause). Slow replies on long text fall back for that dictation only.
+  * **Hardened prompt wrapper:** the transcript is framed as data, never instructions, so the model doesn't reply to what was said.
+* **`gemini.py` (`GeminiFormatter`):** Gemini client plus `light_local_cleanup()`, the local fallback used whenever AI formatting is off, slow, or unavailable.
+* **`prompts.py`:** System instructions per style. The default (Subtle) edits like a careful human editor: resolves self-corrections ("five, actually four" → "four"), removes fillers and false starts, fixes grammar — and never summarizes or drops details. Formal, Concise, Auto, Nepglish and Devanagari variants build on the same core rules.
 * **`actions.py` (`ActionRouter`):** Action Mode handler triggered via `Fn + Shift`:
   * Detects spoken action prefixes (e.g., *"translate to French: ..."*, *"summarize this: ..."*, *"reply professionally: ..."*).
   * Routes prompt to Gemini with specialized transformation parameters before typing.
@@ -134,9 +141,7 @@ graph TD
 * **`manager.py` (`ShortcutManager`):** State coordinator managing push-to-talk vs. toggle modes, debouncing rapid key taps, and handling modifier flags.
 
 ### 3.8 Security & Persistence (`just_talk/security.py`, `just_talk/database/`)
-* **`security.py` (`CredentialManager`):** Safely stores the Gemini API key in the operating system's hardware-backed credential store:
-  * **macOS:** Native Keychain Services via `/usr/bin/security` with `-A` access control flags to eliminate annoying repeating password dialogs.
-  * **Windows:** Windows Credential Vault via `keyring`.
+* **`security.py` (`CredentialManager`):** Stores provider API keys and the custom base URL in a private `.credentials` JSON file inside the app-data folder (`~/Library/Application Support/JustTalk` on macOS, `%APPDATA%\JustTalk` on Windows) with owner-only `0600` permissions. Environment variables (`GEMINI_API_KEY`, etc.) take precedence. Legacy keychain entries are purged silently.
 * **`database/history.py` (`HistoryDatabase`):** Local SQLite storage:
   * Logs timestamp, target application, duration, raw transcript, cleaned text, and model tier used.
   * Automatic retention policy trims entries older than 30 days.
@@ -171,6 +176,7 @@ graph TD
 ```
 
 1. **GUI Responsiveness:** The main thread is strictly reserved for UI rendering and system events. No audio I/O, model loading, file writes, or HTTP calls occur on the GUI thread.
+   * **Worker → UI callbacks** must go through `ui_thread.run_on_ui_thread(fn)` (a queued Qt signal on a GUI-thread `QObject`). `QTimer.singleShot(0, fn)` from a plain `threading.Thread` silently never fires, because that thread has no Qt event loop.
 2. **Audio Stream Continuity:** Audio capture runs in high-priority native PortAudio callbacks, streaming chunks into an in-memory ring buffer.
 3. **Async Inference & Timeout:** When the key is released, inference is scheduled on a dedicated background worker. The worker notifies `AppBridge`, which dispatches signals back to the main thread to animate the overlay pill.
 
@@ -180,11 +186,11 @@ graph TD
 
 | Category | Implementation Detail | Guarantee |
 | :--- | :--- | :--- |
-| **Audio Privacy** | `faster-whisper` on CTranslate2 | Audio is never sent to the network. Completely local. |
-| **Credential Storage** | macOS Keychain / Windows Credential Vault | API keys are encrypted at rest using OS hardware keystore. |
-| **Network Traffic** | HTTPS requests to `generativelanguage.googleapis.com` | Only text transcripts (never audio). Can be disabled 100% via Offline Toggle. |
-| **Clipboard Safety** | Backup -> Paste -> Restore pipeline | The user's clipboard is restored within 50ms of paste completion. |
-| **Local Data** | Local SQLite (`~/.just_talk/history.db`) | History never leaves the machine. Auto-purged after 30 days. |
+| **Audio Privacy** | Engine-dependent | Pure Offline Mode / Whisper: audio never leaves the machine. Apple built-in: on-device where supported. Google Web Speech (Nepali; Windows online default): audio is sent to Google. |
+| **Credential Storage** | Private `.credentials` file, `0600` permissions | Keys stay on the device and are sent only to the selected provider. |
+| **Network Traffic** | HTTPS to the selected AI provider | AI formatting sends text only (never audio). Pure Offline Mode disables all network requests. |
+| **Clipboard Safety** | Backup -> Paste -> Restore pipeline | The user's clipboard is restored after the paste is consumed. Tests use an in-memory clipboard and never send real keystrokes. |
+| **Local Data** | Local SQLite (`history.db` in the app-data folder) | History never leaves the machine. Retention is configurable (default 30 days). |
 
 ---
 
@@ -205,6 +211,5 @@ graph TD
 * AppUserModelID binding ensures taskbar pins retain the official multi-tier `.ico` asset.
 
 ### 6.3 CI/CD Automation
-* Workflow: `.github/workflows/build.yml`
-* Matrix builds for `macos-latest` and `windows-latest`.
-* Automated test verification, asset generation, standalone binary compilation, and release artifact upload.
+* **`.github/workflows/build.yml`:** on pushes to `main`, pull requests and `v*` tags — runs the test suite and builds the macOS `.dmg` (macos-14) and Windows Inno Setup `.exe` (windows-latest). On a `v*` tag, a release job publishes both installers plus `SHA256SUMS.txt` to GitHub Releases, which is what the in-app updater reads.
+* **`.github/workflows/pages.yml`:** on changes to `website/`, deploys the site to the `gh-pages` branch (GitHub Pages).

@@ -33,7 +33,7 @@ class ContributionGraphWidget(QWidget):
         
         # Color palettes
         self.light_colors = ["#EBEDF0", "#9BE9A8", "#40C463", "#30A14E", "#216E39"]
-        self.dark_colors = ["#161B22", "#0E4429", "#006D32", "#26A641", "#39D353"]
+        self.dark_colors = ["#2A2E35", "#0E4429", "#006D32", "#26A641", "#39D353"]
         
         self.daily_data: Dict[str, dict] = {}
         self.max_words = 1
@@ -77,12 +77,13 @@ class ContributionGraphWidget(QWidget):
         try:
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             
-            is_dark = self.config.appearance == "dark"
+            is_dark = ThemeManager.is_dark(self.config.appearance)
             colors = self.dark_colors if is_dark else self.light_colors
-            text_color = QColor(DARK_TOKENS.text_muted if is_dark else LIGHT_TOKENS.text_muted)
-            
+            # Secondary (not muted) text: month/day labels must stay readable on the card
+            text_color = ThemeManager.qcolor(DARK_TOKENS.text_secondary if is_dark else LIGHT_TOKENS.text_secondary)
+
             painter.setPen(text_color)
-            painter.setFont(ThemeManager.get_ui_font(10))
+            painter.setFont(ThemeManager.get_ui_font(11, weight=QFont.Weight.Medium))
             
             today = datetime.now().date()
             # Find the most recent Sunday to align weeks
@@ -197,37 +198,30 @@ class DashboardWidget(QWidget):
         hdr.addWidget(greeting)
         hdr.addStretch()
         
-        shortcut_hint = QLabel("Hold Option to dictate")
-        shortcut_hint.setObjectName("mutedLabel")
-        shortcut_hint.setFont(ThemeManager.get_ui_font(13))
-        hdr.addWidget(shortcut_hint)
+        # Text is set by the main window, which knows the shortcut and trigger mode
+        self.shortcut_hint = QLabel("")
+        self.shortcut_hint.setObjectName("mutedLabel")
+        self.shortcut_hint.setFont(ThemeManager.get_ui_font(13))
+        hdr.addWidget(self.shortcut_hint)
         layout.addLayout(hdr)
         
-        # Stat cards
-        stats = self.db.get_stats_summary()
-        tw = stats["total_words"]
-        swpm = self.config.speaking_speed_wpm
-        twpm = self.config.typing_speed_wpm
-        
-        # Formula: (words/typing) - (words/speaking) = time saved in minutes
-        mins_saved = (tw / twpm) - (tw / swpm) if twpm > 0 and swpm > 0 else 0
-        hrs = int(mins_saved // 60)
-        mins = int(mins_saved % 60)
-        ts_str = f"{hrs}h {mins}m" if hrs > 0 else f"{mins}m"
-        
+        # Stat cards (values filled in by _update_stats so refresh() keeps them current)
         cards_layout = QHBoxLayout()
         cards_layout.setSpacing(16)
-        
-        c1 = self._stat_card("Words Spoken", f"{tw:,}")
-        c2 = self._stat_card("Time Saved", ts_str, tooltip=f"Based on {swpm} wpm speaking vs {twpm} wpm typing")
-        c3 = self._stat_card("Current Streak", f"{stats['streak_days']} days")
-        c4 = self._stat_card("Spoken Today", f"{stats['today_words']:,}")
-        
+
+        swpm = self.config.speaking_speed_wpm
+        twpm = self.config.typing_speed_wpm
+        c1, self._words_val = self._stat_card("Words Spoken", "")
+        c2, self._saved_val = self._stat_card("Time Saved", "", tooltip=f"Based on {swpm} wpm speaking vs {twpm} wpm typing")
+        c3, self._streak_val = self._stat_card("Current Streak", "")
+        c4, self._today_val = self._stat_card("Spoken Today", "")
+        self._update_stats()
+
         cards_layout.addWidget(c1)
         cards_layout.addWidget(c2)
         cards_layout.addWidget(c3)
         cards_layout.addWidget(c4)
-        
+
         layout.addLayout(cards_layout)
         
         # Contribution Graph
@@ -249,7 +243,24 @@ class DashboardWidget(QWidget):
         
         layout.addWidget(graph_card)
 
-    def _stat_card(self, label: str, value: str, tooltip: str = "") -> QFrame:
+    def _update_stats(self) -> None:
+        stats = self.db.get_stats_summary()
+        tw = stats["total_words"]
+        swpm = self.config.speaking_speed_wpm
+        twpm = self.config.typing_speed_wpm
+
+        # Formula: (words/typing) - (words/speaking) = time saved in minutes
+        mins_saved = (tw / twpm) - (tw / swpm) if twpm > 0 and swpm > 0 else 0
+        hrs = int(mins_saved // 60)
+        mins = int(mins_saved % 60)
+
+        self._words_val.setText(f"{tw:,}")
+        self._saved_val.setText(f"{hrs}h {mins}m" if hrs > 0 else f"{mins}m")
+        streak = stats["streak_days"]
+        self._streak_val.setText(f"{streak} day" if streak == 1 else f"{streak} days")
+        self._today_val.setText(f"{stats['today_words']:,}")
+
+    def _stat_card(self, label: str, value: str, tooltip: str = "") -> tuple[QFrame, QLabel]:
         f = QFrame()
         f.setObjectName("surfaceCard")
         l = QVBoxLayout(f)
@@ -266,7 +277,7 @@ class DashboardWidget(QWidget):
         
         l.addWidget(lbl)
         l.addWidget(val)
-        return f
+        return f, val
 
     def _get_time_greeting(self) -> str:
         h = datetime.now().hour
@@ -276,6 +287,4 @@ class DashboardWidget(QWidget):
         
     def refresh(self):
         self.graph.refresh()
-        # Updating the stat cards dynamically would require keeping references to the labels,
-        # but rebuilding or restarting the app is usually fine for a dashboard,
-        # or we can fully refresh by clearing the layout.
+        self._update_stats()

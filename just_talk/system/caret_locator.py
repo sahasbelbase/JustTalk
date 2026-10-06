@@ -280,6 +280,7 @@ class CaretLocator:
             user32 = ctypes.windll.user32
             gui_info = GUITHREADINFO()
             gui_info.cbSize = ctypes.sizeof(GUITHREADINFO)
+            can_paste = cls._windows_foreground_accepts_paste(user32)
 
             if user32.GetGUIThreadInfo(0, ctypes.byref(gui_info)):
                 rc = gui_info.rcCaret
@@ -302,9 +303,28 @@ class CaretLocator:
                         if 10 < box_w < 1600 and 10 < box_h < 1200:
                             center_x = float(rect.left + (box_w / 2.0))
                             bottom_y = float(rect.bottom)
-                            is_focus = bool(gui_info.hwndFocus and hwnd_target == gui_info.hwndFocus)
-                            return center_x - (pill_width / 2.0), bottom_y + offset_y, float(rect.top), is_focus
+                            return center_x - (pill_width / 2.0), bottom_y + offset_y, float(rect.top), can_paste
+            return None, None, None, can_paste
         except Exception:
-            pass
+            # Detection failed: pasting is harmless where there's no text field, so allow it
+            return None, None, None, True
 
-        return None, None, None, False
+    # Foreground windows that never take typed text (desktop, taskbar, Start, etc.)
+    _WINDOWS_NON_TEXT_CLASSES = {"Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd"}
+
+    @classmethod
+    def _windows_foreground_accepts_paste(cls, user32) -> bool:
+        """
+        Windows has no reliable "is a text field focused" API: Chrome, Electron apps (VS Code,
+        Slack, Discord), modern Office and UWP apps never report a Win32 caret. So assume the
+        foreground app can take a paste unless it's clearly the desktop/taskbar or nothing.
+        """
+        import ctypes
+
+        hwnd = user32.GetForegroundWindow()
+        if not hwnd:
+            return False
+        buf = ctypes.create_unicode_buffer(256)
+        if user32.GetClassNameW(hwnd, buf, 256) and buf.value in cls._WINDOWS_NON_TEXT_CLASSES:
+            return False
+        return True

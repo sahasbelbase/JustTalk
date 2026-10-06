@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 from ..config import AppConfig
 from ..database.history import HistoryDatabase, HistoryItem
 from .theme import ThemeManager
+from . import icons
 
 
 # Same colors as ConventionsView
@@ -46,8 +47,8 @@ _CTX_COLORS_DARK = {
 class ContextChip(QLabel):
     """A small colored tag for the context."""
     def __init__(self, context: str, is_dark: bool = False):
-        super().__init__(context.upper() if context != "text" else "PROSE")
-        self.setFont(ThemeManager.get_ui_font(10, weight=QFont.Weight.Bold))
+        super().__init__(context.capitalize() if context != "text" else "Prose")
+        self.setFont(ThemeManager.get_ui_font(11, weight=QFont.Weight.Medium))
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setContentsMargins(6, 2, 6, 2)
         
@@ -74,7 +75,7 @@ class HistoryEntryWidget(QFrame):
         self.config = config
         self.is_expanded = False
         
-        self.setObjectName("surfaceCard")
+        self.setObjectName("historyCard")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         
@@ -113,9 +114,11 @@ class HistoryEntryWidget(QFrame):
         hdr.addWidget(self.copy_btn)
         
         # Delete button
-        del_btn = QPushButton("×")
-        del_btn.setObjectName("flatBtn")
-        del_btn.setStyleSheet("color: #FF3B30; font-size: 16px; font-weight: bold; padding: 0 4px;")
+        del_btn = QPushButton()
+        del_btn.setObjectName("deleteBtn")
+        del_btn.setIcon(icons.icon("close", size=14))
+        del_btn.setToolTip("Delete")
+        del_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         del_btn.clicked.connect(lambda: self.deleted.emit(self.item.id))
         hdr.addWidget(del_btn)
         

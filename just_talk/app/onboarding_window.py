@@ -37,6 +37,7 @@ from ..system.autostart import AutostartManager
 from ..system.permissions import PermissionsManager
 from .language_selector import SearchableLanguageComboBox
 from .theme import ThemeManager
+from .ui_thread import run_on_ui_thread
 
 
 class OnboardingWindow(QDialog):
@@ -333,7 +334,7 @@ class OnboardingWindow(QDialog):
 
         g_head.addStretch()
 
-        self.ai_badge = QLabel("✓ Connected & Ready")
+        self.ai_badge = QLabel("Connected")
         self.ai_badge.setFont(ThemeManager.get_ui_font(12, weight=QFont.Weight.Medium))
         self.ai_badge.setStyleSheet("color: #30D158;")
         g_head.addWidget(self.ai_badge)
@@ -383,9 +384,9 @@ class OnboardingWindow(QDialog):
         has_mic, _ = PermissionsManager.check_microphone()
         if has_mic:
             if sys.platform == "win32":
-                self.mic_status_lbl.setText("✓ Ready (Auto-granted)")
+                self.mic_status_lbl.setText("Ready")
             else:
-                self.mic_status_lbl.setText("✓ Granted")
+                self.mic_status_lbl.setText("Granted")
             self.mic_status_lbl.setStyleSheet("color: #30D158;")
             self.req_mic_btn.hide()
         else:
@@ -395,7 +396,7 @@ class OnboardingWindow(QDialog):
 
         # Check Accessibility / Input Monitoring
         if sys.platform == "win32":
-            self.acc_status_lbl.setText("✓ Ready (Global Low-Level Hook)")
+            self.acc_status_lbl.setText("Ready")
             self.acc_status_lbl.setStyleSheet("color: #30D158;")
             self.open_settings_btn.hide()
             self.restart_app_btn.hide()
@@ -403,7 +404,7 @@ class OnboardingWindow(QDialog):
             has_acc = PermissionsManager.check_accessibility(prompt_if_needed=False)
             has_input = PermissionsManager.check_input_monitoring()
             if has_acc and has_input:
-                self.acc_status_lbl.setText("✓ Granted")
+                self.acc_status_lbl.setText("Granted")
                 self.acc_status_lbl.setStyleSheet("color: #30D158;")
                 self.open_settings_btn.hide()
                 self.restart_app_btn.hide()
@@ -429,7 +430,7 @@ class OnboardingWindow(QDialog):
         # Check macOS Globe/Fn emoji status
         if sys.platform == "darwin" and hasattr(self, "fn_status_lbl"):
             if PermissionsManager.is_fn_emoji_disabled():
-                self.fn_status_lbl.setText("✓ Configured")
+                self.fn_status_lbl.setText("Configured")
                 self.fn_status_lbl.setStyleSheet("color: #30D158;")
                 self.fix_fn_btn.hide()
             else:
@@ -489,7 +490,7 @@ class OnboardingWindow(QDialog):
 
         def worker():
             res = self.gemini.test_connection(api_key=key, model=self.config.gemini_model)
-            QTimer.singleShot(0, lambda: self._on_step1_test_result(res))
+            run_on_ui_thread(lambda: self._on_step1_test_result(res))
 
         import threading
 
@@ -499,10 +500,10 @@ class OnboardingWindow(QDialog):
         self.step1_test_btn.setText("Test")
         self.step1_test_btn.setEnabled(True)
         if res.success:
-            self.ai_badge.setText(f"✓ Connected ({res.latency_ms}ms)")
+            self.ai_badge.setText(f"Connected · {res.latency_ms} ms")
             self.ai_badge.setStyleSheet("color: #30D158;")
         else:
-            self.ai_badge.setText("✗ Connection Error")
+            self.ai_badge.setText("Couldn't connect")
             self.ai_badge.setStyleSheet("color: #FF453A;")
 
     # -------------------------------------------------------------------------
@@ -557,7 +558,7 @@ class OnboardingWindow(QDialog):
         active_spoken = set(getattr(self.config, "spoken_languages", ["en"]) or ["en"])
 
         for idx, item in enumerate(CORE_SPOKEN_LANGUAGES):
-            chk = QCheckBox(f"{item['flag']} {item['name']} ({item['native']})")
+            chk = QCheckBox(item['name'] if item['native'] == item['name'] else f"{item['name']}  ·  {item['native']}")
             chk.setFont(ThemeManager.get_ui_font(13))
             chk.setChecked(item["code"] in active_spoken)
             chk.toggled.connect(self._on_spoken_language_toggled)
@@ -653,12 +654,12 @@ class OnboardingWindow(QDialog):
         l_layout.addWidget(mode_header)
 
         mode_row = QHBoxLayout()
-        self.mode_transcribe_btn = QPushButton("✍️ Write in My Language")
+        self.mode_transcribe_btn = QPushButton("Write in my language")
         self.mode_transcribe_btn.setCheckable(True)
         self.mode_transcribe_btn.setChecked(self.config.speech_mode != "translate")
         self.mode_transcribe_btn.clicked.connect(lambda: self._set_speech_mode("transcribe"))
 
-        self.mode_translate_btn = QPushButton("🌐 Translate to English")
+        self.mode_translate_btn = QPushButton("Translate to English")
         self.mode_translate_btn.setCheckable(True)
         self.mode_translate_btn.setChecked(self.config.speech_mode == "translate")
         self.mode_translate_btn.clicked.connect(lambda: self._set_speech_mode("translate"))
@@ -813,7 +814,7 @@ class OnboardingWindow(QDialog):
         code = self.add_lang_combo.currentData()
         name = self.add_lang_combo.currentText()
         if code and code not in self.lang_checkboxes:
-            chk = QCheckBox(f"🌐 {name}")
+            chk = QCheckBox(name)
             chk.setFont(ThemeManager.get_ui_font(13))
             chk.setChecked(True)
             chk.toggled.connect(self._on_spoken_language_toggled)
@@ -824,7 +825,7 @@ class OnboardingWindow(QDialog):
 
     def _update_model_status_display(self) -> None:
         if getattr(self.config, "stt_provider", "os_native") != "whisper":
-            self.model_status_badge.setText("✓ Ready Instantly (Zero Download)")
+            self.model_status_badge.setText("Ready — no download needed")
             self.model_status_badge.setStyleSheet("color: #30D158;")
             self.model_progress_bar.setValue(100)
             self.model_detail_lbl.setText("Built-in zero-download speech recognition active. Ready immediately!")
@@ -858,7 +859,7 @@ class OnboardingWindow(QDialog):
             self.model_sub_lbl.setText(footprint_text)
 
         if all_ready:
-            self.model_status_badge.setText("✓ Ready Locally")
+            self.model_status_badge.setText("Ready on this Mac")
             self.model_status_badge.setStyleSheet("color: #30D158;")
             self.model_progress_bar.setValue(100)
             self.model_detail_lbl.setText(f"All required language models are downloaded and verified on disk ({total_mb} MB).")
@@ -881,7 +882,7 @@ class OnboardingWindow(QDialog):
 
     def _start_model_download(self) -> None:
         if getattr(self.config, "stt_provider", "os_native") != "whisper":
-            self.model_progress_signal.emit(100.0, "✓ Ready immediately (Zero Download)!")
+            self.model_progress_signal.emit(100.0, "Ready — no download needed")
             return
 
         if self._is_downloading_model:
@@ -898,7 +899,7 @@ class OnboardingWindow(QDialog):
             )
             missing = [t for t in required_tiers if not self.model_manager.is_model_downloaded(t)]
             if not missing:
-                self.model_progress_signal.emit(100.0, "✓ All selected models ready!")
+                self.model_progress_signal.emit(100.0, "All selected models are ready")
                 return
 
             total_count = len(missing)
@@ -919,7 +920,7 @@ class OnboardingWindow(QDialog):
                     )
                     return
 
-            self.model_progress_signal.emit(100.0, "✓ All selected language models are ready!")
+            self.model_progress_signal.emit(100.0, "All selected models are ready")
 
         import threading
 
@@ -928,7 +929,7 @@ class OnboardingWindow(QDialog):
     def _on_model_progress_update(self, pct: float, msg: str) -> None:
         if pct < 0:
             self._is_downloading_model = False
-            self.model_status_badge.setText("✗ Download Failed")
+            self.model_status_badge.setText("Download failed")
             self.model_status_badge.setStyleSheet("color: #FF453A;")
             self.model_detail_lbl.setText(msg)
             self.download_model_btn.setEnabled(True)
@@ -937,7 +938,7 @@ class OnboardingWindow(QDialog):
         elif pct >= 100.0:
             self._is_downloading_model = False
             self.model_progress_bar.setValue(100)
-            self.model_status_badge.setText("✓ Ready Locally")
+            self.model_status_badge.setText("Ready on this Mac")
             self.model_status_badge.setStyleSheet("color: #30D158;")
             self.model_detail_lbl.setText("All required language models are downloaded and verified on disk.")
             self.download_model_btn.hide()
@@ -988,7 +989,7 @@ class OnboardingWindow(QDialog):
         cc_layout.addWidget(raw_box)
 
         # What gets inserted
-        arrow_lbl = QLabel("↓  AUTOMATICALLY CLEANED")
+        arrow_lbl = QLabel("AUTOMATICALLY CLEANED")
         arrow_lbl.setObjectName("mutedLabel")
         arrow_lbl.setFont(ThemeManager.get_mono_font(10))
         cc_layout.addWidget(arrow_lbl)
@@ -1048,11 +1049,11 @@ class OnboardingWindow(QDialog):
         lc_layout.setSpacing(10)
 
         states = [
-            ("🔴  Listening", "#FF453A", "Microphone is recording audio. Live waveform reflects your voice volume."),
-            ("🔵  Processing", "#64D2FF", "Whisper transcribes speech and Gemini applies formatting polish."),
-            ("🟢  Inserted", "#30D158", "Formatted text successfully pasted directly into your active window."),
-            ("🟡  Inserted (offline)", "#FF9F0A", "Speech transcribed on-device and inserted when offline or API paused."),
-            ("🔷  Copied to Clipboard", "#6C8EEF", "Placed on clipboard if no active text field was focused."),
+            ("Listening", "#FF453A", "Microphone is recording audio. Live waveform reflects your voice volume."),
+            ("Processing", "#64D2FF", "Whisper transcribes speech and Gemini applies formatting polish."),
+            ("Inserted", "#30D158", "Formatted text successfully pasted directly into your active window."),
+            ("Inserted offline", "#FF9F0A", "Speech transcribed on-device and inserted when offline or API paused."),
+            ("Copied to clipboard", "#6C8EEF", "Placed on clipboard if no active text field was focused."),
         ]
 
         for name, color, explanation in states:

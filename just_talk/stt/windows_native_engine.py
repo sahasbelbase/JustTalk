@@ -10,6 +10,7 @@ import numpy as np
 
 from .engine import STTEngine
 from .google_web_engine import GoogleWebSTTEngine
+from .long_form import IncrementalTranscriber
 
 
 class WindowsNativeSTTEngine(STTEngine):
@@ -50,6 +51,7 @@ class WindowsNativeSTTEngine(STTEngine):
 
         self._is_loaded = False
         self._lock = threading.Lock()
+        self._partial = IncrementalTranscriber(self._transcribe_local_partial, window_sec=6.0)
 
     def is_available(self) -> bool:
         """Check if native Windows speech recognition or local engine is available."""
@@ -95,7 +97,8 @@ class WindowsNativeSTTEngine(STTEngine):
     ) -> str:
         """
         Real-time live streaming partial decoder.
-        Decodes recent audio chunk (~5s) using local on-device Whisper small.
+        Re-decodes only the recent audio (~6s) with local on-device Whisper small, while
+        earlier speech is transcribed once and cached so long dictation is never dropped.
         Zero network latency, zero Google rate limiting.
         """
         if audio is None or len(audio) == 0:
@@ -111,13 +114,20 @@ class WindowsNativeSTTEngine(STTEngine):
                 self.local_engine.load(tier)
 
             if self.local_engine.is_loaded():
-                max_samples = 16000 * 6
-                recent_audio = audio[-max_samples:] if len(audio) > max_samples else audio
                 try:
-                    return self.local_engine.transcribe(recent_audio, language=language, task=task)
+                    return self._partial.update(audio, language=language, task=task)
                 except Exception:
                     return ""
         return ""
+
+    def _transcribe_local_partial(self, audio: np.ndarray, **kwargs) -> str:
+        if not self.local_engine or not self.local_engine.is_loaded():
+            return ""
+        return self.local_engine.transcribe(audio, **kwargs)
+
+    def reset_partial(self) -> None:
+        """Forget cached live-partial state at the start of a new recording."""
+        self._partial.reset()
 
     def transcribe(
         self,

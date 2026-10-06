@@ -21,6 +21,7 @@ datas = [
 datas += collect_data_files("faster_whisper")
 
 hidden_imports = [
+    "PySide6.QtSvg",
     "ctranslate2",
     "faster_whisper",
     "sounddevice",

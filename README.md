@@ -1,4 +1,4 @@
-# Just Talk 🎙️ (v2.0.1)
+# Just Talk (v2.1.0)
 
 > **A fast, quiet voice keyboard for macOS and Windows.**  
 > Think → Speak → Done.
@@ -14,40 +14,49 @@ If no text field is actively focused, the final text is automatically placed on 
 
 ---
 
-## 📥 Direct Downloads & Installers
+## Downloads
 
 Download the latest version of Just Talk directly for your operating system:
 
 | Operating System | Package Format | Direct Download Link | Release Page |
 | :--- | :--- | :--- | :--- |
-| **macOS** (Apple Silicon & Intel) | `.dmg` Disk Image | [⬇️ **Download JustTalk-macOS.dmg**](https://github.com/sahasbelbase/JustTalk/releases/latest/download/JustTalk-macOS.dmg) | [GitHub Releases](https://github.com/sahasbelbase/JustTalk/releases/latest) |
-| **Windows** (Windows 10 / 11 64-bit) | `.exe` Setup Installer | [⬇️ **Download JustTalk-Windows.exe**](https://github.com/sahasbelbase/JustTalk/releases/latest/download/JustTalk-Windows.exe) | [GitHub Releases](https://github.com/sahasbelbase/JustTalk/releases/latest) |
+| **macOS** (Apple Silicon & Intel) | `.dmg` Disk Image | [**Download JustTalk-macOS.dmg**](https://github.com/sahasbelbase/JustTalk/releases/latest/download/JustTalk-macOS.dmg) | [GitHub Releases](https://github.com/sahasbelbase/JustTalk/releases/latest) |
+| **Windows** (Windows 10 / 11 64-bit) | `.exe` Setup Installer | [**Download JustTalk-Windows.exe**](https://github.com/sahasbelbase/JustTalk/releases/latest/download/JustTalk-Windows.exe) | [GitHub Releases](https://github.com/sahasbelbase/JustTalk/releases/latest) |
 
-> 💡 **Looking for all releases or release notes?** Visit the [Just Talk Releases Page](https://github.com/sahasbelbase/JustTalk/releases/latest).
+> **Looking for all releases or release notes?** Visit the [Just Talk Releases Page](https://github.com/sahasbelbase/JustTalk/releases/latest).
 
 ---
 
-## ⚡ What's New in Version 2.0.1
+## What's New in Version 2.1.0
+
+* **Long dictation that keeps everything:** Speak for up to 5 minutes with pauses. Long audio is split at natural pauses and stitched back together, so nothing said before a pause is lost or repeated. In tap mode, recording stops after 8 seconds of silence (was 4.5 s).
+* **Smarter AI cleanup:** Self-corrections are resolved ("meet at five, actually four" → "Can we meet at four?"), grammar and spelling are fixed Grammarly-style, and long dictations get more time instead of falling back to "inserted offline". Slow replies no longer pause AI formatting for everyone.
+* **Premium, emoji-free interface:** A single set of line icons, plain section titles, a compact settings page that saves automatically, readable activity chart labels, and correct dark-mode colours.
+* **Reliable background updates:** "Check for updates", model downloads, mic test and AI connection tests now report back to the window (previously some never finished).
+* **Windows fixes:** Dictation now pastes into Chrome, VS Code, Slack, Office and other apps instead of only copying, and scrolling over a dropdown scrolls the page instead of changing the value.
+* **Clean quit:** Cmd+Q, tray Quit, logout and shutdown all close Just Talk properly.
+
+## Previous Release: 2.0.1
 
 * **Zero-Login, Instant Speech Engines:** No mandatory Hugging Face downloads or initial freezes. Uses macOS `SFSpeechRecognizer` or Windows Speech Recognition out-of-the-box, with seamless fallback to the free, zero-key Google Web Speech API.
 * **Tap-to-Toggle Dictation:** Tap **Fn** (macOS) or **Right Alt** (Windows) once to start recording, tap again to finish. Built-in 250ms hardware debounce and repeat suppression prevent accidental double-toggles.
 * **Seamless Two-Phase Text Insertion:** Initial draft text appears in your active text editor in ~200ms as you speak. When speech stops, Just Talk polishes grammar and formatting in-place.
 * **Automatic Background Audio Ducking:** Mutes background music, video streams, or reels playing on your computer while dictating so they never bleed into your microphone.
-* **Safety Nets:** 4.5 seconds of silence after speaking automatically commits your transcript. Pressing `Escape` at any time instantly cancels recording and discards drafts.
+* **Safety Nets:** A long pause after speaking after speaking automatically commits your transcript. Pressing `Escape` at any time instantly cancels recording and discards drafts.
 * **Writing Conventions Panel:** Configure specialized dictation formatting for SQL, Python, JavaScript, TypeScript, C#, Rust, PHP, or Plain Prose with live before/after previews.
 * **Contribution Activity Dashboard:** GitHub-style activity graph visualizing daily words spoken, time saved, and dictation streaks.
 * **Multilingual & Code-Switching:** Fluent transcription and translation for English, Nepali (`ne-NP`), and mixed Nepali-English speech.
 
 ---
 
-## ⚡ Key Highlights & Experience
+## Key Highlights
 
 * **Tap or Push-to-Talk:** Tap **Fn** (macOS) or **Right Alt** (Windows) to toggle, or switch to classic hold-to-talk in Settings.
 * **Instant Text Insertion:** Your words are cleaned and typed into your focused app in milliseconds.
 * **Native macOS Aesthetic:** Frosted glass acrylic styling, dynamic dark/light mode, custom typography (`Inter`, `Lato`, `JetBrains Mono`), and fluid status animations.
 * **Floating Animated HUD:** Minimalist floating pill overlay displays dynamic live audio waveforms while speaking, pulsing state while processing, and a subtle emerald badge on successful insertion.
 * **Universal Compatibility:** Works seamlessly across web browsers, Electron apps, native editors, and terminals.
-* **Clipboard Preservation:** Your prior clipboard contents (text, rich text, images) are seamlessly restored 50ms after paste.
+* **Clipboard Preservation:** Your previous clipboard contents are restored automatically after Just Talk pastes.
 * **Single-Instance Lock:** Robust IPC lock prevents duplicate background instances from competing for audio devices or global hotkeys.
 * **Action Mode (Fn + Shift):**
   * Say *"translate this into Spanish: Let's meet tomorrow at 10 AM"* → types Spanish translation.
@@ -56,17 +65,17 @@ Download the latest version of Just Talk directly for your operating system:
 
 ---
 
-## 🔒 Privacy & Offline First
+## Privacy & Offline Mode
 
-1. **Local Speech-to-Text:** Raw audio never leaves your machine when using OS-native dictation or local Whisper.
-2. **Deterministic Text Formatting:** Only the transcribed text string is sent to the AI API (Gemini or local Ollama) for punctuation, capitalization, and filler word removal.
-3. **Strict 2.0s Circuit Breaker:** If offline or if network latency exceeds 2.0 seconds, the system instantly inserts the raw transcription with zero delay.
-4. **Pure Offline Mode:** A single toggle disables cloud requests entirely, using 100% on-device local transcription and local Ollama formatting.
-5. **Secure Credential Storage:** API keys are never stored in plain text; they are secured using the operating system's native keychain (macOS Keychain and Windows Credential Vault).
+1. **Your choice of speech engine:** With **Pure Offline Mode** or local Whisper, audio never leaves your computer. The built-in macOS engine uses Apple's on-device recognition where your Mac supports it. The Google Web Speech engine (used for Nepali, and first on Windows when online) sends audio to Google to transcribe it.
+2. **Text-only AI formatting:** Only the transcribed text — never audio — is sent to the AI provider you choose (or to Ollama running locally) for punctuation, grammar and cleanup.
+3. **Graceful fallback:** If the AI provider is slow or unreachable, the locally cleaned transcript is inserted instead. Short phrases wait at most ~2 s; long dictations get up to ~8 s. Only real outages (not slow replies) pause AI formatting.
+4. **Pure Offline Mode:** One toggle disables every network request — on-device transcription only, and cloud AI formatting is switched off.
+5. **Local credential storage:** API keys are stored only on your computer, in a private `.credentials` file in Just Talk's app-data folder with owner-only (0600) permissions, and are sent only to the provider you selected.
 
 ---
 
-## 🤖 Bring Your Own Model (BYOM)
+## Bring Your Own Model (BYOM)
 
 Just Talk gives you absolute freedom to choose both your **Speech Recognition Engine** and your **AI Formatting Model**:
 
@@ -84,7 +93,7 @@ Run powerful open-weight LLMs locally with **zero API keys, zero cloud costs, an
 
 ---
 
-## 🧠 Model Tiers
+## Model Tiers
 
 Choose the speed and accuracy profile that matches your hardware:
 
@@ -98,14 +107,14 @@ Choose the speed and accuracy profile that matches your hardware:
 
 ---
 
-## 🚀 Quickstart (Running from Source)
+## Quickstart (Running from Source)
 
 ### Prerequisites
 * macOS 12+ (Apple Silicon or Intel) or Windows 10/11 (64-bit)
 * Python 3.11+
 * [uv](https://github.com/astral-sh/uv) (recommended package manager)
 
-### 🍏 macOS Installation & Setup
+### macOS Installation & Setup
 For detailed, step-by-step instructions, see **[macOS Installation Guide](packaging/mac/INSTALL_MAC.md)**.
 
 1. **Download Pre-Built DMG**: Download [**JustTalk-macOS.dmg**](https://github.com/sahasbelbase/JustTalk/releases/latest/download/JustTalk-macOS.dmg) (or get it from [GitHub Releases](https://github.com/sahasbelbase/JustTalk/releases/latest)).
@@ -123,7 +132,7 @@ For detailed, step-by-step instructions, see **[macOS Installation Guide](packag
    ./packaging/mac/setup_mac.sh
    ```
 
-### 🪟 Windows Installation & Setup
+### Windows Installation & Setup
 For detailed, step-by-step instructions, see **[Windows Installation Guide](packaging/windows/INSTALL_WINDOWS.md)**.
 
 1. **Download Pre-Built Installer**: Download [**JustTalk-Windows.exe**](https://github.com/sahasbelbase/JustTalk/releases/latest/download/JustTalk-Windows.exe) (or get it from [GitHub Releases](https://github.com/sahasbelbase/JustTalk/releases/latest)) and run the setup wizard.
@@ -135,7 +144,7 @@ For detailed, step-by-step instructions, see **[Windows Installation Guide](pack
 
 ---
 
-## 📦 Building Standalone Packages & Installers
+## Building Standalone Packages & Installers
 
 ### macOS (`.app` Bundle & `.dmg` Installer)
 To compile and package the standalone macOS app:
@@ -160,11 +169,11 @@ packaging\windows\build_exe.bat
 ```
 This produces:
 * `dist\JustTalk\JustTalk.exe`: Standalone portable application.
-* `dist\windows_installer\JustTalk-Setup-2.0.1.exe`: Modern setup installer with custom branding and standalone `uninstall.exe`.
+* `dist\windows_installer\JustTalk-Windows.exe`: Inno Setup installer with custom branding and an uninstaller.
 
 ---
 
-## 🧪 Running the Test Suite
+## Running the Test Suite
 
 Just Talk includes comprehensive test coverage for configuration, SQLite history, Voice Activity Detection (VAD), action routing, Gemini offline fallbacks, single-instance enforcement, and native speech engines:
 
@@ -175,7 +184,7 @@ uv run pytest -v
 
 ---
 
-## 📁 Codebase Architecture
+## Codebase Architecture
 
 For in-depth architectural diagrams, thread models, and subsystem specifications, see **[architecture.md](architecture.md)**.
 
@@ -188,7 +197,7 @@ JustTalk/
 │
 ├── just_talk/
 │   ├── config.py               # Dataclass & persistent JSON application configuration
-│   ├── security.py             # OS Keychain & Windows Credential Vault credential manager
+│   ├── security.py             # Private 0600 credentials file for API keys
 │   │
 │   ├── app/
 │   │   ├── main.py             # Application entrypoint, AppBridge signals, AUMID registration
@@ -200,12 +209,15 @@ JustTalk/
 │   │   ├── history_view.py     # Searchable dictation history with one-click re-copy
 │   │   ├── conventions_view.py # Code and SQL writing conventions manager
 │   │   ├── onboarding_window.py# First-run onboarding & permissions setup wizard
-│   │   ├── ai_formatting_view.py# AI prompt tuning, temperature, and formatting controls
+│   │   ├── ai_formatting_view.py# AI provider, API key, model and formatting sandbox
+│   │   ├── icons.py            # Monochrome SVG line icons (no emoji in the UI)
+│   │   ├── ui_thread.py        # run_on_ui_thread(): safe worker-thread → Qt UI callbacks
+│   │   └── wheel_guard.py      # Stops the mouse wheel changing dropdowns while scrolling
 │   │   └── tray.py             # Native system tray / menu bar integration
 │   │
 │   ├── audio/
 │   │   ├── recorder.py         # 16kHz low-latency streaming microphone buffer (sounddevice)
-│   │   └── vad.py              # Voice Activity Detector & dead-air silence trimmer
+│   │   └── vad.py              # Voice activity detection, silence trimming, pause-aligned chunking
 │   │
 │   ├── stt/
 │   │   ├── engine.py           # Speech-to-text abstract base class
@@ -213,10 +225,11 @@ JustTalk/
 │   │   ├── windows_native_engine.py # Windows Media Speech Recognition engine
 │   │   ├── google_web_engine.py# Zero-login, zero-key Google Web Speech API engine
 │   │   ├── whisper_engine.py   # faster-whisper (CTranslate2) local inference engine
+│   │   ├── long_form.py        # Live-partial caching so long dictation keeps earlier speech
 │   │   └── model_manager.py    # Multi-tier model catalog and downloader
 │   │
 │   ├── ai/
-│   │   ├── gemini.py           # Google AI Studio client with 2.0s circuit breaker fallback
+│   │   ├── gemini.py           # Gemini client, local cleanup and circuit breaker
 │   │   ├── prompts.py          # Deterministic system prompts (Subtle, Formal, Concise, Code)
 │   │   ├── actions.py          # Speech intent router for Action Mode (Fn + Shift)
 │   │   └── providers.py        # Multi-provider LLM coordinator (Gemini, Ollama, Claude, OpenAI)
@@ -248,12 +261,13 @@ JustTalk/
 │   └── justtalk.spec           # PyInstaller build specification
 │
 ├── .github/workflows/
-│   └── build.yml               # Automated cross-platform CI/CD matrix (macOS & Windows)
+│   ├── build.yml               # Tests + macOS .dmg & Windows .exe builds; publishes releases on v* tags
+│   └── pages.yml               # Deploys website/ to GitHub Pages
 │
 └── tests/                      # Unit and integration test suite
 ```
 
 ---
 
-## ⚖️ License
+## License
 MIT License. Free and open source. See [LICENSE.md](LICENSE.md) for full license details.

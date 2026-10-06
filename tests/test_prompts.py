@@ -39,7 +39,7 @@ def test_translate_prompt_code_switching_directives():
 
 def test_strict_preservation_directives():
     subtle = build_prompt("subtle")
-    assert "strict transcription formatting assistant" in subtle.lower()
+    assert "resolve self-corrections" in subtle.lower()
     assert "do not summarize" in subtle.lower()
     assert "do not remove information" in subtle.lower()
     assert "preserve every single detail" in subtle.lower()

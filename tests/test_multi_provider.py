@@ -157,3 +157,40 @@ class TestMultiProvider(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 
+
+
+def test_time_budget_grows_with_dictation_length():
+    from just_talk.ai.providers import MultiProviderFormatter
+
+    f = MultiProviderFormatter(provider_id="custom", api_key="k", model_name="m", custom_base_url="http://x", timeout=2.0)
+    assert f._time_budget("short phrase") == 2.0
+    long_text = " ".join(["word"] * 130)  # ~50 s of speech
+    assert 6.0 < f._time_budget(long_text) <= 8.0
+    assert f._time_budget(" ".join(["word"] * 1000)) == 8.0
+
+
+def test_timeouts_do_not_pause_ai_formatting_but_network_errors_do(monkeypatch):
+    import httpx
+    from just_talk.ai.providers import MultiProviderFormatter
+
+    f = MultiProviderFormatter(provider_id="custom", api_key="k", model_name="m", custom_base_url="http://x", timeout=2.0)
+    monkeypatch.setattr("time.sleep", lambda *_: None)
+
+    def boom(exc):
+        class FakeClient:
+            def __init__(self, *a, **kw): pass
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def post(self, *a, **kw): raise exc
+        return FakeClient
+
+    monkeypatch.setattr(httpx, "Client", boom(httpx.ReadTimeout("slow")))
+    for _ in range(5):
+        _, ok, _ = f.format_text("a long dictation " * 40)
+        assert not ok
+    assert not f.circuit_breaker.is_paused  # slow replies never switch AI off
+
+    monkeypatch.setattr(httpx, "Client", boom(httpx.ConnectError("down")))
+    for _ in range(3):
+        f.format_text("hello there")
+    assert f.circuit_breaker.is_paused  # a real outage still pauses it

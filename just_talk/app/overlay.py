@@ -708,7 +708,7 @@ class FloatingPillOverlay(QWidget):
                     painter.drawText(
                         QRectF(x, y + 2, w, 11),
                         Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
-                        "⚡ ACTION MODE",
+                        "ACTION MODE",
                     )
             else:
                 # Live streaming words displayed in real-time as user speaks!

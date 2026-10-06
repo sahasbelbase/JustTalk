@@ -68,3 +68,66 @@ class VoiceActivityDetector:
         start = max(0, indices[0] - pad_samples)
         end = min(len(audio), indices[-1] + pad_samples)
         return audio[start:end]
+
+    @staticmethod
+    def find_pause_cut(
+        audio: np.ndarray,
+        sample_rate: int = 16000,
+        min_offset_sec: float = 2.0,
+        frame_sec: float = 0.03,
+        pause_sec: float = 0.3,
+    ) -> int:
+        """
+        Return the sample index at the centre of the quietest ~pause_sec region of
+        ``audio`` (ignoring the first ``min_offset_sec``), i.e. the most natural place
+        to cut between words. Returns len(audio) if the audio is too short to cut.
+        """
+        frame = max(1, int(sample_rate * frame_sec))
+        n_frames = len(audio) // frame
+        min_frame = int(min_offset_sec / frame_sec)
+        if n_frames <= min_frame + 1:
+            return len(audio)
+
+        frames = audio[: n_frames * frame].reshape(n_frames, frame)
+        frame_rms = np.sqrt(np.mean(np.square(frames), axis=1))
+        win = max(1, int(pause_sec / frame_sec))
+        if n_frames > win:
+            frame_rms = np.convolve(frame_rms, np.ones(win) / win, mode="same")
+
+        best = min_frame + int(np.argmin(frame_rms[min_frame:]))
+        return min(len(audio), best * frame + frame // 2)
+
+    @classmethod
+    def split_on_pauses(
+        cls,
+        audio: np.ndarray,
+        sample_rate: int = 16000,
+        max_chunk_sec: float = 15.0,
+        min_chunk_sec: float = 2.0,
+        silence_peak: float = 0.002,
+    ) -> list:
+        """
+        Split long dictation into chunks of at most ``max_chunk_sec``, cutting at the
+        quietest moment (natural pauses) so no word is sliced in half. Near-silent
+        chunks (long thinking pauses) are dropped from multi-chunk results.
+
+        Streaming recognizers (Apple Speech, Google Web Speech) end the utterance on a
+        long pause and drop or reset everything before it, so long recordings must be
+        recognized chunk by chunk and stitched back together.
+        """
+        if audio is None or len(audio) == 0:
+            return []
+
+        max_samples = int(max_chunk_sec * sample_rate)
+        chunks = []
+        start = 0
+        while len(audio) - start > max_samples:
+            window = audio[start : start + max_samples]
+            cut = cls.find_pause_cut(window, sample_rate=sample_rate, min_offset_sec=min_chunk_sec)
+            chunks.append(window[:cut])
+            start += cut
+        chunks.append(audio[start:])
+        if len(chunks) == 1:
+            return chunks
+
+        return [c for c in chunks if len(c) and float(np.max(np.abs(c))) >= silence_peak]

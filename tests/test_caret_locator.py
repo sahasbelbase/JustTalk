@@ -50,3 +50,31 @@ def test_caret_locator_locate_target():
     assert isinstance(y, int)
     assert isinstance(has_text, bool)
     assert CaretLocator.has_active_text_target() == has_text
+
+
+class _FakeUser32:
+    def __init__(self, hwnd, cls_name):
+        self._hwnd, self._cls = hwnd, cls_name
+
+    def GetForegroundWindow(self):
+        return self._hwnd
+
+    def GetClassNameW(self, hwnd, buf, size):
+        buf.value = self._cls
+        return len(self._cls)
+
+
+def test_windows_pastes_into_apps_without_a_win32_caret():
+    from just_talk.system.caret_locator import CaretLocator
+
+    # Chrome / VS Code / Slack never expose a Win32 caret but do accept Ctrl+V
+    for cls_name in ("Chrome_WidgetWin_1", "OpusApp", "ApplicationFrameWindow", "Windows.UI.Core.CoreWindow"):
+        assert CaretLocator._windows_foreground_accepts_paste(_FakeUser32(1234, cls_name)) is True
+
+
+def test_windows_does_not_paste_into_desktop_or_taskbar():
+    from just_talk.system.caret_locator import CaretLocator
+
+    for cls_name in ("Progman", "WorkerW", "Shell_TrayWnd"):
+        assert CaretLocator._windows_foreground_accepts_paste(_FakeUser32(1234, cls_name)) is False
+    assert CaretLocator._windows_foreground_accepts_paste(_FakeUser32(0, "")) is False

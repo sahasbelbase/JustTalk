@@ -59,6 +59,8 @@ from .onboarding_window import OnboardingWindow
 from .overlay import FloatingPillOverlay
 from .theme import ThemeManager
 from .tray import SystemTrayManager
+from .ui_thread import run_on_ui_thread
+from .wheel_guard import install_wheel_guard
 
 
 class AppBridge(QObject):
@@ -142,7 +144,17 @@ class JustTalkApplication(QApplication):
     def __init__(self, argv):
         super().__init__(argv)
         self.controller: Optional[JustTalkApp] = None
+        # Set when the app itself is quitting (Cmd+Q, tray Quit, macOS logout/shutdown),
+        # so the main window stops hiding-to-tray and lets the quit go through.
+        self.is_quitting = False
         self._setup_mac_reopen()
+
+    def event(self, e: QEvent) -> bool:
+        if e.type() == QEvent.Type.Quit:
+            self.is_quitting = True
+            if self.controller:
+                self.controller.cleanup()
+        return super().event(e)
 
     def _setup_mac_reopen(self) -> None:
         """Register AppKit and AppleEvent reopen handlers so clicking Dock or Finder re-opens window."""
@@ -442,6 +454,8 @@ class JustTalkApp:
         """Handle live OS theme change."""
         if self.config.appearance == "system":
             ThemeManager.apply_theme(app, "system")
+            if self.main_window:
+                self.main_window.refresh_theme_icons()
 
     def reopen(self) -> None:
         """Reopen or activate the main application window or onboarding wizard."""
@@ -489,16 +503,18 @@ class JustTalkApp:
                 self._has_detected_speech = True
                 self._last_speech_time = now
             elif self._has_detected_speech:
-                # Silence auto-commit: if speech was detected and user paused for 4.5s in toggle mode
+                # Silence auto-commit: if speech was detected and user paused for a long while in
+                # toggle mode. Kept generous so pausing to think mid-dictation doesn't end it.
                 if not getattr(self.config, "push_to_talk", False):
                     silence_sec = now - self._last_speech_time
-                    if silence_sec >= 4.5:
+                    if silence_sec >= 8.0:
                         print(f"[Record] Silence auto-commit ({silence_sec:.1f}s silence after speech)", file=sys.stderr)
                         self.bridge.stop_recording_requested.emit()
                         return
 
-            # Safety limit: max recording duration (default 60s)
-            max_sec = getattr(self.config, "max_recording_sec", 60.0) or 60.0
+            # Safety limit: max recording duration (default 5 min). Older configs persisted 60s,
+            # which cut off long dictation, so treat that as a floor rather than a ceiling.
+            max_sec = max(getattr(self.config, "max_recording_sec", 300.0) or 300.0, 300.0)
             if now - self._record_start_time >= max_sec:
                 print(f"[Record] Max recording limit reached ({max_sec:.1f}s), auto-stopping.", file=sys.stderr)
                 self.bridge.stop_recording_requested.emit()
@@ -532,6 +548,9 @@ class JustTalkApp:
     def _start_streaming_worker(self) -> None:
         """Start background live streaming STT thread to stream partial words to the overlay HUD."""
         self._last_partial_transcript = ""
+        for engine in (self.stt_engine, getattr(self, "native_stt_engine", None)):
+            if hasattr(engine, "reset_partial"):
+                engine.reset_partial()
         self._streaming_thread = threading.Thread(
             target=self._streaming_stt_loop,
             daemon=True,
@@ -921,7 +940,7 @@ class JustTalkApp:
                     print(f"[Gemini Fallback/Timeout]: {CredentialManager.redact(msg)}")
                     if self.tray:
                         try:
-                            QTimer.singleShot(0, self.tray.refresh_menu)
+                            run_on_ui_thread(self.tray.refresh_menu)
                         except Exception:
                             pass
             else:
@@ -985,7 +1004,7 @@ class JustTalkApp:
             # Refresh home recent items if visible (must dispatch to main thread)
             if self.main_window and self.main_window.isVisible():
                 try:
-                    QTimer.singleShot(0, self.main_window._refresh_home_status)
+                    run_on_ui_thread(self.main_window._refresh_home_status)
                 except Exception:
                     pass
 
@@ -1070,14 +1089,21 @@ class JustTalkApp:
         else:
             self.stt_engine.load()
 
-    def quit(self) -> None:
-        """Clean shutdown."""
+    def cleanup(self) -> None:
+        """Restore system audio and release the hotkey listener and microphone."""
         if hasattr(self, "audio_ducker"):
             self.audio_ducker.unmute()
         if self.shortcut_manager:
             self.shortcut_manager.stop()
         if self.recorder:
             self.recorder.stop()
+
+    def quit(self) -> None:
+        """Clean shutdown."""
+        app = QApplication.instance()
+        if app is not None:
+            app.is_quitting = True
+        self.cleanup()
         QApplication.quit()
 
 
@@ -1147,6 +1173,7 @@ def main() -> None:
     app.setApplicationName("Just Talk")
     app.setOrganizationName("JustTalk")
     app.setQuitOnLastWindowClosed(False)  # Stays alive in system tray / background
+    install_wheel_guard(app)  # Scrolling a page must not change dropdowns under the pointer
 
     # Enforce strict single-instance lock
     from .single_instance import SingleInstanceManager

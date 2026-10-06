@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QMenu, QSystemTrayIcon, QWidget
 from ..ai.gemini import GeminiFormatter
 from ..config import AppConfig
 from ..stt.model_manager import TIERS
+from .ui_thread import run_on_ui_thread
 
 
 class SystemTrayManager:
@@ -55,7 +56,7 @@ class SystemTrayManager:
 
         # Update available action (if new version detected)
         if getattr(self, "_update_info", None) and self._update_info.available:
-            update_action = QAction(f"⚡ Update Available: v{self._update_info.latest_version}", menu)
+            update_action = QAction(f"Install update {self._update_info.latest_version}", menu)
             font = update_action.font()
             font.setBold(True)
             update_action.setFont(font)
@@ -74,7 +75,7 @@ class SystemTrayManager:
         # Circuit Breaker warning badge item if paused
         if self.gemini and self.gemini.circuit_breaker.is_paused:
             rem = self.gemini.circuit_breaker.remaining_cooldown_sec
-            cb_action = QAction(f"⚠️ AI formatting paused ({rem}s). Click to fix", menu)
+            cb_action = QAction(f"AI formatting paused ({rem}s) — click to fix", menu)
             cb_action.triggered.connect(lambda: self.on_open_main("settings"))
             menu.addAction(cb_action)
 
@@ -138,7 +139,7 @@ class SystemTrayManager:
     def refresh_menu(self) -> None:
         """Re-render menu to update dynamic circuit breaker state (main-thread safe)."""
         from PySide6.QtCore import QTimer
-        QTimer.singleShot(0, self._build_menu)
+        run_on_ui_thread(self._build_menu)
 
     def _on_gemini_toggled(self, checked: bool) -> None:
         self.config.gemini_enabled = checked

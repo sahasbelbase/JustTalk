@@ -38,7 +38,7 @@ class SearchableLanguageComboBox(QComboBox):
         # Configure LineEdit
         line_edit = self.lineEdit()
         if line_edit:
-            line_edit.setPlaceholderText("🔍 Search language (e.g. English, Nepali, Spanish)...")
+            line_edit.setPlaceholderText("Search languages")
             line_edit.returnPressed.connect(self._on_enter_pressed)
             line_edit.editingFinished.connect(self._on_editing_finished)
 

@@ -33,6 +33,7 @@ from ..ai.providers import (
 from ..config import AppConfig
 from ..security import CredentialManager
 from .theme import ThemeManager
+from .ui_thread import run_on_ui_thread
 
 
 class AIFormattingView(QWidget):
@@ -84,9 +85,8 @@ class AIFormattingView(QWidget):
         self.enable_check.toggled.connect(self._on_enable_toggled)
         toggles_layout.addWidget(self.enable_check)
 
-        self.offline_check = QCheckBox("Pure Offline Mode (Keep all speech & text strictly on-device)")
-        self.offline_check.toggled.connect(self._on_offline_toggled)
-        toggles_layout.addWidget(self.offline_check)
+        # Offline mode lives in Settings › Voice & Speech › Privacy Mode; a second checkbox
+        # here for the same setting got out of sync with it.
 
         layout.addWidget(toggles_card)
 
@@ -144,17 +144,17 @@ class AIFormattingView(QWidget):
         input_row.addWidget(self.key_input)
 
         self.show_btn = QPushButton("Show")
-        self.show_btn.setFixedWidth(54)
+        self.show_btn.setMinimumWidth(70)
         self.show_btn.clicked.connect(self._toggle_show_key)
         input_row.addWidget(self.show_btn)
 
         self.paste_btn = QPushButton("Paste")
-        self.paste_btn.setFixedWidth(58)
+        self.paste_btn.setMinimumWidth(74)
         self.paste_btn.clicked.connect(self._paste_key)
         input_row.addWidget(self.paste_btn)
 
         self.clear_btn = QPushButton("Clear")
-        self.clear_btn.setFixedWidth(54)
+        self.clear_btn.setMinimumWidth(70)
         self.clear_btn.clicked.connect(self._clear_key)
         input_row.addWidget(self.clear_btn)
 
@@ -167,7 +167,7 @@ class AIFormattingView(QWidget):
         key_meta_row.addWidget(self.storage_label)
 
         key_meta_row.addStretch()
-        self.get_key_link_btn = QPushButton("Get API Key ↗")
+        self.get_key_link_btn = QPushButton("Get API key")
         self.get_key_link_btn.setObjectName("flatBtn")
         self.get_key_link_btn.setStyleSheet("font-size: 11px; color: #6C8EEF; border: none; background: transparent; padding: 0;")
         self.get_key_link_btn.clicked.connect(self._open_provider_website)
@@ -185,9 +185,9 @@ class AIFormattingView(QWidget):
         self.model_combo.currentTextChanged.connect(self._on_model_changed)
         controls_row.addWidget(self.model_combo, 1)
 
-        self.fetch_models_btn = QPushButton("↻ Fetch")
+        self.fetch_models_btn = QPushButton("Fetch models")
         self.fetch_models_btn.setToolTip("Fetch available models from the provider API")
-        self.fetch_models_btn.setFixedWidth(64)
+        self.fetch_models_btn.setMinimumWidth(80)
         self.fetch_models_btn.clicked.connect(self.run_fetch_models)
         controls_row.addWidget(self.fetch_models_btn)
 
@@ -242,7 +242,7 @@ class AIFormattingView(QWidget):
 
         # 4. Privacy Disclaimer
         self.privacy_note = QLabel(
-            "🔒 Privacy: Speech is transcribed locally on your device with Whisper. "
+            "Privacy: speech is transcribed on your device. "
             "Only the transcribed text string is sent to the chosen AI provider when AI formatting is enabled."
         )
         self.privacy_note.setStyleSheet("color: #71717a; font-size: 11px;")
@@ -258,7 +258,6 @@ class AIFormattingView(QWidget):
 
     def _load_state(self) -> None:
         self.enable_check.setChecked(self.config.gemini_enabled)
-        self.offline_check.setChecked(self.config.offline_mode)
 
         # Select provider
         active_pid = self._get_active_provider_id()
@@ -299,7 +298,8 @@ class AIFormattingView(QWidget):
             self.clear_btn.hide()
             self.storage_label.setText("Runs locally via Ollama. No tokens, no account, completely private.")
         else:
-            self.key_header.setText(f"{provider.display_name} API Key")
+            name = provider.display_name
+            self.key_header.setText(f"{name} key" if name.endswith("API") else f"{name} API key")
             self.key_input.setEnabled(True)
             self.key_input.setPlaceholderText(f"Paste your {provider.display_name} key ({provider.key_prefix_hint})...")
             self.show_btn.show()
@@ -341,9 +341,9 @@ class AIFormattingView(QWidget):
         if provider.website_url:
             self.get_key_link_btn.show()
             if provider_id == "ollama":
-                self.get_key_link_btn.setText("Download Ollama ↗")
+                self.get_key_link_btn.setText("Download Ollama")
             else:
-                self.get_key_link_btn.setText(f"Get {provider.display_name} Key ↗")
+                self.get_key_link_btn.setText(f"Get {provider.display_name} key")
         else:
             self.get_key_link_btn.hide()
 
@@ -431,13 +431,6 @@ class AIFormattingView(QWidget):
         self.config.save()
         self.config_changed.emit()
 
-    def _on_offline_toggled(self, checked: bool) -> None:
-        self.config.offline_mode = checked
-        if checked:
-            self.enable_check.setChecked(False)
-        self.config.save()
-        self.config_changed.emit()
-
     def _on_model_changed(self, text: str) -> None:
         model = text.strip()
         if model:
@@ -478,7 +471,7 @@ class AIFormattingView(QWidget):
             def done():
                 self._fetching_models = False
                 self.fetch_models_btn.setEnabled(True)
-                self.fetch_models_btn.setText("↻ Fetch")
+                self.fetch_models_btn.setText("Fetch models")
                 if models:
                     current_text = self.model_combo.currentText()
                     self.model_combo.blockSignals(True)
@@ -493,7 +486,7 @@ class AIFormattingView(QWidget):
                             self.model_combo.setEditText(current_text)
                     self.model_combo.blockSignals(False)
 
-            QTimer.singleShot(0, done)
+            run_on_ui_thread(done)
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -531,10 +524,10 @@ class AIFormattingView(QWidget):
         self.test_btn.setEnabled(True)
 
         if res.success:
-            self.status_chip.setText(f"✓ {res.message} — {res.model_name}")
+            self.status_chip.setText(f"{res.message} · {res.model_name}")
             self.status_chip.setStyleSheet("padding: 4px 10px; border-radius: 6px; font-size: 12px; background: rgba(48,209,88,0.12); color: #30D158;")
         else:
-            self.status_chip.setText(f"✗ {res.message}")
+            self.status_chip.setText(res.message)
             self.status_chip.setStyleSheet("padding: 4px 10px; border-radius: 6px; font-size: 12px; background: rgba(255,69,58,0.10); color: #FF453A;")
 
     # -------------------------------------------------------------------------

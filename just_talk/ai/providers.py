@@ -263,6 +263,15 @@ class MultiProviderFormatter:
         elif self.provider.id != 'custom':
             self.base_url = self.provider.base_url
 
+    def _time_budget(self, raw_text: str) -> float:
+        """
+        Seconds to wait for the provider. Short phrases keep the snappy 2 s budget; long
+        dictations get more time (the raw draft is already typed, so waiting is cheap),
+        otherwise they always time out and fall back to local cleanup.
+        """
+        words = len(raw_text.split())
+        return min(self.timeout, 2.0) + min(6.0, max(0.0, (words - 25) / 20.0))
+
     def format_text(
         self,
         raw_text: str,
@@ -300,8 +309,8 @@ class MultiProviderFormatter:
             "Translate the spoken content into clean, fluent English. "
             "MANDATORY: DO NOT summarize. DO NOT drop information. Preserve full detail and length."
             if is_translation
-            else "STRICT TRANSCRIPTION ONLY: Only fix punctuation, capitalization, and filler words. "
-                 "MANDATORY: DO NOT summarize. DO NOT omit sentences. DO NOT shorten or rephrase. Output the full message."
+            else "Edit the transcript exactly as the rules above describe (including resolving self-corrections). "
+                 "MANDATORY: DO NOT summarize. DO NOT omit details or sentences. Output the full message."
         )
         wrapped_instruction = (
             f"{system_instruction}\n"
@@ -338,7 +347,7 @@ class MultiProviderFormatter:
         }
 
         start_time = self.time_func()
-        effective_timeout = min(self.timeout, 2.0)
+        effective_timeout = self._time_budget(raw_text)
         deadline = start_time + effective_timeout
 
         for attempt in range(2):
@@ -389,14 +398,16 @@ class MultiProviderFormatter:
                     time.sleep(0.2)
                     continue
 
-                tripped = self.circuit_breaker.record_failure()
+                # A slow reply (e.g. a long dictation) isn't an outage: only connection
+                # failures count toward pausing AI formatting for everyone.
+                is_timeout = isinstance(e, httpx.TimeoutException)
+                tripped = False if is_timeout else self.circuit_breaker.record_failure()
                 fallback = GeminiFormatter.light_local_cleanup(raw_text)
-                err_msg = "Timeout" if isinstance(e, httpx.TimeoutException) else "Network error"
+                err_msg = "Timeout" if is_timeout else "Network error"
                 if tripped:
                     err_msg += " (Circuit breaker paused formatting for 5m)"
                 return fallback, False, f"{err_msg}. Cleaned locally."
 
-        self.circuit_breaker.record_failure()
         fallback = GeminiFormatter.light_local_cleanup(raw_text)
         return fallback, False, "Timeout budget exceeded. Cleaned locally."
 
@@ -425,7 +436,7 @@ class MultiProviderFormatter:
         }
 
         start_time = self.time_func()
-        effective_timeout = min(self.timeout, 2.0)
+        effective_timeout = self._time_budget(raw_text)
         deadline = start_time + effective_timeout
 
         for attempt in range(2):
@@ -469,14 +480,16 @@ class MultiProviderFormatter:
                     time.sleep(0.2)
                     continue
 
-                tripped = self.circuit_breaker.record_failure()
+                # A slow reply (e.g. a long dictation) isn't an outage: only connection
+                # failures count toward pausing AI formatting for everyone.
+                is_timeout = isinstance(e, httpx.TimeoutException)
+                tripped = False if is_timeout else self.circuit_breaker.record_failure()
                 fallback = GeminiFormatter.light_local_cleanup(raw_text)
-                err_msg = "Timeout" if isinstance(e, httpx.TimeoutException) else "Network error"
+                err_msg = "Timeout" if is_timeout else "Network error"
                 if tripped:
                     err_msg += " (Circuit breaker paused formatting for 5m)"
                 return fallback, False, f"{err_msg}. Cleaned locally."
 
-        self.circuit_breaker.record_failure()
         fallback = GeminiFormatter.light_local_cleanup(raw_text)
         return fallback, False, "Timeout budget exceeded. Cleaned locally."
 
@@ -499,7 +512,7 @@ class MultiProviderFormatter:
         }
 
         start_time = self.time_func()
-        effective_timeout = min(self.timeout, 2.0)
+        effective_timeout = self._time_budget(raw_text)
         deadline = start_time + effective_timeout
 
         for attempt in range(2):
@@ -543,14 +556,16 @@ class MultiProviderFormatter:
                     time.sleep(0.2)
                     continue
 
-                tripped = self.circuit_breaker.record_failure()
+                # A slow reply (e.g. a long dictation) isn't an outage: only connection
+                # failures count toward pausing AI formatting for everyone.
+                is_timeout = isinstance(e, httpx.TimeoutException)
+                tripped = False if is_timeout else self.circuit_breaker.record_failure()
                 fallback = GeminiFormatter.light_local_cleanup(raw_text)
-                err_msg = "Timeout" if isinstance(e, httpx.TimeoutException) else "Network error"
+                err_msg = "Timeout" if is_timeout else "Network error"
                 if tripped:
                     err_msg += " (Circuit breaker paused formatting for 5m)"
                 return fallback, False, f"{err_msg}. Cleaned locally."
 
-        self.circuit_breaker.record_failure()
         fallback = GeminiFormatter.light_local_cleanup(raw_text)
         return fallback, False, "Timeout budget exceeded. Cleaned locally."
 
