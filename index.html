@@ -4,57 +4,96 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   
-  <title>Just Talk — Offline AI Voice Input for macOS & Windows</title>
-  <meta name="description" content="Talk at 160 wpm with zero latency. Audio never leaves your machine. On-device Whisper speech recognition, dynamic Action Mode, and optional Gemini formatting. Free & Open Source.">
-  <meta name="keywords" content="voice input, speech to text, whisper, offline asr, nepaliconformer, ampixa, voice typing, macos dictation, windows dictation">
+  <title>Just Talk — Free Voice Typing &amp; AI Dictation for Mac and Windows</title>
+  <meta name="description" content="Just Talk is a free, open-source voice typing app for macOS and Windows. Tap a key, speak, and clean text appears in any app — with AI grammar cleanup, Nepali &amp; Nepglish support, and a fully offline mode.">
+  <meta name="keywords" content="voice typing, dictation app, speech to text, voice to text mac, voice typing windows, AI dictation, Nepali voice typing, Nepglish, offline speech recognition, Whisper, Wispr Flow alternative, free dictation software">
   <meta name="author" content="Sahas Belbase">
-  
-  <!-- Google Search Console Verification -->
-  <meta name="google-site-verification" content="google2bd40cc1e570a7f5">
-  
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+  <meta name="theme-color" content="#0B0B0F">
+
+  <!-- Google Search Console: verified via the google2bd40cc1e570a7f5.html file in this folder -->
+
   <!-- Canonical Link -->
   <link rel="canonical" href="https://sahasbelbase.github.io/JustTalk/">
-  
+
   <!-- Favicons -->
   <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
   <link rel="icon" type="image/png" sizes="32x32" href="assets/icon.png">
   <link rel="apple-touch-icon" href="assets/icon.png">
-  
-  <!-- OpenGraph / Facebook -->
+
+  <!-- OpenGraph (absolute URLs: crawlers don't resolve relative image paths) -->
   <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Just Talk">
   <meta property="og:url" content="https://sahasbelbase.github.io/JustTalk/">
-  <meta property="og:title" content="Just Talk — Offline AI Voice Input for macOS & Windows">
-  <meta property="og:description" content="Hold Fn or Right Alt anywhere on your desktop. Type at 160 wpm. Audio stays on your machine. Optional AI cleanup sends text only.">
-  <meta property="og:image" content="assets/icon.png">
-  
-  <!-- Twitter Card -->
+  <meta property="og:title" content="Just Talk — Free Voice Typing &amp; AI Dictation for Mac and Windows">
+  <meta property="og:description" content="Tap a key, speak, and polished text appears in any app. Free and open source, with AI cleanup, Nepali support and a fully offline mode.">
+  <meta property="og:image" content="https://sahasbelbase.github.io/JustTalk/assets/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Just Talk — voice typing for Mac and Windows">
+  <meta property="og:locale" content="en_US">
+
+  <!-- Twitter / X Card -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Just Talk — Offline AI Voice Input">
-  <meta name="twitter:description" content="Talk at 160 wpm. Audio never leaves your machine. On-device Whisper speech recognition and dynamic Action Mode.">
-  <meta name="twitter:image" content="assets/icon.png">
-  
-  <!-- Schema.org JSON-LD (No fake ratings - strict adherence to Google guidelines) -->
+  <meta name="twitter:title" content="Just Talk — Free Voice Typing for Mac and Windows">
+  <meta name="twitter:description" content="Tap a key, speak, and polished text appears in any app. Free, open source, offline mode included.">
+  <meta name="twitter:image" content="https://sahasbelbase.github.io/JustTalk/assets/og-image.png">
+
+  <!-- Structured data: app, site and FAQ (no fake ratings, per Google guidelines) -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
-    "@type": "SoftwareApplication",
-    "name": "Just Talk",
-    "operatingSystem": "macOS 12.0+, Windows 10/11",
-    "applicationCategory": "UtilitiesApplication",
-    "offers": {
-      "@type": "Offer",
-      "price": "0",
-      "priceCurrency": "USD"
-    },
-    "description": "Fast, privacy-first desktop voice input. Microphone audio is processed 100% locally on your machine with faster-whisper. Optional Gemini AI formatting cleans grammar and formatting.",
-    "author": {
-      "@type": "Person",
-      "name": "Sahas Belbase",
-      "url": "https://sahas.netlify.app/"
-    },
-    "license": "https://opensource.org/licenses/MIT",
-    "softwareVersion": "2.0.1",
-    "downloadUrl": "https://github.com/sahasbelbase/JustTalk/releases"
+    "@graph": [
+      {
+        "@type": "SoftwareApplication",
+        "@id": "https://sahasbelbase.github.io/JustTalk/#app",
+        "name": "Just Talk",
+        "applicationCategory": "ProductivityApplication",
+        "applicationSubCategory": "Voice typing and dictation",
+        "operatingSystem": "macOS 12+, Windows 10, Windows 11",
+        "softwareVersion": "2.1.0",
+        "datePublished": "2026-10-06",
+        "description": "Free, open-source voice typing for macOS and Windows. Tap a key, speak, and text is typed into any app, with optional AI grammar cleanup, Nepali and Nepglish support, and a fully offline mode.",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "image": "https://sahasbelbase.github.io/JustTalk/assets/og-image.png",
+        "downloadUrl": "https://github.com/sahasbelbase/JustTalk/releases/latest",
+        "license": "https://opensource.org/licenses/MIT",
+        "isAccessibleForFree": true,
+        "author": { "@type": "Person", "name": "Sahas Belbase", "url": "https://sahas.netlify.app/" },
+        "sameAs": ["https://github.com/sahasbelbase/JustTalk"]
+      },
+      {
+        "@type": "WebSite",
+        "@id": "https://sahasbelbase.github.io/JustTalk/#website",
+        "url": "https://sahasbelbase.github.io/JustTalk/",
+        "name": "Just Talk",
+        "inLanguage": "en"
+      },
+      {
+        "@type": "FAQPage",
+        "@id": "https://sahasbelbase.github.io/JustTalk/#faq",
+        "mainEntity": [
+          {"@type": "Question", "name": "Is Just Talk really free?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Just Talk is free and open source under the MIT license. There is no subscription, no account and no usage limit. If you turn on AI formatting with a paid provider, you pay that provider directly for the text it processes."}},
+          {"@type": "Question", "name": "Does my voice recording leave my computer?", "acceptedAnswer": {"@type": "Answer", "text": "It depends on the speech engine you choose. With Pure Offline Mode, or the on-device Whisper engine, audio never leaves your computer. The built-in Apple engine uses on-device recognition when your Mac supports it for your language. The Google Web Speech engine — used for Nepali, and first on Windows when you are online — sends audio to Google to transcribe it. AI formatting only ever sends text, never audio."}},
+          {"@type": "Question", "name": "How do I start dictating?", "acceptedAnswer": {"@type": "Answer", "text": "Tap Fn on macOS or Right Alt on Windows to start, speak, then tap again to type the text into the app you are using. Prefer holding the key while you talk? Turn on “Hold the shortcut while speaking” in Settings › Shortcut. Press Esc to cancel."}},
+          {"@type": "Question", "name": "Can I dictate long messages with pauses?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Just Talk records for up to 5 minutes and keeps everything you said across pauses. In tap mode it stops on its own after 8 seconds of silence, so you can stop to think without losing your place."}},
+          {"@type": "Question", "name": "What does AI formatting do to my text?", "acceptedAnswer": {"@type": "Answer", "text": "It adds punctuation, fixes grammar and spelling, removes filler words like “um” and “you know”, and resolves self-corrections. Say “can we meet at five, actually four” and Just Talk types “Can we meet at four?”. It never summarizes or changes what you meant, and you can turn it off with one toggle."}},
+          {"@type": "Question", "name": "Which AI providers can I use?", "acceptedAnswer": {"@type": "Answer", "text": "Google Gemini, OpenAI, Anthropic Claude, xAI Grok, Groq, OpenRouter, DeepSeek, any OpenAI-compatible API (for example NVIDIA), or Ollama running locally on your computer for completely private, free cleanup. Bring your own API key — it stays on your device."}},
+          {"@type": "Question", "name": "Does Just Talk work offline?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Turn on Pure Offline Mode in Settings › Voice & Speech. Speech is transcribed by on-device models and nothing is sent over the network. Offline speech needs a one-time model download, sized to the languages you choose."}},
+          {"@type": "Question", "name": "Does it support Nepali and Nepglish?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Speak Nepali, English or a mix of both. Just Talk can type Romanized Nepali (“k cha”), Devanagari (“के छ”), or translate to English — and in Automatic mode it picks the right one for each app, such as Romanized in chat apps and Devanagari in documents."}},
+          {"@type": "Question", "name": "Which apps can I type into?", "acceptedAnswer": {"@type": "Answer", "text": "Any app with a text field: VS Code, Cursor, Slack, Chrome, Word, Notion, Gmail, WhatsApp, terminals and more. If no text field is focused, the text is copied to your clipboard so you can paste it yourself."}},
+          {"@type": "Question", "name": "Can I speak one language and get English text?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Choose “Translate to English” on the Home screen. Whatever language you speak is typed as fluent English."}},
+          {"@type": "Question", "name": "How does Action Mode work?", "acceptedAnswer": {"@type": "Answer", "text": "Press Shift while dictating to switch to Action Mode. Instead of typing your words verbatim, Just Talk follows them as an instruction — for example translating them into English."}},
+          {"@type": "Question", "name": "Why does macOS or Windows show an unidentified developer warning?", "acceptedAnswer": {"@type": "Answer", "text": "Just Talk is an independent open-source project and isn't signed with a paid Apple or Microsoft certificate. On macOS, run xattr -cr /Applications/JustTalk.app once in Terminal (or right-click the app and choose Open). On Windows, click “More info” then “Run anyway”. All source code is public on GitHub."}},
+          {"@type": "Question", "name": "What are the system requirements?", "acceptedAnswer": {"@type": "Answer", "text": "macOS 12 or later on Apple Silicon or Intel, or Windows 10/11 (64-bit), plus a microphone. On-device models need 0.5–1.5 GB of disk space, depending on the languages you choose."}},
+          {"@type": "Question", "name": "How do I update Just Talk?", "acceptedAnswer": {"@type": "Answer", "text": "Open Settings › Updates & Startup and click “Check for updates”. When a new version is available, Just Talk downloads and installs it in place and keeps all your settings, history and API keys."}},
+          {"@type": "Question", "name": "Where are my API keys and history stored?", "acceptedAnswer": {"@type": "Answer", "text": "Only on your computer, in Just Talk's private app-data folder (~/Library/Application Support/JustTalk on macOS, %APPDATA%\\JustTalk on Windows). Keys are saved with owner-only permissions and sent only to the provider you selected."}},
+          {"@type": "Question", "name": "Can I download only the languages I speak?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Pick your languages during setup or in Settings › Languages & Models, and Just Talk downloads only the models those languages need — about 460 MB if you only speak English."}},
+          {"@type": "Question", "name": "Can I use my own speech model or a local LLM?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Point Just Talk at any faster-whisper model on Hugging Face or a local folder for speech recognition, and use Ollama (for example Llama, Qwen or DeepSeek) for AI formatting with no internet and no token costs."}},
+          {"@type": "Question", "name": "How is Just Talk different from paid voice typing apps?", "acceptedAnswer": {"@type": "Answer", "text": "It is free and open source, works on both macOS and Windows, lets you choose — or run locally — the AI that cleans up your text, has a fully offline mode, and has first-class Nepali and Nepglish support."}}
+        ]
+      }
+    ]
   }
   </script>
 
@@ -80,7 +119,7 @@
         <img src="assets/icon.png" alt="Just Talk Logo" class="brand-icon">
         <div class="brand-text">
           <span class="brand-title">Just Talk</span>
-          <span class="brand-version">v2.0.1</span>
+          <span class="brand-version">v2.1.0</span>
         </div>
       </a>
 
@@ -111,18 +150,18 @@
       <!-- Release Badge -->
       <a href="https://github.com/sahasbelbase/JustTalk/releases/latest" target="_blank" rel="noopener noreferrer" class="release-pill">
         <span class="pulsing-dot" aria-hidden="true"></span>
-        <span class="release-text">v2.0.1 Available • Open Source on GitHub</span>
+        <span class="release-text">v2.1.0 — long dictation, smarter AI cleanup, redesigned app</span>
         <svg class="chevron-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
       </a>
 
       <!-- Headline -->
       <h1 class="hero-title">
         Talk at <span class="gradient-text">160 wpm</span>.<br>
-        Audio stays on your device.
+        Free voice typing for Mac &amp; Windows.
       </h1>
 
       <p class="hero-subtitle">
-        Hold <kbd>Fn</kbd> on macOS or <kbd>Right Alt</kbd> on Windows anywhere on your computer. Speak naturally. Audio is transcribed 100% locally. Optional AI cleanup formats text only, and one toggle turns it off.
+        Tap <kbd>Fn</kbd> on macOS or <kbd>Right Alt</kbd> on Windows in any app, speak naturally, and polished text appears where your cursor is. AI cleanup fixes grammar and self-corrections, and Pure Offline Mode keeps everything on your device.
       </p>
 
       <!-- Smart Download CTA -->
@@ -175,21 +214,21 @@
         <div id="mobile-notice-box" class="mobile-notice hidden">
           <p class="mobile-text">Just Talk is a desktop application for <strong>macOS</strong> and <strong>Windows</strong>.</p>
           <div class="mobile-buttons">
-            <button id="mobile-copy-btn" class="secondary-btn">📋 Copy Download Link</button>
-            <a href="https://github.com/sahasbelbase/JustTalk" target="_blank" class="secondary-btn">⭐ Star on GitHub</a>
+            <button id="mobile-copy-btn" class="secondary-btn">Copy download link</button>
+            <a href="https://github.com/sahasbelbase/JustTalk" target="_blank" class="secondary-btn">Star on GitHub</a>
           </div>
           <span id="copy-feedback" class="copy-feedback hidden">Link copied to clipboard!</span>
         </div>
 
         <!-- Trust Badges -->
         <div class="trust-row">
-          <span>✓ Audio never leaves machine</span>
+          <span>Free &amp; open source</span>
           <span class="dot-sep">•</span>
-          <span>✓ 100% Free & Open Source</span>
+          <span>Offline mode</span>
           <span class="dot-sep">•</span>
-          <span>✓ MIT License</span>
+          <span>MIT License</span>
           <span class="dot-sep">•</span>
-          <a href="#install-help" class="install-help-link">First-time install guide ℹ️</a>
+          <a href="#install-help" class="install-help-link">First-time install guide</a>
         </div>
       </div>
 
@@ -203,10 +242,10 @@
       <div class="section-header">
         <h2 class="section-title">Interactive Keyboard & HUD Simulator</h2>
         <p class="section-subtitle">
-          Click and hold the keycap below (or hold <kbd>Space</kbd> on this simulator). Hold <kbd>Shift</kbd> simultaneously to ignite ⚡ <strong>Action Mode</strong>.
+          Click and hold the keycap below (or hold <kbd>Space</kbd> on this simulator). Hold <kbd>Shift</kbd> as well to switch to <strong>Action Mode</strong>.
         </p>
         <div class="simulator-note">
-          <span>💡 <strong>Browser Simulation Note:</strong> Web browsers cannot intercept macOS <kbd>Fn</kbd> or Windows menu keys. The simulator responds to mouse/touch hold or <kbd>Space</kbd>. The native desktop app binds to system-level <kbd>Fn</kbd> (macOS) or <kbd>Right Alt</kbd> (Windows).</span>
+          <span><strong>Browser simulation:</strong> Web browsers cannot intercept macOS <kbd>Fn</kbd> or Windows menu keys. The simulator responds to mouse/touch hold or <kbd>Space</kbd>. The native desktop app binds to system-level <kbd>Fn</kbd> (macOS) or <kbd>Right Alt</kbd> (Windows).</span>
         </div>
       </div>
 
@@ -241,7 +280,7 @@
 
           <div class="keycap-legend-guide">
             <span class="guide-item"><span class="guide-dot blue"></span> Hold = Voice Dictation</span>
-            <span class="guide-item"><span class="guide-dot amber"></span> + Shift = ⚡ Action Mode</span>
+            <span class="guide-item"><span class="guide-dot amber"></span> + Shift = Action Mode</span>
           </div>
         </div>
 
@@ -297,7 +336,7 @@
               </div>
               <span class="snippet-sub">Run this one command in Terminal, or right-click <strong>JustTalk.app</strong> → click <strong>Open</strong> → click <strong>Open Anyway</strong>.</span>
             </li>
-            <li>Grant <strong>Microphone</strong> and <strong>Accessibility</strong> permissions when prompted so Just Talk can listen while holding Fn and paste into your active apps.</li>
+            <li>Grant <strong>Microphone</strong>, <strong>Accessibility</strong> and <strong>Input Monitoring</strong> when prompted so Just Talk can hear you, react to Fn, and type into your apps.</li>
           </ol>
         </div>
 
@@ -315,7 +354,7 @@
               </div>
               <span class="snippet-sub">This warning occurs for newly published open-source executables without commercial EV certificates.</span>
             </li>
-            <li>The installer runs in per-user space without requiring Administrator rights. Hold <kbd>Right Alt</kbd> to begin voice typing!</li>
+            <li>The installer runs in per-user space without requiring Administrator rights. Tap <kbd>Right Alt</kbd> to start voice typing.</li>
           </ol>
         </div>
 
@@ -329,10 +368,10 @@
     <div class="section-container">
       
       <div class="section-header">
-        <span class="eyebrow">Local-First Architecture</span>
+        <span class="eyebrow">What's inside</span>
         <h2 class="section-title">Engineered for speed, privacy, and zero distraction.</h2>
         <p class="section-subtitle">
-          Audio never touches the cloud. Faster-Whisper int8 models run directly on your hardware. Native PySide6 interface with instant cursor typing.
+          Choose the speech engine that fits you — Apple and Windows built-in recognition, Google, or Whisper running entirely on your hardware — with text typed straight into the app you're using.
         </p>
       </div>
 
@@ -345,9 +384,9 @@
             <div class="card-icon blue">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
             </div>
-            <h3 class="card-title">Sub-400ms 100% On-Device Whisper</h3>
+            <h3 class="card-title">On-Device Whisper, No Cloud Required</h3>
             <p class="card-desc">
-              CTranslate2 int8 inference executes locally utilizing ARM NEON and AVX-512 CPU/GPU acceleration. Audio streams directly into local memory and is discarded immediately after decoding.
+              With Pure Offline Mode, CTranslate2 int8 Whisper runs locally on ARM NEON and AVX-512. Audio stays in memory and is discarded immediately after decoding — nothing is sent over the network.
             </p>
             <div class="stats-row">
               <div class="stat-col">
@@ -356,7 +395,7 @@
               </div>
               <div class="stat-col">
                 <div class="stat-value green">0 KB</div>
-                <div class="stat-label">Cloud Audio Egress</div>
+                <div class="stat-label">Audio Sent in Offline Mode</div>
               </div>
               <div class="stat-col">
                 <div class="stat-value">int8</div>
@@ -400,7 +439,7 @@
             </div>
             <h3 class="card-title">Universal Cursor Insertion</h3>
             <p class="card-desc">
-              Types text into whatever app is currently active (VS Code, Slack, Notion, browsers, terminals). Existing clipboard contents are restored automatically 50ms after paste.
+              Types text into whatever app is currently active (VS Code, Slack, Notion, browsers, terminals). Your clipboard is restored automatically, and long dictations are kept whole across pauses.
             </p>
           </div>
         </div>
@@ -449,9 +488,9 @@
 
       <!-- Roadmap Note for upcoming neural isolation models -->
       <div class="roadmap-box">
-        <div class="roadmap-badge">In Active Research & Development</div>
+        <div class="roadmap-badge">Voice isolation</div>
         <p class="roadmap-text">
-          We are currently prototyping <strong>DeepFilterNet v3</strong> real-time noise cancellation and <strong>WeSpeaker CAM++</strong> speaker biometric enrollment in our lab to isolate your voice in noisy offices. These features will roll out in upcoming minor releases once fully benchmarked.
+          <strong>DeepFilterNet v3</strong> noise and echo removal and <strong>WeSpeaker CAM++</strong> speaker recognition are available in Settings › Voice Isolation, so Just Talk can focus on your voice in noisy rooms.
         </p>
       </div>
 
@@ -465,7 +504,7 @@
       <div class="ampixa-flex">
         <div class="ampixa-copy">
           <div class="ampixa-badge">
-            <span>🇳🇵 Specialized Speech Engine</span>
+            <span>Specialized Nepali speech engine</span>
           </div>
           <h2 class="ampixa-title">
             Ampixa NepaliConformer: Natural Conversational Nepali.
@@ -498,7 +537,7 @@
           </div>
 
           <p class="ampixa-sub">
-            Combined with optional Gemini formatting, mixed Nepglish (e.g. <em>"yo code ma error aayo, fix garnu paryo"</em>) is smoothly cleaned and formatted into fluent Devanagari or clean English.
+            Combined with optional AI formatting, mixed Nepglish (e.g. <em>"yo code ma error aayo, fix garnu paryo"</em>) is smoothly cleaned and formatted into fluent Devanagari or clean English.
           </p>
         </div>
 
@@ -536,26 +575,26 @@
           <tbody>
             <tr>
               <td class="td-feature">On-Device Audio Privacy</td>
-              <td class="td-highlight green">✓ 100% on-device (0 audio egress)</td>
-              <td class="td-red">✗ Streams raw audio to cloud</td>
+              <td class="td-highlight green">Pure Offline Mode: 0 audio sent</td>
+              <td class="td-red">Streams audio to the cloud</td>
               <td class="td-muted">Partial (device dependent)</td>
             </tr>
             <tr>
               <td class="td-feature">Dynamic Action Mode (Fn + Shift)</td>
-              <td class="td-highlight green">✓ Instant on-the-fly toggle</td>
-              <td class="td-red">✗ Requires clicking dropdowns</td>
-              <td class="td-red">✗ Unsupported</td>
+              <td class="td-highlight green">Instant on-the-fly toggle</td>
+              <td class="td-red">Requires clicking dropdowns</td>
+              <td class="td-red">Unsupported</td>
             </tr>
             <tr>
               <td class="td-feature">Conversational Nepali & Nepglish</td>
-              <td class="td-highlight green">✓ Ampixa Conformer Engine (33.8% WER)</td>
-              <td class="td-red">✗ High error rates on slang/code</td>
-              <td class="td-red">✗ Unsupported</td>
+              <td class="td-highlight green">Nepglish, Devanagari &amp; English output</td>
+              <td class="td-red">High error rates on slang and code-switching</td>
+              <td class="td-red">Unsupported</td>
             </tr>
             <tr>
               <td class="td-feature">Pure Offline Operation</td>
-              <td class="td-highlight green">✓ Single toggle disables all external calls</td>
-              <td class="td-red">✗ Requires active internet connection</td>
+              <td class="td-highlight green">One toggle disables all network calls</td>
+              <td class="td-red">Requires an internet connection</td>
               <td class="td-muted">Basic language models only</td>
             </tr>
             <tr>
@@ -582,21 +621,21 @@
 
       <div class="privacy-grid">
         <div class="privacy-card">
-          <h3 class="privacy-card-title">🎙️ Audio Recording</h3>
+          <h3 class="privacy-card-title">Audio recording</h3>
           <p class="privacy-card-desc">
-            Your microphone is only recorded while your trigger key is physically held down. Audio is stored in volatile RAM, processed locally by faster-whisper, and immediately cleared. Audio files are never written to disk or sent across the internet.
+            Your microphone is only recorded while dictation is active. Audio is kept in memory and cleared after transcription — it is never saved to disk. Whether audio is sent to a speech service depends on the engine you pick; Pure Offline Mode keeps it on your computer.
           </p>
         </div>
         <div class="privacy-card">
-          <h3 class="privacy-card-title">🔑 API Keys & Local Config</h3>
+          <h3 class="privacy-card-title">API keys &amp; settings</h3>
           <p class="privacy-card-desc">
-            If you choose to enable AI formatting, your Gemini API key is saved locally in your user folder at <code>~/.just_talk/config.json</code> with restrictive file permissions. It is only sent directly to Google's official Gemini endpoint.
+            API keys for AI formatting are stored only on your computer, in Just Talk's private app-data folder with owner-only permissions, and are sent only to the provider you selected. AI formatting sends text, never audio.
           </p>
         </div>
         <div class="privacy-card">
-          <h3 class="privacy-card-title">🛡️ Pure Offline Mode</h3>
+          <h3 class="privacy-card-title">Pure Offline Mode</h3>
           <p class="privacy-card-desc">
-            If you handle sensitive medical records, proprietary code, or confidential legal documents, toggle <strong>Pure Offline Mode</strong>. Just Talk will bypass all cloud APIs entirely and paste raw Whisper transcriptions directly into your active cursor.
+            If you handle sensitive medical records, proprietary code, or confidential legal documents, toggle <strong>Pure Offline Mode</strong>. Just Talk bypasses every cloud service and types on-device transcriptions straight into your app.
           </p>
         </div>
       </div>
@@ -616,51 +655,181 @@
       <div class="faq-accordion">
         <details class="faq-item">
           <summary class="faq-question">
-            <span>Does my voice audio ever get uploaded to the cloud?</span>
-            <span class="faq-arrow" aria-hidden="true">▾</span>
+            <span>Is Just Talk really free?</span>
+            <svg class="faq-arrow" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5"/></svg>
           </summary>
           <div class="faq-answer">
-            <p>No. Your microphone audio is processed 100% locally on your computer using faster-whisper and CTranslate2. In standard AI formatting mode, only the raw transcribed text (not your voice recording) is sent to Gemini for grammar cleanup. You can also turn on Pure Offline Mode in Settings for zero network requests.</p>
+            <p>Yes. Just Talk is free and open source under the MIT license. There is no subscription, no account and no usage limit. If you turn on AI formatting with a paid provider, you pay that provider directly for the text it processes.</p>
           </div>
         </details>
 
         <details class="faq-item">
           <summary class="faq-question">
-            <span>Why does macOS or Windows show an untrusted developer warning?</span>
-            <span class="faq-arrow" aria-hidden="true">▾</span>
+            <span>Does my voice recording leave my computer?</span>
+            <svg class="faq-arrow" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5"/></svg>
           </summary>
           <div class="faq-answer">
-            <p>Just Talk is a community-driven open source project released under the MIT license. We do not charge subscriptions or purchase commercial signing certificates ($99/year Apple Developer, $400/year Windows EV). On macOS, run <code>xattr -cr /Applications/JustTalk.app</code> once. On Windows, click "More info" then "Run anyway". All source code is completely open for audit on GitHub.</p>
+            <p>It depends on the speech engine you choose. With Pure Offline Mode, or the on-device Whisper engine, audio never leaves your computer. The built-in Apple engine uses on-device recognition when your Mac supports it for your language. The Google Web Speech engine — used for Nepali, and first on Windows when you are online — sends audio to Google to transcribe it. AI formatting only ever sends text, never audio.</p>
           </div>
         </details>
 
         <details class="faq-item">
           <summary class="faq-question">
-            <span>How does Dynamic Action Mode work?</span>
-            <span class="faq-arrow" aria-hidden="true">▾</span>
+            <span>How do I start dictating?</span>
+            <svg class="faq-arrow" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5"/></svg>
           </summary>
           <div class="faq-answer">
-            <p>Hold <kbd>Fn</kbd> on macOS or <kbd>Right Alt</kbd> on Windows to start dictation. If you press <kbd>Shift</kbd> while speaking, the floating HUD turns amber-gold into ⚡ Action Mode. When released, Just Talk instructs the AI to translate your speech into fluent English or execute commands instead of verbatim dictation.</p>
+            <p>Tap <kbd>Fn</kbd> on macOS or <kbd>Right Alt</kbd> on Windows to start, speak, then tap again to type the text into the app you are using. Prefer holding the key while you talk? Turn on “Hold the shortcut while speaking” in Settings › Shortcut. Press <kbd>Esc</kbd> to cancel.</p>
           </div>
         </details>
 
         <details class="faq-item">
           <summary class="faq-question">
-            <span>Can I download only the language models I actually speak?</span>
-            <span class="faq-arrow" aria-hidden="true">▾</span>
+            <span>Can I dictate long messages with pauses?</span>
+            <svg class="faq-arrow" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5"/></svg>
           </summary>
           <div class="faq-answer">
-            <p>Yes! During onboarding and in the Settings panel, you select your spoken languages. If you only select English, Just Talk downloads only the English model (~460 MB), saving over 1 GB of storage and memory.</p>
+            <p>Yes. Just Talk records for up to 5 minutes and keeps everything you said across pauses. In tap mode it stops on its own after 8 seconds of silence, so you can stop to think without losing your place.</p>
           </div>
         </details>
 
         <details class="faq-item">
           <summary class="faq-question">
-            <span>Can I Bring My Own Model (BYOM) or run local LLMs like Ollama?</span>
-            <span class="faq-arrow" aria-hidden="true">▾</span>
+            <span>What does AI formatting do to my text?</span>
+            <svg class="faq-arrow" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5"/></svg>
           </summary>
           <div class="faq-answer">
-            <p>Yes! Just Talk gives you complete control over your models. In Settings, you can switch AI formatting to <strong>Ollama (100% On-Device)</strong> to use models like Llama 3.2, Qwen 2.5, or DeepSeek R1 with zero internet access and zero token costs. For speech recognition, you can specify any custom Hugging Face repo ID or local CTranslate2 directory with live latency benchmarking.</p>
+            <p>It adds punctuation, fixes grammar and spelling, removes filler words like “um” and “you know”, and resolves self-corrections. Say “can we meet at five, actually four” and Just Talk types “Can we meet at four?”. It never summarizes or changes what you meant, and you can turn it off with one toggle.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary class="faq-question">
+            <span>Which AI providers can I use?</span>
+            <svg class="faq-arrow" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5"/></svg>
+          </summary>
+          <div class="faq-answer">
+            <p>Google Gemini, OpenAI, Anthropic Claude, xAI Grok, Groq, OpenRouter, DeepSeek, any OpenAI-compatible API (for example NVIDIA), or Ollama running locally on your computer for completely private, free cleanup. Bring your own API key — it stays on your device.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary class="faq-question">
+            <span>Does Just Talk work offline?</span>
+            <svg class="faq-arrow" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5"/></svg>
+          </summary>
+          <div class="faq-answer">
+            <p>Yes. Turn on Pure Offline Mode in Settings › Voice &amp; Speech. Speech is transcribed by on-device models and nothing is sent over the network. Offline speech needs a one-time model download, sized to the languages you choose.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary class="faq-question">
+            <span>Does it support Nepali and Nepglish?</span>
+            <svg class="faq-arrow" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5"/></svg>
+          </summary>
+          <div class="faq-answer">
+            <p>Yes. Speak Nepali, English or a mix of both. Just Talk can type Romanized Nepali (“k cha”), Devanagari (“के छ”), or translate to English — and in Automatic mode it picks the right one for each app, such as Romanized in chat apps and Devanagari in documents.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary class="faq-question">
+            <span>Which apps can I type into?</span>
+            <svg class="faq-arrow" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5"/></svg>
+          </summary>
+          <div class="faq-answer">
+            <p>Any app with a text field: VS Code, Cursor, Slack, Chrome, Word, Notion, Gmail, WhatsApp, terminals and more. If no text field is focused, the text is copied to your clipboard so you can paste it yourself.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary class="faq-question">
+            <span>Can I speak one language and get English text?</span>
+            <svg class="faq-arrow" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5"/></svg>
+          </summary>
+          <div class="faq-answer">
+            <p>Yes. Choose “Translate to English” on the Home screen. Whatever language you speak is typed as fluent English.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary class="faq-question">
+            <span>How does Action Mode work?</span>
+            <svg class="faq-arrow" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5"/></svg>
+          </summary>
+          <div class="faq-answer">
+            <p>Press <kbd>Shift</kbd> while dictating to switch to Action Mode. Instead of typing your words verbatim, Just Talk follows them as an instruction — for example translating them into English.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary class="faq-question">
+            <span>Why does macOS or Windows show an unidentified developer warning?</span>
+            <svg class="faq-arrow" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5"/></svg>
+          </summary>
+          <div class="faq-answer">
+            <p>Just Talk is an independent open-source project and isn't signed with a paid Apple or Microsoft certificate. On macOS, run <code>xattr -cr /Applications/JustTalk.app</code> once in Terminal (or right-click the app and choose Open). On Windows, click “More info” then “Run anyway”. All source code is public on GitHub.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary class="faq-question">
+            <span>What are the system requirements?</span>
+            <svg class="faq-arrow" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5"/></svg>
+          </summary>
+          <div class="faq-answer">
+            <p>macOS 12 or later on Apple Silicon or Intel, or Windows 10/11 (64-bit), plus a microphone. On-device models need 0.5–1.5 GB of disk space, depending on the languages you choose.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary class="faq-question">
+            <span>How do I update Just Talk?</span>
+            <svg class="faq-arrow" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5"/></svg>
+          </summary>
+          <div class="faq-answer">
+            <p>Open Settings › Updates &amp; Startup and click “Check for updates”. When a new version is available, Just Talk downloads and installs it in place and keeps all your settings, history and API keys.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary class="faq-question">
+            <span>Where are my API keys and history stored?</span>
+            <svg class="faq-arrow" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5"/></svg>
+          </summary>
+          <div class="faq-answer">
+            <p>Only on your computer, in Just Talk's private app-data folder (<code>~/Library/Application Support/JustTalk</code> on macOS, <code>%APPDATA%\JustTalk</code> on Windows). Keys are saved with owner-only permissions and sent only to the provider you selected.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary class="faq-question">
+            <span>Can I download only the languages I speak?</span>
+            <svg class="faq-arrow" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5"/></svg>
+          </summary>
+          <div class="faq-answer">
+            <p>Yes. Pick your languages during setup or in Settings › Languages &amp; Models, and Just Talk downloads only the models those languages need — about 460 MB if you only speak English.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary class="faq-question">
+            <span>Can I use my own speech model or a local LLM?</span>
+            <svg class="faq-arrow" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5"/></svg>
+          </summary>
+          <div class="faq-answer">
+            <p>Yes. Point Just Talk at any faster-whisper model on Hugging Face or a local folder for speech recognition, and use Ollama (for example Llama, Qwen or DeepSeek) for AI formatting with no internet and no token costs.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary class="faq-question">
+            <span>How is Just Talk different from paid voice typing apps?</span>
+            <svg class="faq-arrow" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5"/></svg>
+          </summary>
+          <div class="faq-answer">
+            <p>It is free and open source, works on both macOS and Windows, lets you choose — or run locally — the AI that cleans up your text, has a fully offline mode, and has first-class Nepali and Nepglish support.</p>
           </div>
         </details>
       </div>

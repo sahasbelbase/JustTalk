@@ -1526,6 +1526,9 @@ a {
 }
 
 .faq-arrow {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
   color: rgba(255, 255, 255, 0.4);
   transition: transform 0.2s ease;
 }
