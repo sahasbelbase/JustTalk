@@ -56,7 +56,7 @@
           copyFeedback.classList.remove('hidden');
           setTimeout(() => copyFeedback.classList.add('hidden'), 3000);
         } catch (_) {
-          copyFeedback.textContent = 'Visit on desktop: justtalk.sahasbelbase.com';
+          copyFeedback.textContent = 'Visit on desktop: ' + (window.location.host || 'sahasbelbase.github.io/JustTalk');
           copyFeedback.classList.remove('hidden');
         }
       });

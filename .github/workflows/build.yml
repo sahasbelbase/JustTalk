@@ -3,9 +3,17 @@ name: Build Desktop Installers (macOS & Windows)
 on:
   push:
     branches: [ main ]
+    paths-ignore:
+      - 'website/**'
+      - '.github/workflows/**'
+      - 'README.md'
     tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
+    paths-ignore:
+      - 'website/**'
+      - '.github/workflows/**'
+      - 'README.md'
   workflow_dispatch:
 
 jobs:
