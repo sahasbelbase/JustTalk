@@ -125,7 +125,7 @@
     nepali: {
       raw: 'yo code ma error aayo bro fast check garera fix garnu paryo',
       formatted: 'यो कोडमा त्रुटि आयो, कृपया तुरुन्तै जाँच गरी समाधान गर्नुहोस्।',
-      desc: 'Transcribed with Ampixa NepaliConformer Engine (33.8% WER on conversational phone speech).'
+      desc: 'Transcribed offline with Kriti, the open Nepali speech model by Naamche Labs.'
     },
     action: {
       raw: 'Action Mode: translate to english: mero laptop ko battery dherai xito sakinxa',
