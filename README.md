@@ -1,4 +1,4 @@
-# Just Talk (v2.2.0)
+# Just Talk (v2.3.0)
 
 > **A fast, quiet voice keyboard for macOS and Windows.**  
 > Think → Speak → Done.
@@ -27,14 +27,22 @@ Download the latest version of Just Talk directly for your operating system:
 
 ---
 
-## What's New in Version 2.2.0
+## What's New in Version 2.3.0
+
+* **Simpler language setup:** Tell Just Talk once which languages you speak (Settings › Languages), then pick what you're typing in right now from the **Typing in** buttons on Home or the tray menu — English, नेपाली, or Mixed — with a single **Translate to English** switch. Settings that used to contradict each other can no longer get out of step, and English stays the default.
+* **Kriti offline Nepali engine:** Nepali dictation can now run fully on your computer with [Kriti](https://github.com/Naamche-Labs/kriti) by Naamche Labs. On our test recordings it made 0 word errors where the cloud engine made 4, including on low and noisy speech and mixed Nepglish. One-click download (475 MB) from Home.
+* **Voice isolation that keeps your words:** Re-designed voice enrollment (three phrases, live microphone meter, quality checks) and smarter matching. Your own dictations are no longer dropped as "background voice"; only clearly different voices are ignored, and if one was you, press Paste Last Dictation to get it back.
+* **More voice edits:** Select text and say "polish this prompt", "fix grammar", "fix this query" (SQL) or "fix this code". Turning a list into a paragraph and back now works reliably, and Action Mode no longer switches itself off when you release Shift.
+* **Fixes:** Nepali speech is no longer sent to an English recogniser; expanded History entries no longer fill the screen.
+
+## Previous Release: 2.2.0
 
 * **Edit selected text by voice:** Select text in any app, hold your shortcut + **Shift**, and say what to change ("make this shorter", "make it polite", "translate to Nepali", "turn this into bullet points"). Just Talk rewrites the selection in place. With nothing selected, Action Mode works as before.
 * **Paste last dictation:** Press **Ctrl + Cmd + V** (macOS) or **Win + Alt + V** (Windows) to type your last dictation again into whatever app is focused, handy when the cursor was in the wrong place. The tray menu also has **Copy Last Dictation**.
 * **AI no longer answers your dictation:** Speech that sounds like a question ("give me an overview… what do you think?") is now cleaned up as text instead of being answered or replaced by a line like "I will translate the spoken transcript…".
 * **Windows fixes:** Turning on "Open Just Talk at login" no longer gets the app flagged and removed by antivirus (it now uses a Startup-folder shortcut), and reopening the window keeps the page you were on instead of jumping to Home.
 
-## Previous Release: 2.1.0
+## Earlier Release: 2.1.0
 
 * **Long dictation that keeps everything:** Speak for up to 5 minutes with pauses. Long audio is split at natural pauses and stitched back together, so nothing said before a pause is lost or repeated. In tap mode, recording stops after 8 seconds of silence (was 4.5 s).
 * **Smarter AI cleanup:** Self-corrections are resolved ("meet at five, actually four" → "Can we meet at four?"), grammar and spelling are fixed Grammarly-style, and long dictations get more time instead of falling back to "inserted offline". Slow replies no longer pause AI formatting for everyone.

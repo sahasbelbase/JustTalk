@@ -51,7 +51,7 @@
         "applicationCategory": "ProductivityApplication",
         "applicationSubCategory": "Voice typing and dictation",
         "operatingSystem": "macOS 12+, Windows 10, Windows 11",
-        "softwareVersion": "2.2.0",
+        "softwareVersion": "2.3.0",
         "datePublished": "2026-10-07",
         "description": "Free, open-source voice typing for macOS and Windows. Tap a key, speak, and text is typed into any app, with optional AI grammar cleanup, Nepali and Nepglish support, and a fully offline mode.",
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
@@ -80,7 +80,8 @@
           {"@type": "Question", "name": "What does AI formatting do to my text?", "acceptedAnswer": {"@type": "Answer", "text": "It adds punctuation, fixes grammar and spelling, removes filler words like “um” and “you know”, and resolves self-corrections. Say “can we meet at five, actually four” and Just Talk types “Can we meet at four?”. It never summarizes or changes what you meant, and you can turn it off with one toggle."}},
           {"@type": "Question", "name": "Which AI providers can I use?", "acceptedAnswer": {"@type": "Answer", "text": "Google Gemini, OpenAI, Anthropic Claude, xAI Grok, Groq, OpenRouter, DeepSeek, any OpenAI-compatible API (for example NVIDIA), or Ollama running locally on your computer for completely private, free cleanup. Bring your own API key — it stays on your device."}},
           {"@type": "Question", "name": "Does Just Talk work offline?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Turn on Pure Offline Mode in Settings › Voice & Speech. Speech is transcribed by on-device models and nothing is sent over the network. Offline speech needs a one-time model download, sized to the languages you choose."}},
-          {"@type": "Question", "name": "Does it support Nepali and Nepglish?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Speak Nepali, English or a mix of both. Just Talk can type Romanized Nepali (“k cha”), Devanagari (“के छ”), or translate to English — and in Automatic mode it picks the right one for each app, such as Romanized in chat apps and Devanagari in documents."}},
+          {"@type": "Question", "name": "How do I switch between English and Nepali?", "acceptedAnswer": {"@type": "Answer", "text": "Tick the languages you speak once in Settings › Languages. Then choose what you are typing in right now with the Typing in buttons on the Home screen (English, नेपाली or Mixed) or from the tray / menu bar icon. Turn on Translate to English if you want any language typed in English."}},
+          {"@type": "Question", "name": "Does it support Nepali and Nepglish?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Speak Nepali, English or a mix of both. Nepali can be recognised fully offline by Kriti, the open Nepali speech model by Naamche Labs. Just Talk can type Romanized Nepali (“k cha”), Devanagari (“के छ”), or translate to English — and in Automatic mode it picks the right one for each app, such as Romanized in chat apps and Devanagari in documents."}},
           {"@type": "Question", "name": "Which apps can I type into?", "acceptedAnswer": {"@type": "Answer", "text": "Any app with a text field: VS Code, Cursor, Slack, Chrome, Word, Notion, Gmail, WhatsApp, terminals and more. If no text field is focused, the text is copied to your clipboard so you can paste it yourself."}},
           {"@type": "Question", "name": "Can I speak one language and get English text?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Choose “Translate to English” on the Home screen. Whatever language you speak is typed as fluent English."}},
           {"@type": "Question", "name": "How does Action Mode work?", "acceptedAnswer": {"@type": "Answer", "text": "Press Shift while dictating to switch to Action Mode. Instead of typing your words verbatim, Just Talk follows them as an instruction — for example translating them into English."}},
@@ -121,7 +122,7 @@
         <img src="assets/icon.png" alt="Just Talk Logo" class="brand-icon">
         <div class="brand-text">
           <span class="brand-title">Just Talk</span>
-          <span class="brand-version">v2.2.0</span>
+          <span class="brand-version">v2.3.0</span>
         </div>
       </a>
 
@@ -152,7 +153,7 @@
       <!-- Release Badge -->
       <a href="https://github.com/sahasbelbase/JustTalk/releases/latest" target="_blank" rel="noopener noreferrer" class="release-pill">
         <span class="pulsing-dot" aria-hidden="true"></span>
-        <span class="release-text">v2.2.0 — edit selected text by voice, paste last dictation</span>
+        <span class="release-text">v2.3.0 — offline Nepali with Kriti, simpler language setup</span>
         <svg class="chevron-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
       </a>
 
@@ -727,11 +728,21 @@
 
         <details class="faq-item">
           <summary class="faq-question">
+            <span>How do I switch between English and Nepali?</span>
+            <svg class="faq-arrow" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5"/></svg>
+          </summary>
+          <div class="faq-answer">
+            <p>Tick the languages you speak once in <strong>Settings › Languages</strong>. Then choose what you are typing in right now with the <strong>Typing in</strong> buttons on the Home screen (English, नेपाली or Mixed) or from the tray / menu bar icon. Turn on <strong>Translate to English</strong> if you want any language typed in English.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary class="faq-question">
             <span>Does it support Nepali and Nepglish?</span>
             <svg class="faq-arrow" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5"/></svg>
           </summary>
           <div class="faq-answer">
-            <p>Yes. Speak Nepali, English or a mix of both. Just Talk can type Romanized Nepali (“k cha”), Devanagari (“के छ”), or translate to English — and in Automatic mode it picks the right one for each app, such as Romanized in chat apps and Devanagari in documents.</p>
+            <p>Yes. Speak Nepali, English or a mix of both. Nepali can be recognised fully offline by Kriti, the open Nepali speech model by Naamche Labs. Just Talk can type Romanized Nepali (“k cha”), Devanagari (“के छ”), or translate to English — and in Automatic mode it picks the right one for each app, such as Romanized in chat apps and Devanagari in documents.</p>
           </div>
         </details>
 
