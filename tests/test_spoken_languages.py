@@ -1,6 +1,7 @@
 """Unit tests for spoken language selection, selective downloads, and Ampixa NepaliConformer."""
 
 from pathlib import Path
+import pytest
 import numpy as np
 
 from just_talk.config import AppConfig, CORE_SPOKEN_LANGUAGES
@@ -145,3 +146,25 @@ def test_conformer_engine_reports_unavailable_without_nemo(tmp_path, monkeypatch
     assert engine.load() is False
     assert not engine.is_loaded()
     assert "NeMo" in engine.loading_status
+
+
+@pytest.mark.parametrize(
+    "language, spoken, mode, provider, expected",
+    [
+        # The reported bug: Nepali-only speaker, dictation language left on English, translate on
+        ("en", ["ne"], "translate", "google_web", "ne"),
+        ("en", ["ne"], "transcribe", "google_web", "ne"),
+        ("auto", ["ne"], "transcribe", "os_native", "ne"),
+        # Mixed Nepali + English on a single-locale engine -> Nepali locale
+        ("ne_en", ["en", "ne"], "transcribe", "google_web", "ne"),
+        # Whisper auto-detects mixed speech itself
+        ("ne_en", ["en", "ne"], "transcribe", "whisper", None),
+        # Unchanged: English speaker, explicit languages
+        ("en", ["en"], "transcribe", "google_web", "en"),
+        ("de", ["en", "de"], "transcribe", "google_web", "de"),
+        ("en", ["en", "ne"], "translate", "whisper", None),
+    ],
+)
+def test_stt_language_follows_spoken_languages(language, spoken, mode, provider, expected):
+    config = AppConfig(language=language, spoken_languages=spoken, stt_provider=provider)
+    assert config.stt_language(mode == "translate") == expected

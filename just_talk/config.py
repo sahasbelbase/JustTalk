@@ -336,6 +336,31 @@ class AppConfig:
             print(f"[Config] Error loading config: {e}. Falling back to defaults.", file=sys.stderr)
             return cls()
 
+    def stt_language(self, is_translation_mode: bool) -> Optional[str]:
+        """
+        Language code to pass to the speech engine (None = let the engine auto-detect).
+
+        Engines like Google's fall back to English when given no language, so Nepali speech
+        from someone who only speaks Nepali came out as English nonsense ("man boli office
+        Chanchal"). The selected spoken languages settle it when the dictation language is
+        auto, mixed, or contradicts them.
+        """
+        cur = (self.language or "").lower()
+        if is_translation_mode:
+            lang = None if cur in ("auto", "none", "en", "ne_en", "") else cur
+        elif cur in ("ne_en", "auto", "none", ""):
+            lang = None
+        else:
+            lang = cur
+
+        spoken = [s for s in (self.spoken_languages or []) if s]
+        if len(spoken) == 1 and (lang is None or lang != spoken[0]):
+            return spoken[0]
+        if lang is None and self.stt_provider != "whisper" and "ne" in spoken and cur in ("ne", "ne_en"):
+            # Google/Apple need one locale; Nepali models cope with English loanwords, not vice versa
+            return "ne"
+        return lang
+
     def save(self) -> None:
         """Persist current configuration to disk as JSON."""
         path = self.get_config_path()

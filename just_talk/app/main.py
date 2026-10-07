@@ -584,8 +584,7 @@ class JustTalkApp:
             last_audio_samples = len(cur_audio)
 
             try:
-                cur_lang = getattr(self.config, "language", "en")
-                lang = None if cur_lang in ("auto", "none", "en", "ne_en", "", None) else cur_lang
+                lang = self.config.stt_language(getattr(self.config, "speech_mode", "transcribe") == "translate")
                 task = "transcribe"
 
                 partial_text = ""
@@ -802,15 +801,7 @@ class JustTalkApp:
             task = "translate" if (is_translation_mode and not use_gemini) else "transcribe"
 
             cur_lang = getattr(self.config, "language", "en")
-            if is_translation_mode:
-                # In translation mode, input speech is multilingual (Nepali, English, or mixed).
-                # Never constrain Whisper to English acoustic models when translating into English!
-                lang = None if cur_lang in ("auto", "none", "en", "ne_en", "", None) else cur_lang
-            elif cur_lang in ("ne_en", "auto", "none", "", None):
-                # In transcribe mode with Mixed Nepali + English or auto, let Whisper decode both languages
-                lang = None
-            else:
-                lang = cur_lang
+            lang = self.config.stt_language(is_translation_mode)
 
             if is_translation_mode or is_action_mode:
                 self.bridge.state_processing.emit("Translating speech to English...")

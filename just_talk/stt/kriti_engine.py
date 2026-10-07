@@ -20,16 +20,18 @@ from .engine import STTEngine
 
 KRITI_RELEASE_TAG = "onnx-v1"
 KRITI_RELEASE_URL = f"https://github.com/sahasbelbase/kriti/releases/download/{KRITI_RELEASE_TAG}"
-KRITI_QUANTIZED = True
+# fp32: identical to Kriti's NeMo output on every parity clip. Per-channel int8 drifted
+# (19.8% word error vs the original, up to 47% on phone audio), so it is not used.
+KRITI_QUANTIZED = False
 KRITI_FILES = (
-    "encoder.int8.onnx",
-    "decoder.int8.onnx",
-    "joint.int8.onnx",
+    "encoder.onnx",
+    "decoder.onnx",
+    "joint.onnx",
     "model_config.json",
     "tokens.json",
     "punctuation_head.json",
 )
-KRITI_DOWNLOAD_MB = 135
+KRITI_DOWNLOAD_MB = 475
 
 
 def kriti_model_dir(models_dir: Path) -> Path:

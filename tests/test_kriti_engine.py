@@ -57,10 +57,10 @@ def test_download_verifies_and_installs_every_file(tmp_path, monkeypatch, releas
 
 
 def test_tampered_file_is_rejected_and_not_installed(tmp_path, monkeypatch, release_files):
-    _patch_client(monkeypatch, _fake_release(release_files, tamper="encoder.int8.onnx"))
+    _patch_client(monkeypatch, _fake_release(release_files, tamper=KRITI_FILES[0]))
     ok, msg = download_kriti(tmp_path)
     assert not ok and "integrity" in msg
-    assert not (kriti_model_dir(tmp_path) / "encoder.int8.onnx").exists()
+    assert not (kriti_model_dir(tmp_path) / KRITI_FILES[0]).exists()
     assert not is_kriti_downloaded(tmp_path)
 
 
