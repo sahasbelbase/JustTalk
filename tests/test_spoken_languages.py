@@ -91,3 +91,57 @@ def test_nepali_conformer_engine_lifecycle(tmp_path: Path):
     # Empty audio returns empty string
     empty_result = engine.transcribe(np.zeros(0, dtype=np.float32))
     assert empty_result == ""
+
+
+def test_saved_conformer_choice_falls_back_to_whisper_without_runtime(tmp_path, monkeypatch):
+    """The gated .nemo download can't run without NeMo, so a saved 'conformer' choice is migrated."""
+    import json
+
+    import just_talk.stt.model_manager as mm_mod
+
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(json.dumps({"spoken_languages": ["ne"], "nepali_asr_engine": "conformer"}))
+    monkeypatch.setattr(AppConfig, "get_config_path", classmethod(lambda cls: cfg_path))
+    monkeypatch.setattr(mm_mod, "nepali_conformer_runtime_available", lambda: False)
+
+    config = AppConfig.load()
+    assert config.nepali_asr_engine == "whisper"
+    assert "nepali_conformer" not in config.get_required_model_tiers()  # no 462 MB download that can't run
+    assert json.loads(cfg_path.read_text())["nepali_asr_engine"] == "whisper"  # persisted
+
+
+def test_saved_conformer_choice_kept_when_runtime_present(tmp_path, monkeypatch):
+    import json
+
+    import just_talk.stt.model_manager as mm_mod
+
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(json.dumps({"nepali_asr_engine": "conformer"}))
+    monkeypatch.setattr(AppConfig, "get_config_path", classmethod(lambda cls: cfg_path))
+    monkeypatch.setattr(mm_mod, "nepali_conformer_runtime_available", lambda: True)
+
+    assert AppConfig.load().nepali_asr_engine == "conformer"
+
+
+def test_conformer_engine_reports_unavailable_without_nemo(tmp_path, monkeypatch):
+    """No more fake 'Hybrid Bridge' ready state that silently used Whisper."""
+    mm = ModelManager(models_dir=tmp_path)
+    engine = NepaliConformerEngine(model_manager=mm)
+    model_dir = mm.get_model_path("nepali_conformer")
+    model_dir.mkdir(parents=True, exist_ok=True)
+    (model_dir / "nepali_conformer_offline.nemo").write_bytes(b"0" * 2048)
+    monkeypatch.setattr(mm, "is_model_downloaded", lambda tier: True)
+
+    import builtins
+
+    real_import = builtins.__import__
+
+    def no_nemo(name, *args, **kwargs):
+        if name.startswith("nemo"):
+            raise ImportError("No module named 'nemo'")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", no_nemo)
+    assert engine.load() is False
+    assert not engine.is_loaded()
+    assert "NeMo" in engine.loading_status

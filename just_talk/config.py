@@ -316,8 +316,19 @@ class AppConfig:
 
             config = cls(**filtered)
 
-            # Re-save if legacy keys were stripped
-            if migrated_key:
+            needs_save = bool(migrated_key)
+            if config.nepali_asr_engine == "conformer":
+                from .stt.model_manager import nepali_conformer_runtime_available
+
+                if not nepali_conformer_runtime_available():
+                    # The gated .nemo download can't run without NeMo; it only produced
+                    # HTTP 401 errors and then silently used Whisper anyway.
+                    print("[Config] NepaliConformer runtime unavailable; using Whisper for Nepali.", file=sys.stderr)
+                    config.nepali_asr_engine = "whisper"
+                    needs_save = True
+
+            # Re-save if legacy keys were stripped or settings were migrated
+            if needs_save:
                 config.save()
 
             return config

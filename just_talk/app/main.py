@@ -45,7 +45,7 @@ from ..database.history import HistoryDatabase
 from ..security import CredentialManager
 from ..shortcuts.manager import ShortcutManager
 from ..stt import create_stt_engine_for_config, get_native_stt_engine
-from ..stt.model_manager import ModelManager
+from ..stt.model_manager import ModelManager, nepali_conformer_runtime_available
 from ..stt.nepali_conformer import NepaliConformerEngine
 from ..stt.whisper_engine import WhisperSTTEngine
 from ..system.audio_ducker import SystemAudioDucker
@@ -814,7 +814,8 @@ class JustTalkApp:
 
             use_conformer = (
                 (cur_lang in ("ne", "ne_en") or "ne" in getattr(self.config, "spoken_languages", []))
-                and getattr(self.config, "nepali_asr_engine", "conformer") == "conformer"
+                and getattr(self.config, "nepali_asr_engine", "whisper") == "conformer"
+                and nepali_conformer_runtime_available()
                 and hasattr(self, "nepali_conformer")
                 and self.model_manager.is_model_downloaded("nepali_conformer")
             )

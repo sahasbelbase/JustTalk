@@ -845,10 +845,7 @@ class OnboardingWindow(QDialog):
         total_mb = self.model_manager.get_total_download_size_mb(required_tiers)
         missing_mb = self.model_manager.get_total_download_size_mb(missing)
 
-        if "ne" in self.config.spoken_languages or "ne_en" in self.config.spoken_languages:
-            nepali_note = " Includes Ampixa NepaliConformer for high-accuracy conversational Nepali."
-        else:
-            nepali_note = ""
+        nepali_note = ""
 
         if self.config.spoken_languages == ["en"]:
             footprint_text = f"Only English model needed ({total_mb} MB) · Ultra-fast, zero foreign hallucinations, saves 1+ GB disk space!"

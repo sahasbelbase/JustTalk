@@ -45,7 +45,7 @@ from ..audio.recorder import AudioRecorder
 from ..config import ADDITIONAL_LANGUAGES, CORE_SPOKEN_LANGUAGES, AppConfig
 from ..database.history import HistoryDatabase, HistoryItem
 from ..security import CredentialManager
-from ..stt.model_manager import TIERS, ModelManager
+from ..stt.model_manager import TIERS, ModelManager, nepali_conformer_runtime_available
 from ..system.autostart import AutostartManager
 from ..system.clipboard import ClipboardManager
 from ..system.permissions import PermissionsManager
@@ -1652,7 +1652,14 @@ class MainWindow(QMainWindow):
 
         self.nepali_engine_combo = QComboBox()
         self.nepali_engine_combo.addItem("Whisper — offline", "whisper")
-        self.nepali_engine_combo.addItem("NepaliConformer — experimental, needs Hugging Face access", "conformer")
+        self.nepali_engine_combo.addItem("NepaliConformer — coming soon", "conformer")
+        if not nepali_conformer_runtime_available():
+            # Disabled until the ONNX port ships; the .nemo checkpoint can't run in this app
+            conformer_item = self.nepali_engine_combo.model().item(self.nepali_engine_combo.count() - 1)
+            conformer_item.setEnabled(False)
+            conformer_item.setToolTip(
+                "Ampixa NepaliConformer needs a runtime Just Talk doesn't include yet. Nepali uses Whisper meanwhile."
+            )
         cur_nep_eng = getattr(self.config, "nepali_asr_engine", "whisper")
         n_idx = self.nepali_engine_combo.findData(cur_nep_eng)
         if n_idx >= 0:
@@ -2419,7 +2426,7 @@ class MainWindow(QMainWindow):
         all_ready, missing = self.model_manager.are_required_models_downloaded(
             self.config.spoken_languages,
             tier_id,
-            nepali_engine=getattr(self.config, "nepali_asr_engine", "conformer"),
+            nepali_engine=getattr(self.config, "nepali_asr_engine", "whisper"),
         )
 
         if hasattr(self.model_manager, "is_downloading") and self.model_manager.is_downloading(tier_id):

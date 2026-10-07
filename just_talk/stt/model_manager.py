@@ -99,6 +99,19 @@ TIERS: Dict[str, ModelTierInfo] = {
 }
 
 
+def nepali_conformer_runtime_available() -> bool:
+    """
+    The Ampixa NepaliConformer ships as a .nemo checkpoint, which needs NVIDIA NeMo (PyTorch).
+    NeMo is not bundled with Just Talk, so the engine stays unavailable until an ONNX port lands.
+    """
+    import importlib.util
+
+    try:
+        return importlib.util.find_spec("nemo") is not None
+    except (ImportError, ValueError):
+        return False
+
+
 # Exact HuggingFace repositories and deterministic file manifests for instant error-free streaming
 TIER_REPOS: Dict[str, Tuple[str, list[Tuple[str, int]]]] = {
     "quality": (

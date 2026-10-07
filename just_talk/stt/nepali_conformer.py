@@ -91,17 +91,16 @@ class NepaliConformerEngine(STTEngine):
                 print("[NepaliConformer] Ampixa 121M offline conformer initialized successfully.", file=sys.stderr)
                 return True
             except ImportError:
-                # NeMo not installed in current lightweight runtime
-                # We mark as loaded so the hybrid pipeline uses optimized Nepali decoding
-                self._model = "fallback_bridge"
-                self._is_loaded = True
+                # Without NeMo the checkpoint cannot run; report that instead of pretending
+                # to be ready and quietly transcribing with Whisper.
                 self._is_loading = False
-                self._loading_status = "Ready (Ampixa Hybrid Bridge)"
+                self._loading_status = "Unavailable — needs the NeMo runtime (not bundled)"
                 print(
-                    "[NepaliConformer] NeMo toolkit not present; active in Ampixa hybrid acoustic mode.",
+                    "[NepaliConformer] NeMo toolkit not installed; the .nemo checkpoint cannot run. "
+                    "Nepali uses Whisper.",
                     file=sys.stderr,
                 )
-                return True
+                return False
             except Exception as e:
                 self._is_loading = False
                 self._loading_status = f"Load error: {e}"
