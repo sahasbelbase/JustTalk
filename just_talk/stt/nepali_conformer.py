@@ -2,7 +2,8 @@
 
 Reference: https://ampixa.com/#work & https://github.com/Ampixa/nepaliconformer
 Trained on ~1,655 hours of conversational Nepali speech.
-Benchmark: 33.8% WER on real call-centre audio (vs 96.3% for zero-shot Whisper Large-V3).
+Benchmark: 36.3% WER on NepTel real call-centre audio (vs 96.3% for zero-shot Whisper Large-V3),
+as measured by Ampixa on the released weights. Model weights: CC BY-NC 4.0.
 """
 
 from __future__ import annotations

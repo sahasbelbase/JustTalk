@@ -280,3 +280,21 @@ JustTalk/
 
 ## License
 MIT License. Free and open source. See [LICENSE.md](LICENSE.md) for full license details.
+
+## Third-Party Models & Citation
+
+**Nepali speech engine (coming soon): Ampixa NepaliConformer.** Just Talk's optional offline Nepali engine is an ONNX conversion of Ampixa's [nepali-conformer-offline](https://huggingface.co/ampixa/nepali-conformer-offline) (121M-parameter Conformer, 36.3% WER on the NepTel real-call benchmark versus 96.3% for Whisper Large-V3, as measured by Ampixa). All credit for the model goes to Ampixa.
+
+* **License:** the model weights are licensed by Ampixa under [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/), **non-commercial use only**. They are *not* covered by Just Talk's MIT license.
+* **Changes:** converted from the `.nemo` checkpoint to ONNX and quantized to int8 so it runs with ONNX Runtime alone. The conversion and its model card are published at [github.com/sahasbelbase/nepaliconformer](https://github.com/sahasbelbase/nepaliconformer).
+* **Citation** (as Ampixa requests; a technical report is in preparation):
+
+```bibtex
+@misc{ampixa_nepaliconformer,
+  title        = {NepaliConformer: Nepali speech recognition models and the NepTel benchmark},
+  author       = {{Ampixa}},
+  year         = {2026},
+  howpublished = {\url{https://github.com/Ampixa/nepaliconformer}},
+  note         = {Model: https://huggingface.co/ampixa/nepali-conformer-offline (CC BY-NC 4.0)}
+}
+```

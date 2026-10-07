@@ -73,8 +73,8 @@ TIERS: Dict[str, ModelTierInfo] = {
         disk_size_mb=462,
         ram_mb=350,
         speed_factor="~180ms latency",
-        accuracy_rating="33.8% WER (Call-Center Tested)",
-        description="Ampixa Labs' specialized offline Nepali ASR trained on 1,655 hours conversational speech (33.8% WER vs 96.3% Whisper).",
+        accuracy_rating="36.3% WER on NepTel (Ampixa)",
+        description="Ampixa's offline Nepali ASR (CC BY-NC 4.0, github.com/Ampixa/nepaliconformer), trained on ~1,655 h of mostly conversational Nepali: 36.3% WER on NepTel vs 96.3% for Whisper.",
     ),
     "small.en": ModelTierInfo(
         tier_id="small.en",
