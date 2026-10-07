@@ -33,9 +33,15 @@ class VoiceProfile:
 
     @property
     def thresholds(self) -> Tuple[float, float]:
-        accept = self.accept_threshold if self.accept_threshold is not None else DEFAULT_ACCEPT
-        reject = round(float(np.clip(accept - 0.25, 0.20, 0.40)), 3)
-        return round(accept, 3), min(reject, round(accept - 0.05, 3))
+        if self.accept_threshold is None:
+            # Legacy single-take profile: unreliable, so only drop clearly different voices
+            return DEFAULT_ACCEPT, DEFAULT_REJECT
+        # Multi-take profile. Measured on real recordings (quiet, low voice, noisy room, a second
+        # person on the same mic): own voice scored 0.63-0.95, the other person 0.48-0.51, with
+        # accept = 0.65. Ignoring below accept - 0.10 separates them with margin on both sides.
+        accept = round(self.accept_threshold, 3)
+        reject = round(float(np.clip(accept - 0.10, 0.30, 0.60)), 3)
+        return accept, reject
 
 
 @dataclass

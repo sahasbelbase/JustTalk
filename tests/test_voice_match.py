@@ -63,12 +63,22 @@ def test_decide_match_uncertain_other_with_enrolled_threshold():
     me = _unit(rng.standard_normal(512))
     profile = VoiceProfile("Sahas", me, accept_threshold=0.60, sample_count=3)
     accept, reject = profile.thresholds
-    assert reject == pytest.approx(0.35)
+    assert reject == pytest.approx(0.50)
 
     assert decide(_with_score(me, 0.70), [profile]).action == "match"
     assert decide(_with_score(me, 0.70), [profile]).speaker == "Sahas"
-    assert decide(_with_score(me, 0.45), [profile]).action == "uncertain"  # kept, not tagged
-    assert decide(_with_score(me, 0.20), [profile]).action == "other"
+    assert decide(_with_score(me, 0.55), [profile]).action == "uncertain"  # kept, not tagged
+    assert decide(_with_score(me, 0.45), [profile]).action == "other"
+
+
+def test_thresholds_separate_measured_own_and_other_voices():
+    """Real recordings after 3-phrase enrollment: own voice 0.63-0.95, another person 0.48-0.51."""
+    me = _unit(rng.standard_normal(512))
+    profile = VoiceProfile("Sahas", me, accept_threshold=0.65, sample_count=3)
+    for own in (0.63, 0.67, 0.70, 0.95):  # lowest own score: low voice in a noisy room
+        assert decide(_with_score(me, own), [profile]).action != "other"
+    for other in (0.48, 0.50, 0.51):
+        assert decide(_with_score(me, other), [profile]).action == "other"
 
 
 def test_legacy_profile_uses_conservative_defaults():
