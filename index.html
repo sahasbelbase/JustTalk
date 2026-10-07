@@ -51,8 +51,8 @@
         "applicationCategory": "ProductivityApplication",
         "applicationSubCategory": "Voice typing and dictation",
         "operatingSystem": "macOS 12+, Windows 10, Windows 11",
-        "softwareVersion": "2.1.0",
-        "datePublished": "2026-10-06",
+        "softwareVersion": "2.2.0",
+        "datePublished": "2026-10-07",
         "description": "Free, open-source voice typing for macOS and Windows. Tap a key, speak, and text is typed into any app, with optional AI grammar cleanup, Nepali and Nepglish support, and a fully offline mode.",
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
         "image": "https://sahasbelbase.github.io/JustTalk/assets/og-image.png",
@@ -84,6 +84,8 @@
           {"@type": "Question", "name": "Which apps can I type into?", "acceptedAnswer": {"@type": "Answer", "text": "Any app with a text field: VS Code, Cursor, Slack, Chrome, Word, Notion, Gmail, WhatsApp, terminals and more. If no text field is focused, the text is copied to your clipboard so you can paste it yourself."}},
           {"@type": "Question", "name": "Can I speak one language and get English text?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Choose “Translate to English” on the Home screen. Whatever language you speak is typed as fluent English."}},
           {"@type": "Question", "name": "How does Action Mode work?", "acceptedAnswer": {"@type": "Answer", "text": "Press Shift while dictating to switch to Action Mode. Instead of typing your words verbatim, Just Talk follows them as an instruction — for example translating them into English."}},
+          {"@type": "Question", "name": "Can I edit text I already wrote by voice?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Select the text in any app, hold your shortcut plus Shift (Fn + Shift on macOS, Right Alt + Shift on Windows) and say what to change, such as “make this shorter”, “make it more polite” or “translate to Nepali”. Just Talk rewrites the selection in place. This needs AI formatting turned on."}},
+          {"@type": "Question", "name": "How do I paste my last dictation again?", "acceptedAnswer": {"@type": "Answer", "text": "Press Ctrl + Cmd + V on macOS or Win + Alt + V on Windows. Just Talk types your most recent dictation into the app you are using now — useful when the cursor was in the wrong place. You can also choose Copy Last Dictation from the tray or menu bar icon."}},
           {"@type": "Question", "name": "Why does macOS or Windows show an unidentified developer warning?", "acceptedAnswer": {"@type": "Answer", "text": "Just Talk is an independent open-source project and isn't signed with a paid Apple or Microsoft certificate. On macOS, run xattr -cr /Applications/JustTalk.app once in Terminal (or right-click the app and choose Open). On Windows, click “More info” then “Run anyway”. All source code is public on GitHub."}},
           {"@type": "Question", "name": "What are the system requirements?", "acceptedAnswer": {"@type": "Answer", "text": "macOS 12 or later on Apple Silicon or Intel, or Windows 10/11 (64-bit), plus a microphone. On-device models need 0.5–1.5 GB of disk space, depending on the languages you choose."}},
           {"@type": "Question", "name": "How do I update Just Talk?", "acceptedAnswer": {"@type": "Answer", "text": "Open Settings › Updates & Startup and click “Check for updates”. When a new version is available, Just Talk downloads and installs it in place and keeps all your settings, history and API keys."}},
@@ -119,7 +121,7 @@
         <img src="assets/icon.png" alt="Just Talk Logo" class="brand-icon">
         <div class="brand-text">
           <span class="brand-title">Just Talk</span>
-          <span class="brand-version">v2.1.0</span>
+          <span class="brand-version">v2.2.0</span>
         </div>
       </a>
 
@@ -150,7 +152,7 @@
       <!-- Release Badge -->
       <a href="https://github.com/sahasbelbase/JustTalk/releases/latest" target="_blank" rel="noopener noreferrer" class="release-pill">
         <span class="pulsing-dot" aria-hidden="true"></span>
-        <span class="release-text">v2.1.0 — long dictation, smarter AI cleanup, redesigned app</span>
+        <span class="release-text">v2.2.0 — edit selected text by voice, paste last dictation</span>
         <svg class="chevron-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
       </a>
 
@@ -411,9 +413,9 @@
             <div class="card-icon amber">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
             </div>
-            <h3 class="card-title">Dynamic Action Mode</h3>
+            <h3 class="card-title">Edit Any Text by Voice</h3>
             <p class="card-desc">
-              Press <kbd>Shift</kbd> while holding your trigger key to instantly switch the HUD into Action Mode with an amber halo. Speak in any language to automatically translate into clean English or trigger AI instructions.
+              Select text in any app, hold your trigger key + <kbd>Shift</kbd>, and say “make this shorter” or “translate to Nepali” — the selection is rewritten in place. With nothing selected, Action Mode follows your spoken instruction instead.
             </p>
           </div>
         </div>
@@ -439,7 +441,7 @@
             </div>
             <h3 class="card-title">Universal Cursor Insertion</h3>
             <p class="card-desc">
-              Types text into whatever app is currently active (VS Code, Slack, Notion, browsers, terminals). Your clipboard is restored automatically, and long dictations are kept whole across pauses.
+              Types text into whatever app is currently active (VS Code, Slack, Notion, browsers, terminals). Your clipboard is restored automatically, long dictations are kept whole across pauses, and <kbd>Ctrl</kbd>+<kbd>Cmd</kbd>+<kbd>V</kbd> (<kbd>Win</kbd>+<kbd>Alt</kbd>+<kbd>V</kbd> on Windows) pastes your last dictation again.
             </p>
           </div>
         </div>
@@ -580,8 +582,8 @@
               <td class="td-muted">Partial (device dependent)</td>
             </tr>
             <tr>
-              <td class="td-feature">Dynamic Action Mode (Fn + Shift)</td>
-              <td class="td-highlight green">Instant on-the-fly toggle</td>
+              <td class="td-feature">Edit selected text by voice (Fn + Shift)</td>
+              <td class="td-highlight green">Rewrites the selection in any app</td>
               <td class="td-red">Requires clicking dropdowns</td>
               <td class="td-red">Unsupported</td>
             </tr>
@@ -760,6 +762,26 @@
           </summary>
           <div class="faq-answer">
             <p>Press <kbd>Shift</kbd> while dictating to switch to Action Mode. Instead of typing your words verbatim, Just Talk follows them as an instruction — for example translating them into English.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary class="faq-question">
+            <span>Can I edit text I already wrote by voice?</span>
+            <svg class="faq-arrow" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5"/></svg>
+          </summary>
+          <div class="faq-answer">
+            <p>Yes. Select the text in any app, hold your shortcut plus <kbd>Shift</kbd> (<kbd>Fn</kbd> + <kbd>Shift</kbd> on macOS, <kbd>Right Alt</kbd> + <kbd>Shift</kbd> on Windows) and say what to change, such as “make this shorter”, “make it more polite” or “translate to Nepali”. Just Talk rewrites the selection in place. This needs AI formatting turned on.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary class="faq-question">
+            <span>How do I paste my last dictation again?</span>
+            <svg class="faq-arrow" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5"/></svg>
+          </summary>
+          <div class="faq-answer">
+            <p>Press <kbd>Ctrl</kbd> + <kbd>Cmd</kbd> + <kbd>V</kbd> on macOS or <kbd>Win</kbd> + <kbd>Alt</kbd> + <kbd>V</kbd> on Windows. Just Talk types your most recent dictation into the app you are using now — useful when the cursor was in the wrong place. You can also choose <strong>Copy Last Dictation</strong> from the tray or menu bar icon.</p>
           </div>
         </details>
 
