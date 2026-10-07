@@ -75,3 +75,29 @@ def test_devanagari_prompt():
     assert "purnabiram" in prompt_dev
     assert "do not summarize" in prompt_dev.lower()
 
+
+
+def test_meta_reply_from_request_like_speech_is_rejected():
+    from just_talk.ai.prompts import is_meta_reply
+
+    raw = "see what does the project give me an overview see in detail and let me know what do you think of this project"
+    assert is_meta_reply(raw, "I will translate the spoken transcript into clean, natural, and fluent English.")
+    assert is_meta_reply(raw, "I'm sorry, but I can't review a project from here.")
+    assert is_meta_reply(raw, "Here is the cleaned transcript: See what the project does.")
+
+
+def test_meta_reply_keeps_real_dictation():
+    from just_talk.ai.prompts import is_meta_reply
+
+    raw = "see what does the project give me an overview see in detail and let me know what do you think of this project"
+    assert not is_meta_reply(raw, "See what the project does, give me a detailed overview, and let me know what you think of it.")
+    # Speaker genuinely talking about transcripts or translation
+    assert not is_meta_reply("i will translate the document tomorrow", "I will translate the document tomorrow.")
+    assert not is_meta_reply("ma bholi aauchu", "I'll come tomorrow.")
+
+
+def test_transcript_is_fenced_and_tags_stripped():
+    from just_talk.ai.prompts import strip_transcript_tags, wrap_transcript
+
+    assert wrap_transcript("hello") == "<transcript>\nhello\n</transcript>"
+    assert strip_transcript_tags("<transcript>\nHello.\n</transcript>") == "Hello."
