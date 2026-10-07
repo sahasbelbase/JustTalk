@@ -12,6 +12,7 @@ from .gemini import CircuitBreaker, ConnectionTestResult, GeminiFormatter
 from .prompts import (
     EDIT_SELECTION_STYLE,
     edit_selection_user_message,
+    is_refusal,
     TRANSCRIPT_BOUNDARY_RULE,
     build_prompt,
     is_meta_reply,
@@ -632,11 +633,21 @@ class MultiProviderFormatter:
         ]
         if any(lower.startswith(p) for p in conversational_preambles):
             return None
-        if is_meta_reply(raw_input, text):
+        if getattr(self, "_edit_instruction", None):
+            # Edited text (e.g. a polished prompt) may legitimately mention formats or
+            # start with "Please"; only reject outright refusals.
+            if is_refusal(raw_input, text):
+                return None
+        elif is_meta_reply(raw_input, text):
             return None
 
-        # If length exploded unexpectedly (e.g. prompt injection), reject
-        if len(text) > max(300, len(raw_input) * 4):
+        # If length exploded unexpectedly (e.g. prompt injection), reject.
+        # Selection edits such as "polish this prompt" legitimately expand short text.
+        if getattr(self, "_edit_instruction", None):
+            max_len = max(2000, len(raw_input) * 8)
+        else:
+            max_len = max(300, len(raw_input) * 4)
+        if len(text) > max_len:
             return None
 
         # Strip unwanted trailing dot from URLs, domains, and email addresses

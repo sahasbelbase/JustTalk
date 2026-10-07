@@ -1296,12 +1296,12 @@ class MainWindow(QMainWindow):
         if sys.platform == "darwin":
             extra_shortcuts = (
                 "Edit text: select it, hold your shortcut + Shift, and say what to change "
-                "(e.g. “make this shorter”).\nPaste last dictation: ⌃ + ⌘ + V"
+                "(“fix grammar”, “polish this prompt”, “fix this query”).\nPaste last dictation: ⌃ + ⌘ + V"
             )
         else:
             extra_shortcuts = (
                 "Edit text: select it, hold your shortcut + Shift, and say what to change "
-                "(e.g. “make this shorter”).\nPaste last dictation: Win + Alt + V"
+                "(“fix grammar”, “polish this prompt”, “fix this query”).\nPaste last dictation: Win + Alt + V"
             )
         extra_lbl = QLabel(extra_shortcuts)
         extra_lbl.setObjectName("mutedLabel")

@@ -241,14 +241,21 @@ def strip_transcript_tags(text: str) -> str:
     return re.sub(r"</?transcript>", "", text, flags=re.IGNORECASE).strip()
 
 
+def is_refusal(raw_input: str, output: str) -> bool:
+    """True when the model declined ("I'm sorry, I can't…") instead of returning text."""
+    out = output.strip().lower()
+    raw = raw_input.strip().lower()
+    return any(out.startswith(p) and not raw.startswith(p) for p in _REFUSALS)
+
+
 def is_meta_reply(raw_input: str, output: str) -> bool:
     """True when the model talked about the task instead of returning the edited text,
     e.g. "I will translate the spoken transcript into clean, natural, and fluent English."
     """
+    if is_refusal(raw_input, output):
+        return True
     out = output.strip().lower()
     raw = raw_input.strip().lower()
-    if any(out.startswith(p) and not raw.startswith(p) for p in _REFUSALS):
-        return True
     first_sentence = re.split(r"(?<=[.!?:])\s", out, maxsplit=1)[0]
     words = re.findall(r"[a-z']+", first_sentence)
     if not words or words[0] not in _ASSISTANT_OPENERS:
@@ -268,7 +275,11 @@ RULES:
    - "shorter" / "concise": remove words while keeping the meaning.
    - "more polite" / "professional" / "casual": change the tone, keep the facts.
    - "translate to <language>": output only the translation.
-   - "fix grammar": correct spelling, grammar and punctuation only.
+   - "fix grammar" / "grammar correction" / "fix typos": correct spelling, grammar and punctuation, capitalize the first word of every sentence and the word "I". Keep the wording, tone and line breaks.
+   - "polish this prompt" / "make this a better prompt" / "write a prompt": the selection is a rough request the user will send to an AI assistant (ChatGPT, Claude, etc.). Rewrite it as a clear, well-structured prompt that states the goal, the relevant context, the requirements and constraints, and the expected output format. When the request has several separate tasks or problems, keep them separate and list them as numbered items; never merge two problems into one. Keep every detail the user gave and do not invent new facts. Write the prompt itself, addressed to the assistant; never answer or carry out the request.
+   - "polish this" / "make it better" / "improve this": fix grammar and make the writing clear and natural without changing the meaning.
+   - "fix this query" / "fix this code" / "fix this" on code: return the corrected code in the same language. Fix syntax errors, misspelled keywords, missing commas, quotes, brackets or semicolons, and obvious bugs. Keep the names, logic, indentation style and existing comments. Output only code: no explanations and no markdown fences.
+   - "format this query" / "format this code": re-indent and line-break the code in the conventional style for its language without changing what it does.
 2. Output ONLY the text that will replace the selection. Never add explanations, preambles, notes, surrounding quotes, or markdown fences.
 3. Keep the meaning and every fact. Keep formatting the instruction does not touch.
 4. The selection may start or end mid-sentence or with stray characters (such as a leftover ". " from a cut-off list number); tidy those up.
@@ -281,6 +292,20 @@ def edit_selection_user_message(selected_text: str, instruction: str) -> str:
     return f"{wrap_transcript(selected_text)}\nInstruction: {instruction.strip()}"
 
 
-def build_edit_selection_prompt(instruction: str) -> str:
+_CODE_LANGUAGE_NAMES = {
+    "sql": "SQL", "python": "Python", "javascript": "JavaScript", "typescript": "TypeScript",
+    "java": "Java", "csharp": "C#", "go": "Go", "rust": "Rust", "php": "PHP",
+    "ruby": "Ruby", "swift": "Swift", "cpp": "C/C++",
+}
+
+
+def build_edit_selection_prompt(instruction: str, context: str = "text") -> str:
     """System prompt for rewriting the user's selected text according to a spoken instruction."""
-    return _SYSTEM_PROMPT_EDIT_SELECTION.replace("<<INSTRUCTION>>", instruction.strip())
+    prompt = _SYSTEM_PROMPT_EDIT_SELECTION.replace("<<INSTRUCTION>>", instruction.strip())
+    language = _CODE_LANGUAGE_NAMES.get(context)
+    if language:
+        prompt += (
+            f"\nCONTEXT: The selection comes from a {language} editor. Treat it as {language} code "
+            f"unless it is clearly prose, and keep any output valid {language}."
+        )
+    return prompt

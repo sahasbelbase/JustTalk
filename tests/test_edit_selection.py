@@ -187,3 +187,54 @@ def test_edit_prompt_spells_out_paragraph_and_list_conversions():
     prompt = build_edit_selection_prompt("make this into paragraph")
     assert "ONE paragraph" in prompt
     assert "bullet" in prompt
+
+
+def test_edit_prompt_knows_it_is_editing_sql():
+    prompt = build_edit_selection_prompt("fix this query", context="sql")
+    assert "CONTEXT: The selection comes from a SQL editor" in prompt
+    assert "fix this query" in prompt
+    # Plain text gets no code context
+    assert "CONTEXT:" not in build_edit_selection_prompt("fix grammar", context="text")
+
+
+def test_edit_prompt_covers_prompt_polishing_and_grammar():
+    prompt = build_edit_selection_prompt("make this prompt polished")
+    assert "polish this prompt" in prompt
+    assert "never answer or carry out the request" in prompt
+    assert "fix grammar" in prompt
+
+
+def test_polished_prompt_is_not_rejected_as_meta_reply_or_too_long():
+    polished = (
+        "Please review my project and answer in a numbered format.\n"
+        "Fix these two issues:\n"
+        "1. Windows startup: enabling launch at login crashes the app.\n"
+        "2. Settings: reopening the window always returns to Home.\n"
+        "Then write unit tests for both fixes and describe the expected output format."
+    )
+    rough = "check startup crash and settings goes home fix it"
+    f = MultiProviderFormatter(provider_id="gemini", api_key="mock_key")
+
+    # As ordinary dictation this would be rejected (meta wording, 5x longer)...
+    f._edit_instruction = None
+    assert f._sanitize_output(rough, polished) is None
+    # ...but as a selection edit it is exactly what the user asked for
+    f._edit_instruction = "make this prompt polished"
+    assert f._sanitize_output(rough, polished) == polished
+
+
+def test_edit_still_rejects_refusals():
+    f = MultiProviderFormatter(provider_id="gemini", api_key="mock_key")
+    f._edit_instruction = "fix this query"
+    assert f._sanitize_output("SELEC * FROM users", "I'm sorry, but I can't help with that.") is None
+    assert f._sanitize_output("SELEC * FROM users", "SELECT * FROM users") == "SELECT * FROM users"
+
+
+def test_pipeline_passes_editor_context_to_prompt():
+    captured = {}
+    app, inserted, _ = _fake_app(("SELECT * FROM users", True, "ok"))
+    app.gemini = types.SimpleNamespace(format_text=lambda **kw: captured.update(kw) or ("SELECT * FROM users", True, "ok"))
+    app._edit_selected_text("SELEC * FROM users", "fix this query", None, 0.0, "sql", None)
+    assert "SQL editor" in captured["custom_system_instruction"]
+    assert captured["edit_instruction"] == "fix this query"
+    assert inserted == ["SELECT * FROM users"]

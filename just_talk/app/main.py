@@ -1051,7 +1051,7 @@ class JustTalkApp:
         edited, success, msg = self.gemini.format_text(
             raw_text=selected_text,
             style=EDIT_SELECTION_STYLE,
-            custom_system_instruction=build_edit_selection_prompt(instruction),
+            custom_system_instruction=build_edit_selection_prompt(instruction, context=detected_context),
             edit_instruction=instruction,
         )
         if not success or not edited:
