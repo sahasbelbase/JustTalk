@@ -168,3 +168,10 @@ def test_conformer_engine_reports_unavailable_without_nemo(tmp_path, monkeypatch
 def test_stt_language_follows_spoken_languages(language, spoken, mode, provider, expected):
     config = AppConfig(language=language, spoken_languages=spoken, stt_provider=provider)
     assert config.stt_language(mode == "translate") == expected
+
+
+def test_retired_nepali_conformer_is_not_offered_anywhere():
+    from just_talk.stt.model_manager import selectable_tiers
+
+    assert "nepali_conformer" not in selectable_tiers()
+    assert {"quality", "balanced", "fast"} <= set(selectable_tiers())

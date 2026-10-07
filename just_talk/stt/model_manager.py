@@ -99,6 +99,12 @@ TIERS: Dict[str, ModelTierInfo] = {
 }
 
 
+# Model tiers offered in the UI. NepaliConformer is retired in favour of Kriti
+# (see stt/kriti_engine.py) and is no longer listed anywhere.
+def selectable_tiers() -> Dict[str, ModelTierInfo]:
+    return {k: v for k, v in TIERS.items() if k != "nepali_conformer"}
+
+
 def nepali_conformer_runtime_available() -> bool:
     """
     The Ampixa NepaliConformer ships as a .nemo checkpoint, which needs NVIDIA NeMo (PyTorch).

@@ -10,7 +10,7 @@ from PySide6.QtWidgets import QMenu, QSystemTrayIcon, QWidget
 
 from ..ai.gemini import GeminiFormatter
 from ..config import AppConfig
-from ..stt.model_manager import TIERS
+from ..stt.model_manager import selectable_tiers
 from .ui_thread import run_on_ui_thread
 
 
@@ -105,7 +105,7 @@ class SystemTrayManager:
         tier_group = QActionGroup(tier_menu)
         tier_group.setExclusive(True)
 
-        for tier_id, info in TIERS.items():
+        for tier_id, info in selectable_tiers().items():
             act = QAction(f"{info.display_name} ({info.disk_size_mb} MB)", tier_menu)
             act.setCheckable(True)
             act.setData(tier_id)

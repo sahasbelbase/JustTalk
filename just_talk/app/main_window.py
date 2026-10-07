@@ -46,7 +46,7 @@ from ..config import ADDITIONAL_LANGUAGES, CORE_SPOKEN_LANGUAGES, AppConfig
 from ..database.history import HistoryDatabase, HistoryItem
 from ..security import CredentialManager
 from ..stt.kriti_engine import KRITI_DOWNLOAD_MB, download_kriti, is_kriti_downloaded
-from ..stt.model_manager import TIERS, ModelManager, nepali_conformer_runtime_available
+from ..stt.model_manager import TIERS, ModelManager, selectable_tiers
 from ..system.autostart import AutostartManager
 from ..system.clipboard import ClipboardManager
 from ..system.permissions import PermissionsManager
@@ -1654,14 +1654,6 @@ class MainWindow(QMainWindow):
         self.nepali_engine_combo = QComboBox()
         self.nepali_engine_combo.addItem("Whisper — offline", "whisper")
         self.nepali_engine_combo.addItem(f"Kriti — offline Nepali by Naamche Labs ({KRITI_DOWNLOAD_MB} MB)", "kriti")
-        self.nepali_engine_combo.addItem("NepaliConformer — coming soon", "conformer")
-        if not nepali_conformer_runtime_available():
-            # Disabled until the ONNX port ships; the .nemo checkpoint can't run in this app
-            conformer_item = self.nepali_engine_combo.model().item(self.nepali_engine_combo.count() - 1)
-            conformer_item.setEnabled(False)
-            conformer_item.setToolTip(
-                "Ampixa NepaliConformer needs a runtime Just Talk doesn't include yet. Nepali uses Whisper meanwhile."
-            )
         cur_nep_eng = getattr(self.config, "nepali_asr_engine", "whisper")
         n_idx = self.nepali_engine_combo.findData(cur_nep_eng)
         if n_idx >= 0:
@@ -1691,7 +1683,7 @@ class MainWindow(QMainWindow):
         self._refresh_kriti_row()
 
         self.tier_combo = QComboBox()
-        for tier_id, info in TIERS.items():
+        for tier_id, info in selectable_tiers().items():
             self.tier_combo.addItem(f"{info.display_name} — {info.speed_factor} ({info.disk_size_mb} MB)", tier_id)
         self.tier_combo.currentIndexChanged.connect(self._on_tier_selection_changed)
 
