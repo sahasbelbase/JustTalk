@@ -1294,6 +1294,21 @@ class MainWindow(QMainWindow):
         s1_form.addRow("Voice Shortcut:", self.shortcut_combo)
 
         if sys.platform == "darwin":
+            extra_shortcuts = (
+                "Edit text: select it, hold your shortcut + Shift, and say what to change "
+                "(e.g. “make this shorter”).\nPaste last dictation: ⌃ + ⌘ + V"
+            )
+        else:
+            extra_shortcuts = (
+                "Edit text: select it, hold your shortcut + Shift, and say what to change "
+                "(e.g. “make this shorter”).\nPaste last dictation: Win + Alt + V"
+            )
+        extra_lbl = QLabel(extra_shortcuts)
+        extra_lbl.setObjectName("mutedLabel")
+        extra_lbl.setWordWrap(True)
+        s1_form.addRow("More Shortcuts:", extra_lbl)
+
+        if sys.platform == "darwin":
             kb_row = QHBoxLayout()
             kb_row.setSpacing(8)
             self.fn_fix_status = QLabel("")

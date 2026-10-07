@@ -227,6 +227,138 @@ class TextInserter:
             except Exception:
                 return False
 
+    def _synthesize_copy(self) -> bool:
+        """Synthesize Cmd+C on macOS or Ctrl+C on Windows in the target app."""
+        if sys.platform == "darwin":
+            try:
+                import Quartz
+
+                source = Quartz.CGEventSourceCreate(Quartz.kCGEventSourceStateHIDSystemState)
+                c_code = 0x08  # macOS virtual keycode for 'c'
+                c_down = Quartz.CGEventCreateKeyboardEvent(source, c_code, True)
+                c_up = Quartz.CGEventCreateKeyboardEvent(source, c_code, False)
+                # Explicit flags so a still-held Fn/Shift/Option can't turn this into another shortcut
+                Quartz.CGEventSetFlags(c_down, Quartz.kCGEventFlagMaskCommand)
+                Quartz.CGEventSetFlags(c_up, Quartz.kCGEventFlagMaskCommand)
+                Quartz.CGEventPost(Quartz.kCGHIDEventTap, c_down)
+                time.sleep(0.025)
+                Quartz.CGEventPost(Quartz.kCGHIDEventTap, c_up)
+                return True
+            except Exception:
+                pass
+            modifier = Key.cmd
+        elif sys.platform == "win32":
+            try:
+                import ctypes
+
+                user32 = ctypes.windll.user32
+                KEYEVENTF_KEYUP = 0x0002
+                user32.keybd_event(0x11, 0, 0, 0)  # VK_CONTROL down
+                time.sleep(0.02)
+                user32.keybd_event(0x43, 0, 0, 0)  # VK_C down
+                time.sleep(0.03)
+                user32.keybd_event(0x43, 0, KEYEVENTF_KEYUP, 0)
+                time.sleep(0.015)
+                user32.keybd_event(0x11, 0, KEYEVENTF_KEYUP, 0)
+                return True
+            except Exception:
+                pass
+            modifier = Key.ctrl
+        else:
+            modifier = Key.ctrl
+
+        try:
+            self._keyboard.press(modifier)
+            time.sleep(0.015)
+            self._keyboard.press('c')
+            time.sleep(0.025)
+            self._keyboard.release('c')
+            time.sleep(0.015)
+            self._keyboard.release(modifier)
+            return True
+        except Exception:
+            return False
+
+    def copy_selection(self, timeout_sec: float = 0.6) -> str:
+        """
+        Return the text currently selected in the target app, or "" when nothing is selected.
+        The clipboard is swapped for a sentinel first so an empty selection can't be confused
+        with whatever the user had copied before; the original clipboard is put back afterwards.
+        """
+        # A still-held Shift/Alt from the shortcut would turn Ctrl+C into a different command
+        self.wait_for_modifiers_released()
+        original = ClipboardManager.get_text()
+        sentinel = f"⁣justtalk-selection-probe-{time.time_ns()}⁣"
+        if not ClipboardManager.set_text(sentinel):
+            return ""
+
+        selected = ""
+        try:
+            if sys.platform == "darwin":
+                self._reactivate_target_window()
+            elif sys.platform == "win32" and self._target_hwnd:
+                try:
+                    import ctypes
+
+                    ctypes.windll.user32.SetForegroundWindow(self._target_hwnd)
+                    time.sleep(0.03)
+                except Exception:
+                    pass
+
+            if self._synthesize_copy():
+                deadline = time.time() + timeout_sec
+                while time.time() < deadline:
+                    time.sleep(0.03)
+                    current = ClipboardManager.get_text()
+                    if current != sentinel:
+                        selected = current
+                        break
+        finally:
+            ClipboardManager.set_text(original)
+
+        return selected if selected.strip() else ""
+
+    @staticmethod
+    def is_implicit_line_copy(text: str) -> bool:
+        """VS Code-style editors copy the current line (with its newline) when nothing is selected."""
+        return text.endswith("\n") and "\n" not in text.rstrip("\r\n")
+
+    @staticmethod
+    def wait_for_modifiers_released(timeout_sec: float = 1.0) -> None:
+        """Block until the user lets go of modifier keys (so a synthetic paste isn't combined with them)."""
+        deadline = time.time() + timeout_sec
+        while time.time() < deadline:
+            if not TextInserter._modifiers_down():
+                return
+            time.sleep(0.02)
+
+    @staticmethod
+    def _modifiers_down() -> bool:
+        if sys.platform == "darwin":
+            try:
+                import Quartz
+
+                flags = Quartz.CGEventSourceFlagsState(Quartz.kCGEventSourceStateHIDSystemState)
+                mask = (
+                    Quartz.kCGEventFlagMaskCommand
+                    | Quartz.kCGEventFlagMaskControl
+                    | Quartz.kCGEventFlagMaskAlternate
+                    | Quartz.kCGEventFlagMaskShift
+                )
+                return bool(flags & mask)
+            except Exception:
+                return False
+        if sys.platform == "win32":
+            try:
+                import ctypes
+
+                state = ctypes.windll.user32.GetAsyncKeyState
+                # Shift, Ctrl, Alt, left/right Windows keys
+                return any(state(vk) & 0x8000 for vk in (0x10, 0x11, 0x12, 0x5B, 0x5C))
+            except Exception:
+                return False
+        return False
+
     def undo_last_paste(self) -> None:
         """Synthesize Cmd+Z on macOS or Ctrl+Z on Windows to undo prior draft paste."""
         if sys.platform == "darwin":

@@ -1,4 +1,4 @@
-# Just Talk (v2.1.0)
+# Just Talk (v2.2.0)
 
 > **A fast, quiet voice keyboard for macOS and Windows.**  
 > Think → Speak → Done.
@@ -27,7 +27,14 @@ Download the latest version of Just Talk directly for your operating system:
 
 ---
 
-## What's New in Version 2.1.0
+## What's New in Version 2.2.0
+
+* **Edit selected text by voice:** Select text in any app, hold your shortcut + **Shift**, and say what to change ("make this shorter", "make it polite", "translate to Nepali", "turn this into bullet points"). Just Talk rewrites the selection in place. With nothing selected, Action Mode works as before.
+* **Paste last dictation:** Press **Ctrl + Cmd + V** (macOS) or **Win + Alt + V** (Windows) to type your last dictation again into whatever app is focused, handy when the cursor was in the wrong place. The tray menu also has **Copy Last Dictation**.
+* **AI no longer answers your dictation:** Speech that sounds like a question ("give me an overview… what do you think?") is now cleaned up as text instead of being answered or replaced by a line like "I will translate the spoken transcript…".
+* **Windows fixes:** Turning on "Open Just Talk at login" no longer gets the app flagged and removed by antivirus (it now uses a Startup-folder shortcut), and reopening the window keeps the page you were on instead of jumping to Home.
+
+## Previous Release: 2.1.0
 
 * **Long dictation that keeps everything:** Speak for up to 5 minutes with pauses. Long audio is split at natural pauses and stitched back together, so nothing said before a pause is lost or repeated. In tap mode, recording stops after 8 seconds of silence (was 4.5 s).
 * **Smarter AI cleanup:** Self-corrections are resolved ("meet at five, actually four" → "Can we meet at four?"), grammar and spelling are fixed Grammarly-style, and long dictations get more time instead of falling back to "inserted offline". Slow replies no longer pause AI formatting for everyone.
@@ -36,7 +43,7 @@ Download the latest version of Just Talk directly for your operating system:
 * **Windows fixes:** Dictation now pastes into Chrome, VS Code, Slack, Office and other apps instead of only copying, and scrolling over a dropdown scrolls the page instead of changing the value.
 * **Clean quit:** Cmd+Q, tray Quit, logout and shutdown all close Just Talk properly.
 
-## Previous Release: 2.0.1
+## Earlier Release: 2.0.1
 
 * **Zero-Login, Instant Speech Engines:** No mandatory Hugging Face downloads or initial freezes. Uses macOS `SFSpeechRecognizer` or Windows Speech Recognition out-of-the-box, with seamless fallback to the free, zero-key Google Web Speech API.
 * **Tap-to-Toggle Dictation:** Tap **Fn** (macOS) or **Right Alt** (Windows) once to start recording, tap again to finish. Built-in 250ms hardware debounce and repeat suppression prevent accidental double-toggles.
@@ -62,6 +69,8 @@ Download the latest version of Just Talk directly for your operating system:
   * Say *"translate this into Spanish: Let's meet tomorrow at 10 AM"* → types Spanish translation.
   * Say *"rewrite this professionally: Need those reports ASAP"* → types polished business prose.
   * Say *"summarize this in bullet points: ... "* → types a concise summary.
+  * **Select text first** and just say the change, e.g. *"make this shorter"* → the selection is rewritten in place.
+* **Paste Last Dictation:** **Ctrl + Cmd + V** (macOS) / **Win + Alt + V** (Windows) types your last dictation again.
 
 ---
 

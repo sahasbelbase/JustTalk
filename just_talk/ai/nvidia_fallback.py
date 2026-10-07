@@ -17,6 +17,7 @@ import httpx
 
 from ..security import CredentialManager
 from .prompts import (
+    EDIT_SELECTION_STYLE,
     TRANSCRIPT_BOUNDARY_RULE,
     is_meta_reply,
     strip_transcript_tags,
@@ -95,6 +96,8 @@ class NvidiaFallbackFormatter:
             "Only clean and format the spoken words into written text. "
             f"{TRANSCRIPT_BOUNDARY_RULE}"
         )
+        if style == EDIT_SELECTION_STYLE:
+            full_system = system_prompt
 
         url = f"{NVIDIA_BASE_URL}/chat/completions"
         headers = {

@@ -39,6 +39,10 @@ class MacHotkeyMonitor:
     KEYCODE_RIGHT_CMD = 54  # Right Command
     KEYCODE_LEFT_CTRL = 59
     KEYCODE_SPACE = 49
+    KEYCODE_V = 9
+
+    # NSEvent monitors and the Quartz tap both see every key press; collapse them into one action
+    PASTE_LAST_DEDUPE_SEC = 0.4
 
     # Minimum hold duration in seconds to consider it a deliberate hold-to-talk action
     DEBOUNCE_DELAY_SEC = 0.080  # 80ms for ultra-responsive trigger
@@ -59,6 +63,7 @@ class MacHotkeyMonitor:
         push_to_talk: bool = True,
         on_action_mode_changed: Optional[Callable[[bool], None]] = None,
         on_cancel_recording: Optional[Callable[[], None]] = None,
+        on_paste_last: Optional[Callable[[], None]] = None,
     ):
         self.on_start_recording = on_start_recording
         self.on_stop_recording = on_stop_recording
@@ -66,6 +71,8 @@ class MacHotkeyMonitor:
         self.push_to_talk = push_to_talk
         self.on_action_mode_changed = on_action_mode_changed
         self.on_cancel_recording = on_cancel_recording
+        self.on_paste_last = on_paste_last
+        self._last_paste_last_time = 0.0
 
         self._lock = threading.Lock()
         self._is_active = False
@@ -161,6 +168,14 @@ class MacHotkeyMonitor:
                     event_type = event.type()
                     # KeyDown for space shortcuts
                     if event_type == AppKit.NSEventTypeKeyDown:
+                        if event.keyCode() == self.KEYCODE_V and not event.isARepeat():
+                            flags = event.modifierFlags()
+                            if self._is_paste_last_combo(
+                                bool(flags & AppKit.NSEventModifierFlagControl),
+                                bool(flags & AppKit.NSEventModifierFlagCommand),
+                            ):
+                                self._fire_paste_last()
+                                return event
                         if self.trigger_key in ("ctrl_space", "ctrl+space", "alt_space", "alt+space"):
                             keycode = event.keyCode()
                             if keycode == self.KEYCODE_SPACE:
@@ -200,7 +215,7 @@ class MacHotkeyMonitor:
                 return event
 
             mask = AppKit.NSEventMaskFlagsChanged
-            if self.trigger_key in ("ctrl_space", "ctrl+space", "alt_space", "alt+space"):
+            if self.on_paste_last or self.trigger_key in ("ctrl_space", "ctrl+space", "alt_space", "alt+space"):
                 mask |= AppKit.NSEventMaskKeyDown
 
             self._global_monitor = AppKit.NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(
@@ -350,6 +365,35 @@ class MacHotkeyMonitor:
             except Exception as e:
                 print(f"[MacHotkeyMonitor] on_stop error: {e}", file=sys.stderr)
 
+    def _is_paste_last_combo(self, ctrl_down: bool, cmd_down: bool) -> bool:
+        """Ctrl+Cmd+V re-pastes the last dictation."""
+        return bool(self.on_paste_last) and ctrl_down and cmd_down
+
+    def _fire_paste_last(self) -> None:
+        cancel_recording = False
+        with self._lock:
+            now = time.time()
+            if now - self._last_paste_last_time < self.PASTE_LAST_DEDUPE_SEC:
+                return
+            self._last_paste_last_time = now
+            if self._is_active:
+                # Right Cmd can be the dictation key, so this combo may have just started a recording
+                self._is_active = False
+                self._is_action_mode = False
+                cancel_recording = True
+            self._cancel_debounce()
+
+        if cancel_recording and self.on_cancel_recording:
+            try:
+                self.on_cancel_recording()
+            except Exception as e:
+                print(f"[MacHotkeyMonitor] cancel error: {e}", file=sys.stderr)
+        print("[MacHotkeyMonitor] Ctrl+Cmd+V -> paste last dictation", file=sys.stderr)
+        try:
+            self.on_paste_last()
+        except Exception as e:
+            print(f"[MacHotkeyMonitor] on_paste_last error: {e}", file=sys.stderr)
+
     def _handle_other_key_down(self, keycode: int) -> None:
         """
         Called when another key is pressed while the trigger key is held or active.
@@ -439,6 +483,15 @@ class MacHotkeyMonitor:
 
                 # 2. Check for key down events (only active if trigger is space-based)
                 if event_type == kCGEventKeyDown:
+                    keycode = CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode)
+                    if keycode == self.KEYCODE_V:
+                        flags = CGEventGetFlags(event)
+                        is_repeat = CGEventGetIntegerValueField(event, Quartz.kCGKeyboardEventAutorepeat)
+                        if not is_repeat and self._is_paste_last_combo(
+                            bool(flags & self.CTRL_FLAG_MASK), bool(flags & self.CMD_FLAG_MASK)
+                        ):
+                            self._fire_paste_last()
+                            return event
                     if self.trigger_key not in ("ctrl_space", "ctrl+space", "alt_space", "alt+space"):
                         return event
                     keycode = CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode)
@@ -477,7 +530,7 @@ class MacHotkeyMonitor:
 
                 return event
 
-            if self.trigger_key in ("ctrl_space", "ctrl+space", "alt_space", "alt+space"):
+            if self.on_paste_last or self.trigger_key in ("ctrl_space", "ctrl+space", "alt_space", "alt+space"):
                 mask = CGEventMaskBit(kCGEventFlagsChanged) | CGEventMaskBit(kCGEventKeyDown)
             else:
                 mask = CGEventMaskBit(kCGEventFlagsChanged)

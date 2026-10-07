@@ -13,6 +13,7 @@ import httpx
 from ..security import CredentialManager
 from .nvidia_fallback import NvidiaFallbackFormatter
 from .prompts import (
+    EDIT_SELECTION_STYLE,
     TRANSCRIPT_BOUNDARY_RULE,
     is_meta_reply,
     strip_transcript_tags,
@@ -416,6 +417,9 @@ class GeminiFormatter:
             f"{TRANSCRIPT_BOUNDARY_RULE} "
             f"{task_directive}"
         )
+        if style == EDIT_SELECTION_STYLE:
+            # The edit prompt carries its own rules; the dictation directives above would contradict it
+            wrapped_instruction = system_instruction
 
         url = f"{self.BASE_URL}/models/{self.model_name}:generateContent"
         headers = {

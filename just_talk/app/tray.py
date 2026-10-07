@@ -27,6 +27,7 @@ class SystemTrayManager:
         on_quit: Callable[[], None],
         gemini: Optional[GeminiFormatter] = None,
         parent: Optional[QWidget] = None,
+        on_copy_last: Optional[Callable[[], None]] = None,
     ):
         self.config = config
         self.icon = icon
@@ -35,6 +36,7 @@ class SystemTrayManager:
         self.on_change_tier = on_change_tier
         self.on_quit = on_quit
         self.gemini = gemini
+        self.on_copy_last = on_copy_last
 
         self._menu: Optional[QMenu] = None
         self._update_info = None
@@ -114,6 +116,12 @@ class SystemTrayManager:
             tier_menu.addAction(act)
 
         menu.addSeparator()
+
+        if self.on_copy_last:
+            shortcut = "Ctrl+Cmd+V" if sys.platform == "darwin" else "Win+Alt+V"
+            copy_last_action = QAction(f"Copy Last Dictation  ({shortcut} pastes it)", menu)
+            copy_last_action.triggered.connect(self.on_copy_last)
+            menu.addAction(copy_last_action)
 
         # History and Settings navigation
         history_action = QAction("History...", menu)

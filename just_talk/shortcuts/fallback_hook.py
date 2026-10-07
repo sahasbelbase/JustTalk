@@ -25,6 +25,7 @@ class PynputHotkeyMonitor:
         push_to_talk: bool = True,
         on_action_mode_changed: Optional[Callable[[bool], None]] = None,
         on_cancel_recording: Optional[Callable[[], None]] = None,
+        on_paste_last: Optional[Callable[[], None]] = None,
     ):
         self.trigger_key = trigger_key.lower()
         self.action_key = action_key.lower()
@@ -33,6 +34,7 @@ class PynputHotkeyMonitor:
         self.push_to_talk = push_to_talk
         self.on_action_mode_changed = on_action_mode_changed
         self.on_cancel_recording = on_cancel_recording
+        self.on_paste_last = on_paste_last
 
         self._current_keys: Set[keyboard.Key | keyboard.KeyCode] = set()
         self._listener: Optional[keyboard.Listener] = None
@@ -116,6 +118,46 @@ class PynputHotkeyMonitor:
         )
         return self._matches_trigger() and has_shift
 
+    def _matches_paste_last(self) -> bool:
+        """Paste-last-dictation shortcut: Ctrl+Cmd+V on macOS, Win+Alt+V elsewhere."""
+        v_vk = 9 if sys.platform == "darwin" else 0x56
+        has_v = any(
+            getattr(k, "vk", None) == v_vk or (getattr(k, "char", None) or "").lower() == "v"
+            for k in self._current_keys
+        )
+        has_cmd = any(
+            k in (keyboard.Key.cmd, keyboard.Key.cmd_l, keyboard.Key.cmd_r)
+            or (sys.platform == "win32" and getattr(k, "vk", None) in (91, 92))
+            for k in self._current_keys
+        )
+        if sys.platform == "darwin":
+            has_ctrl = any(k in (keyboard.Key.ctrl, keyboard.Key.ctrl_l, keyboard.Key.ctrl_r) for k in self._current_keys)
+            return has_v and has_cmd and has_ctrl
+        has_alt = any(
+            k in (keyboard.Key.alt, keyboard.Key.alt_l, keyboard.Key.alt_r, getattr(keyboard.Key, "alt_gr", None))
+            or getattr(k, "vk", None) in (18, 164, 165)
+            for k in self._current_keys
+        )
+        return has_v and has_cmd and has_alt
+
+    def _handle_paste_last(self) -> None:
+        cancel_recording = False
+        with self._lock:
+            if self._is_active:
+                # Right Alt is also the dictation key, so this combo may have just started a recording
+                self._is_active = False
+                self._is_action_mode = False
+                cancel_recording = True
+        if cancel_recording and self.on_cancel_recording:
+            try:
+                self.on_cancel_recording()
+            except Exception as e:
+                print(f"[PynputHook] cancel error: {e}", file=sys.stderr)
+        try:
+            self.on_paste_last()
+        except Exception as e:
+            print(f"[PynputHook] on_paste_last error: {e}", file=sys.stderr)
+
     def _on_press(self, key):
         to_start = False
         to_stop = False
@@ -145,6 +187,13 @@ class PynputHotkeyMonitor:
             # Check if this key was already pressed (OS auto-repeat filtering)
             is_repeat = key in self._current_keys
             self._current_keys.add(key)
+            is_paste_last = bool(self.on_paste_last) and not is_repeat and self._matches_paste_last()
+
+        if is_paste_last:
+            self._handle_paste_last()
+            return
+
+        with self._lock:
             is_trigger = self._matches_trigger()
             is_action = self._matches_action()
 

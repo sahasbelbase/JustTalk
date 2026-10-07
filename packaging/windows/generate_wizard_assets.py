@@ -144,7 +144,7 @@ def create_wizard_sidebar(output_path: Path, assets_dir: Path) -> None:
     draw.text(((width - tw2) // 2, 515), tag, font=version_font, fill=(100, 105, 120))
 
     # Version note
-    ver = "v2.1.0 Desktop for Windows"
+    ver = "v2.2.0 Desktop for Windows"
     vb = draw.textbbox((0, 0), ver, font=version_font)
     vw = vb[2] - vb[0]
     draw.text(((width - vw) // 2, 580), ver, font=version_font, fill=(75, 80, 95))

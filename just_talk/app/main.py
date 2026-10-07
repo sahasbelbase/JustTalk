@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import multiprocessing
 import os
 import sys
@@ -33,7 +34,7 @@ from PySide6.QtWidgets import QApplication
 
 from ..ai.actions import ActionIntent, ActionRouter
 from ..ai.gemini import GeminiFormatter
-from ..ai.prompts import build_prompt
+from ..ai.prompts import EDIT_SELECTION_STYLE, build_edit_selection_prompt, build_prompt
 from ..ai.providers import MultiProviderFormatter
 from ..audio.noise_filter import NoiseFilter
 from ..audio.recorder import AudioRecorder
@@ -361,6 +362,7 @@ class JustTalkApp:
             on_change_tier=self._on_change_tier,
             on_quit=self.quit,
             gemini=self.gemini,
+            on_copy_last=self.copy_last_dictation,
         )
         self.tray.show()
         self.main_window.update_available.connect(self.tray.set_update_available)
@@ -414,6 +416,7 @@ class JustTalkApp:
             on_stop_recording=lambda: self.bridge.stop_recording_requested.emit(),
             on_action_mode_changed=lambda is_action: self.bridge.action_mode_changed.emit(is_action),
             on_cancel_recording=lambda: self.bridge.cancel_recording_requested.emit(),
+            on_paste_last=self.paste_last_dictation,
         )
         self.shortcut_manager.start()
 
@@ -855,6 +858,17 @@ class JustTalkApp:
 
             # 4. Action Routing & Intent Detection
             conventions = getattr(self.config, "conventions", {})
+            if is_action_mode and use_gemini:
+                selected_text = self.inserter.copy_selection()
+                if selected_text and detected_context != "text" and TextInserter.is_implicit_line_copy(selected_text):
+                    # Code editors copy the whole current line when nothing is selected
+                    selected_text = ""
+                if selected_text:
+                    self._edit_selected_text(
+                        selected_text, raw_text, audio, start_time, detected_context, identified_speaker
+                    )
+                    return
+
             if is_action_mode:
                 intent = ActionRouter.parse_intent(raw_text, is_action_mode=True, context=detected_context, conventions=conventions)
                 action_name = intent.action_type
@@ -1016,6 +1030,91 @@ class JustTalkApp:
             except Exception:
                 pass
 
+
+    def _edit_selected_text(
+        self,
+        selected_text: str,
+        instruction: str,
+        audio,
+        start_time: float,
+        detected_context: str,
+        identified_speaker: Optional[str],
+    ) -> None:
+        """Action Mode with a selection: rewrite the selected text per the spoken instruction."""
+        print(f"[EditSelection] {len(selected_text)} chars selected, instruction: {instruction!r}", file=sys.stderr)
+        self.bridge.state_processing.emit("Editing selection...")
+        edited, success, msg = self.gemini.format_text(
+            raw_text=selected_text,
+            style=EDIT_SELECTION_STYLE,
+            custom_system_instruction=build_edit_selection_prompt(instruction),
+        )
+        if not success or not edited:
+            # Leave the user's text untouched rather than pasting an unedited copy over it
+            print(f"[EditSelection] AI edit failed: {CredentialManager.redact(msg)}", file=sys.stderr)
+            self.bridge.state_error.emit("Couldn't edit selection")
+            return
+
+        inserted_ok, status, active_app = self.inserter.insert(
+            edited,
+            restore_clipboard=self.config.restore_clipboard,
+        )
+        if status == "inserted":
+            self.bridge.state_inserted.emit()
+        else:
+            self.bridge.state_copied.emit()
+
+        try:
+            self.db.add(
+                raw_transcription=instruction,
+                processed_text=edited,
+                action=EDIT_SELECTION_STYLE,
+                application=active_app,
+                status=status,
+                duration_ms=int((time.time() - start_time) * 1000),
+                speaker=identified_speaker,
+                context=detected_context,
+                duration_sec=round(len(audio) / 16000, 2) if audio is not None else 0.0,
+            )
+        except Exception as db_err:
+            print(f"[Database] Failed to record history: {db_err}", file=sys.stderr)
+
+    def last_dictation_text(self) -> str:
+        """Most recent dictation output, or "" when history is empty."""
+        try:
+            recent = self.db.get_recent(limit=1)
+        except Exception:
+            return ""
+        return recent[0].processed_text if recent else ""
+
+    def paste_last_dictation(self) -> None:
+        """Global shortcut: type the last dictation again into the focused app."""
+        if self.recorder.is_recording:
+            return
+        threading.Thread(target=self._paste_last_worker, daemon=True).start()
+
+    def _paste_last_worker(self) -> None:
+        text = self.last_dictation_text()
+        if not text:
+            self.bridge.state_error.emit("Nothing to paste yet")
+            return
+        # The shortcut's own modifiers are still down; pasting now would send e.g. Ctrl+Cmd+V again
+        self.inserter.wait_for_modifiers_released()
+        self.inserter.capture_active_target()
+        _ok, status, _app = self.inserter.insert(text, restore_clipboard=self.config.restore_clipboard)
+        print(f"[PasteLast] Re-pasted last dictation ({len(text)} chars) -> {status}", file=sys.stderr)
+        if status == "inserted":
+            self.bridge.state_inserted.emit()
+        else:
+            self.bridge.state_copied.emit()
+
+    def copy_last_dictation(self) -> None:
+        """Tray menu: put the last dictation on the clipboard."""
+        text = self.last_dictation_text()
+        if text:
+            ClipboardManager.set_text(text)
+            self.bridge.state_copied.emit()
+        else:
+            self.bridge.state_error.emit("Nothing to copy yet")
 
     def _on_toggle_gemini(self, enabled: bool) -> None:
         self.config.gemini_enabled = enabled

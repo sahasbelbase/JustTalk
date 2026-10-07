@@ -1,7 +1,7 @@
 """Shared test safety net.
 
 Tests must never touch the real clipboard or send real keystrokes: TextInserter posts
-Cmd/Ctrl+V and Cmd/Ctrl+Z straight to the OS (CGEventPost / keybd_event), which pastes
+Cmd/Ctrl+V, Cmd/Ctrl+C and Cmd/Ctrl+Z straight to the OS (CGEventPost / keybd_event), which pastes
 test text into whatever app the developer has focused.
 """
 
@@ -24,4 +24,6 @@ def _no_real_clipboard_or_keystrokes(monkeypatch):
     monkeypatch.setattr(TextInserter, "_synthesize_paste", lambda self: True)
     monkeypatch.setattr(TextInserter, "_reactivate_target_window", lambda self: None)
     monkeypatch.setattr(TextInserter, "undo_last_paste", lambda self: None)
+    monkeypatch.setattr(TextInserter, "_synthesize_copy", lambda self: True)
+    monkeypatch.setattr(TextInserter, "_modifiers_down", staticmethod(lambda: False))
     yield

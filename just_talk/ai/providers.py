@@ -10,6 +10,7 @@ import httpx
 
 from .gemini import CircuitBreaker, ConnectionTestResult, GeminiFormatter
 from .prompts import (
+    EDIT_SELECTION_STYLE,
     TRANSCRIPT_BOUNDARY_RULE,
     build_prompt,
     is_meta_reply,
@@ -215,6 +216,8 @@ def scan_ollama_models(host_url: str = "http://localhost:11434") -> list[str]:
 class MultiProviderFormatter:
     """Unified AI text formatter supporting multiple LLM providers."""
 
+    EDIT_SELECTION_BUDGET_SEC = 8.0
+
     def __init__(
         self,
         provider_id: str = 'gemini',
@@ -276,7 +279,9 @@ class MultiProviderFormatter:
         otherwise they always time out and fall back to local cleanup.
         """
         words = len(raw_text.split())
-        return min(self.timeout, 2.0) + min(6.0, max(0.0, (words - 25) / 20.0))
+        budget = min(self.timeout, 2.0) + min(6.0, max(0.0, (words - 25) / 20.0))
+        # Selection edits have no draft on screen, so the user is already waiting
+        return max(budget, getattr(self, "_budget_floor", 0.0))
 
     def format_text(
         self,
@@ -325,6 +330,11 @@ class MultiProviderFormatter:
             f"{TRANSCRIPT_BOUNDARY_RULE} "
             f"{task_directive}"
         )
+        self._budget_floor = 0.0
+        if style == EDIT_SELECTION_STYLE:
+            # The edit prompt carries its own rules; the dictation directives above would contradict it
+            wrapped_instruction = system_instruction
+            self._budget_floor = self.EDIT_SELECTION_BUDGET_SEC
 
         try:
             if self.provider.api_format == 'gemini':
