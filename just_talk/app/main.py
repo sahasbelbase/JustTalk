@@ -367,8 +367,12 @@ class JustTalkApp:
             on_quit=self.quit,
             gemini=self.gemini,
             on_copy_last=self.copy_last_dictation,
+            on_set_typing_language=lambda code: self.main_window.set_typing_language(code),
+            on_set_translate=lambda on: self.main_window.set_translate(on),
         )
         self.tray.show()
+        # Keep the tray's "Typing In" menu in step with the Home screen
+        self.main_window.config_changed.connect(lambda _cfg: self.tray.refresh_menu())
         self.main_window.update_available.connect(self.tray.set_update_available)
 
         # 5. Open window (Onboarding or Main Window)

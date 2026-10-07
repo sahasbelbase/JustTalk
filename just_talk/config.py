@@ -100,7 +100,7 @@ class AppConfig:
     model_tier: str = "quality"  # Default: "quality" (large-v3-turbo), "max" (large-v3), "balanced" (small), "fast" (base)
     language: str = "en"  # Active language: "en", "ne_en", "ne", "es", "fr", "de", "zh", "auto"
     spoken_languages: list[str] = field(default_factory=lambda: ["en"])  # Languages the user actively speaks
-    nepali_asr_engine: str = "whisper"  # Default: "whisper" (100% out-of-the-box, no tokens needed) or "conformer"
+    nepali_asr_engine: str = "kriti"  # "kriti" (offline Nepali model, used once downloaded) or "whisper" (same engine as other languages)
     nepali_output_mode: str = "auto"  # "auto" (context-aware), "romanized", "devanagari", "english"
     romanized_style: str = "cha"  # "cha" [Default], "chha", "xa"
     speech_mode: str = "transcribe"  # "transcribe" (write what I say) or "translate" (translate speech to English)
@@ -323,9 +323,19 @@ class AppConfig:
                 if not nepali_conformer_runtime_available():
                     # The gated .nemo download can't run without NeMo; it only produced
                     # HTTP 401 errors and then silently used Whisper anyway.
-                    print("[Config] NepaliConformer runtime unavailable; using Whisper for Nepali.", file=sys.stderr)
-                    config.nepali_asr_engine = "whisper"
+                    print("[Config] NepaliConformer retired; using Kriti for Nepali.", file=sys.stderr)
+                    config.nepali_asr_engine = "kriti"
                     needs_save = True
+
+            from .language_setup import normalize_language_settings
+
+            if normalize_language_settings(config):
+                print(
+                    f"[Config] Language settings made consistent: speak={config.spoken_languages} "
+                    f"typing={config.language}",
+                    file=sys.stderr,
+                )
+                needs_save = True
 
             # Re-save if legacy keys were stripped or settings were migrated
             if needs_save:

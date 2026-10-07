@@ -28,6 +28,8 @@ class SystemTrayManager:
         gemini: Optional[GeminiFormatter] = None,
         parent: Optional[QWidget] = None,
         on_copy_last: Optional[Callable[[], None]] = None,
+        on_set_typing_language: Optional[Callable[[str], None]] = None,
+        on_set_translate: Optional[Callable[[bool], None]] = None,
     ):
         self.config = config
         self.icon = icon
@@ -37,6 +39,8 @@ class SystemTrayManager:
         self.on_quit = on_quit
         self.gemini = gemini
         self.on_copy_last = on_copy_last
+        self.on_set_typing_language = on_set_typing_language
+        self.on_set_translate = on_set_translate
 
         self._menu: Optional[QMenu] = None
         self._update_info = None
@@ -88,6 +92,30 @@ class SystemTrayManager:
         status_action.setEnabled(False)
         menu.addAction(status_action)
         menu.addSeparator()
+
+        # Quick switch: what you're typing in (from the languages you speak) and translation
+        if self.on_set_typing_language:
+            from ..language_setup import typing_choices
+
+            typing_menu = menu.addMenu("Typing In")
+            lang_group = QActionGroup(typing_menu)
+            lang_group.setExclusive(True)
+            current = getattr(self.config, "language", "en")
+            for code, label in typing_choices(self.config.spoken_languages):
+                act = QAction(label if code != "ne_en" else "Mixed (Nepali + English)", typing_menu)
+                act.setCheckable(True)
+                act.setChecked(code == current)
+                act.triggered.connect(lambda checked, c=code: self.on_set_typing_language(c))
+                lang_group.addAction(act)
+                typing_menu.addAction(act)
+            if self.on_set_translate:
+                typing_menu.addSeparator()
+                tr = QAction("Translate to English", typing_menu)
+                tr.setCheckable(True)
+                tr.setChecked(getattr(self.config, "speech_mode", "transcribe") == "translate")
+                tr.toggled.connect(self.on_set_translate)
+                typing_menu.addAction(tr)
+            menu.addSeparator()
 
         # Quick Toggle: AI Formatting
         pid = getattr(self.config, "ai_provider", "gemini") or "gemini"

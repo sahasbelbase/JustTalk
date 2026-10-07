@@ -45,6 +45,7 @@ from ..audio.recorder import AudioRecorder
 from ..config import ADDITIONAL_LANGUAGES, CORE_SPOKEN_LANGUAGES, AppConfig
 from ..database.history import HistoryDatabase, HistoryItem
 from ..security import CredentialManager
+from ..language_setup import default_typing_language, typing_choices, typing_summary
 from ..stt.kriti_engine import KRITI_DOWNLOAD_MB, download_kriti, is_kriti_downloaded
 from ..stt.model_manager import TIERS, ModelManager, selectable_tiers
 from ..system.autostart import AutostartManager
@@ -52,7 +53,6 @@ from ..system.clipboard import ClipboardManager
 from ..system.permissions import PermissionsManager
 from ..system.updater import UpdateChecker, UpdateInfo
 from .ai_formatting_view import AIFormattingView
-from .language_selector import SearchableLanguageComboBox
 from .theme import ThemeManager
 from .conventions_view import ConventionsView
 from .history_view import HistoryView
@@ -570,50 +570,30 @@ class MainWindow(QMainWindow):
             hfa_layout.addWidget(self.home_fn_fix_btn)
             layout.addWidget(self.home_fn_alert_card)
 
-        # Multilingual Language & Speech Mode Card
+        # "Typing in" card: choose from the languages you speak; optionally translate to English
         mode_card = QFrame()
         mode_card.setObjectName("card")
         mc_layout = QVBoxLayout(mode_card)
         mc_layout.setContentsMargins(18, 16, 18, 16)
         mc_layout.setSpacing(12)
 
-        mc_head = QHBoxLayout()
-        mc_title = QLabel("SPEECH LANGUAGE & DUAL OUTPUT MODE")
+        mc_title = QLabel("TYPING IN")
         mc_title.setFont(ThemeManager.get_mono_font(11, weight=QFont.Weight.Bold))
         mc_title.setObjectName("mutedLabel")
-        mc_head.addWidget(mc_title)
-        mc_head.addStretch()
-        mc_layout.addLayout(mc_head)
+        mc_layout.addWidget(mc_title)
 
-        mode_btn_row = QHBoxLayout()
-        mode_btn_row.setSpacing(10)
-        self.home_mode_transcribe_btn = QPushButton("Write in my language")
-        self.home_mode_transcribe_btn.setCheckable(True)
-        self.home_mode_transcribe_btn.setChecked(getattr(self.config, "speech_mode", "transcribe") != "translate")
-        self.home_mode_transcribe_btn.clicked.connect(lambda: self._set_home_speech_mode("transcribe"))
+        self.typing_row = QHBoxLayout()
+        self.typing_row.setSpacing(8)
+        mc_layout.addLayout(self.typing_row)
+        self.typing_group = QButtonGroup(self)
+        self.typing_group.setExclusive(True)
+        self._typing_buttons: dict[str, QPushButton] = {}
+        self._rebuild_typing_buttons()
 
-        self.home_mode_translate_btn = QPushButton("Translate to English")
-        self.home_mode_translate_btn.setCheckable(True)
-        self.home_mode_translate_btn.setChecked(getattr(self.config, "speech_mode", "transcribe") == "translate")
-        self.home_mode_translate_btn.clicked.connect(lambda: self._set_home_speech_mode("translate"))
-
-        self._style_home_mode_buttons()
-        mode_btn_row.addWidget(self.home_mode_transcribe_btn)
-        mode_btn_row.addWidget(self.home_mode_translate_btn)
-        mc_layout.addLayout(mode_btn_row)
-
-        # Spoken Language Dropdown
-        lang_row = QHBoxLayout()
-        lang_lbl = QLabel("Spoken Language:")
-        lang_lbl.setFont(ThemeManager.get_ui_font(13, weight=QFont.Weight.Medium))
-        lang_row.addWidget(lang_lbl)
-
-        self.home_lang_combo = SearchableLanguageComboBox()
-        cur_lang = getattr(self.config, "language", "en")
-        self.home_lang_combo.set_current_language(cur_lang)
-        self.home_lang_combo.language_changed.connect(self._on_home_lang_changed)
-        lang_row.addWidget(self.home_lang_combo, 1)
-        mc_layout.addLayout(lang_row)
+        self.translate_check = QCheckBox("Translate to English")
+        self.translate_check.setChecked(getattr(self.config, "speech_mode", "transcribe") == "translate")
+        self.translate_check.toggled.connect(self._on_translate_toggled)
+        mc_layout.addWidget(self.translate_check)
 
         self.home_mode_desc = QLabel("")
         self.home_mode_desc.setObjectName("mutedLabel")
@@ -621,6 +601,28 @@ class MainWindow(QMainWindow):
         self.home_mode_desc.setWordWrap(True)
         mc_layout.addWidget(self.home_mode_desc)
 
+        # One-click Kriti download when Nepali would otherwise use the general engine
+        self.home_kriti_banner = QFrame()
+        self.home_kriti_banner.setObjectName("infoCard")
+        kb_layout = QHBoxLayout(self.home_kriti_banner)
+        kb_layout.setContentsMargins(12, 8, 12, 8)
+        self.home_kriti_label = QLabel(
+            "Get much better Nepali, fully offline: download Kriti (" + str(KRITI_DOWNLOAD_MB) + " MB)."
+        )
+        self.home_kriti_label.setWordWrap(True)
+        kb_layout.addWidget(self.home_kriti_label, 1)
+        self.home_kriti_btn = QPushButton("Download")
+        self.home_kriti_btn.setObjectName("primaryBtn")
+        self.home_kriti_btn.clicked.connect(self._on_kriti_download_clicked)
+        kb_layout.addWidget(self.home_kriti_btn)
+        mc_layout.addWidget(self.home_kriti_banner)
+
+        langs_hint = QLabel("Add or remove languages in Settings › Languages.")
+        langs_hint.setObjectName("helpText")
+        mc_layout.addWidget(langs_hint)
+
+        self._update_home_mode_desc()
+        self._refresh_home_kriti_banner()
         layout.addWidget(mode_card)
 
         # Status Cards Row (Speech Engine, AI Formatter, Audio Input)
@@ -1294,20 +1296,15 @@ class MainWindow(QMainWindow):
             self.shortcut_combo.addItem("Control + Shift + Space", "ctrl_shift_space")
         s1_form.addRow("Voice Shortcut:", self.shortcut_combo)
 
-        if sys.platform == "darwin":
-            extra_shortcuts = (
-                "Edit text: select it, hold your shortcut + Shift, and say what to change "
-                "(“fix grammar”, “polish this prompt”, “fix this query”).\nPaste last dictation: ⌃ + ⌘ + V"
-            )
-        else:
-            extra_shortcuts = (
-                "Edit text: select it, hold your shortcut + Shift, and say what to change "
-                "(“fix grammar”, “polish this prompt”, “fix this query”).\nPaste last dictation: Win + Alt + V"
-            )
-        extra_lbl = QLabel(extra_shortcuts)
-        extra_lbl.setObjectName("mutedLabel")
-        extra_lbl.setWordWrap(True)
-        s1_form.addRow("More Shortcuts:", extra_lbl)
+        edit_lbl = QLabel("Select text, hold your shortcut + Shift, and say the change")
+        edit_lbl.setWordWrap(True)
+        s1_form.addRow("Edit Text:", self._with_help(
+            edit_lbl, "For example \u201cfix grammar\u201d, \u201cpolish this prompt\u201d or \u201cfix this query\u201d."
+        ))
+        paste_keys = "\u2303 + \u2318 + V" if sys.platform == "darwin" else "Win + Alt + V"
+        s1_form.addRow("Paste Last:", self._with_help(
+            QLabel(paste_keys), "Types your last dictation again into the app you're in."
+        ))
 
         if sys.platform == "darwin":
             kb_row = QHBoxLayout()
@@ -1359,7 +1356,7 @@ class MainWindow(QMainWindow):
         # ---------------------------------------------------------------------
         sec2, sec2_layout = self._create_settings_section(
             "Voice & Speech",
-            subtitle="Microphone, speech engine, language and privacy.",
+            subtitle="Microphone, privacy and custom vocabulary.",
             badge="",
             default_expanded=True,
         )
@@ -1377,7 +1374,6 @@ class MainWindow(QMainWindow):
         if p_idx >= 0:
             self.stt_provider_combo.setCurrentIndex(p_idx)
         self.stt_provider_combo.currentIndexChanged.connect(self._on_stt_provider_changed)
-        s2_form.addRow("Speech Engine:", self.stt_provider_combo)
 
         # Microphone Row
         mic_row = QHBoxLayout()
@@ -1434,21 +1430,6 @@ class MainWindow(QMainWindow):
             self.offline_mode_check, "Audio never leaves this device. Cloud speech services are blocked."
         ))
 
-        self.speech_mode_combo = QComboBox()
-        self.speech_mode_combo.addItem("Write in my language", "transcribe")
-        self.speech_mode_combo.addItem("Translate to English", "translate")
-        cur_mode = getattr(self.config, "speech_mode", "transcribe")
-        m_idx = self.speech_mode_combo.findData(cur_mode)
-        if m_idx >= 0:
-            self.speech_mode_combo.setCurrentIndex(m_idx)
-        self.speech_mode_combo.currentIndexChanged.connect(self._on_speech_mode_setting_changed)
-        s2_form.addRow("Speech Output Mode:", self.speech_mode_combo)
-
-        self.language_combo = SearchableLanguageComboBox()
-        cur_lang = getattr(self.config, "language", "en")
-        self.language_combo.set_current_language(cur_lang)
-        self.language_combo.language_changed.connect(self._on_language_setting_changed)
-        s2_form.addRow("Spoken Language:", self.language_combo)
 
         self.vocab_input = QLineEdit()
         self.vocab_input.setPlaceholderText("e.g. JustTalk, Python, Kubernetes, PyTorch, GraphQL")
@@ -1466,8 +1447,8 @@ class MainWindow(QMainWindow):
         # Section 3: Nepglish & Nepali Output Modes
         # ---------------------------------------------------------------------
         sec_nepali, sec_nepali_layout = self._create_settings_section(
-            "Nepali Output",
-            subtitle="Romanized Nepali, Devanagari, or English — per app.",
+            "Languages",
+            subtitle="Languages you speak, and how Nepali is recognised and written.",
             badge="",
             default_expanded=True,
         )
@@ -1476,16 +1457,98 @@ class MainWindow(QMainWindow):
         nep_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         nep_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
 
+        # Spoken Languages Checkbox Grid
+        spoken_langs_container = QWidget()
+        sl_layout = QVBoxLayout(spoken_langs_container)
+        sl_layout.setContentsMargins(0, 0, 0, 0)
+        sl_layout.setSpacing(6)
+
+        sl_desc = QLabel("Tick every language you dictate in. Pick the one you are typing in right now on the Home screen.")
+        sl_desc.setObjectName("mutedLabel")
+        sl_desc.setWordWrap(True)
+        sl_layout.addWidget(sl_desc)
+
+        grid_container = QWidget()
+        grid = QGridLayout(grid_container)
+        grid.setContentsMargins(0, 4, 0, 4)
+        grid.setHorizontalSpacing(16)
+        grid.setVerticalSpacing(6)
+
+        self.settings_lang_checkboxes: dict[str, QCheckBox] = {}
+        active_spoken = set(getattr(self.config, "spoken_languages", ["en"]) or ["en"])
+
+        for idx, item in enumerate(CORE_SPOKEN_LANGUAGES):
+            label = item['name'] if item['native'] == item['name'] else f"{item['name']}  ·  {item['native']}"
+            chk = QCheckBox(label.replace("&", "&&"))  # a bare & would become a mnemonic underline
+            chk.setChecked(item["code"] in active_spoken)
+            chk.toggled.connect(self._on_settings_spoken_languages_changed)
+            self.settings_lang_checkboxes[item["code"]] = chk
+            grid.addWidget(chk, idx // 2, idx % 2)
+
+        sl_layout.addWidget(grid_container)
+
+        search_row = QHBoxLayout()
+        search_lbl = QLabel("Search more languages:")
+        search_lbl.setObjectName("mutedLabel")
+        search_row.addWidget(search_lbl)
+
+        self.settings_add_lang_combo = QComboBox()
+        self.settings_add_lang_combo.addItem("+ Add other language...", "")
+        for name, code in ADDITIONAL_LANGUAGES:
+            self.settings_add_lang_combo.addItem(f"{name}", code)
+        self.settings_add_lang_combo.currentIndexChanged.connect(self._on_settings_add_language_selected)
+        search_row.addWidget(self.settings_add_lang_combo, 1)
+        sl_layout.addLayout(search_row)
+
+        nep_form.addRow("I speak:", spoken_langs_container)
+
+        # Nepali options: only shown when Nepali is one of the spoken languages
+        self.nepali_group = QWidget()
+        ng_form = QFormLayout(self.nepali_group)
+        ng_form.setContentsMargins(0, 6, 0, 0)
+        ng_form.setSpacing(12)
+        ng_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        ng_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+
+        engine_box = QWidget()
+        eb_layout = QVBoxLayout(engine_box)
+        eb_layout.setContentsMargins(0, 0, 0, 0)
+        eb_layout.setSpacing(6)
+        self.nepali_kriti_radio = QRadioButton("Kriti — offline and most accurate for Nepali (by Naamche Labs)")
+        self.nepali_same_radio = QRadioButton("Same speech engine as my other languages")
+        if getattr(self.config, "nepali_asr_engine", "kriti") == "kriti":
+            self.nepali_kriti_radio.setChecked(True)
+        else:
+            self.nepali_same_radio.setChecked(True)
+        self.nepali_kriti_radio.toggled.connect(self._on_nepali_engine_radio)
+        eb_layout.addWidget(self.nepali_kriti_radio)
+
+        # Kriti download/status row (shown only when Kriti is selected)
+        self.kriti_row = QWidget()
+        kriti_layout = QHBoxLayout(self.kriti_row)
+        kriti_layout.setContentsMargins(24, 0, 0, 0)
+        self.kriti_status = QLabel("")
+        self.kriti_status.setObjectName("mutedLabel")
+        self.kriti_status.setWordWrap(True)
+        self.kriti_download_btn = QPushButton("Download")
+        self.kriti_download_btn.setObjectName("secondaryBtn")
+        self.kriti_download_btn.clicked.connect(self._on_kriti_download_clicked)
+        kriti_layout.addWidget(self.kriti_status, 1)
+        kriti_layout.addWidget(self.kriti_download_btn)
+        eb_layout.addWidget(self.kriti_row)
+        eb_layout.addWidget(self.nepali_same_radio)
+        ng_form.addRow("Nepali speech:", engine_box)
+
         self.nepali_output_mode_combo = QComboBox()
         self.nepali_output_mode_combo.addItem("Automatic — based on the app", "auto")
-        self.nepali_output_mode_combo.addItem("Romanized Nepali everywhere", "romanized")
-        self.nepali_output_mode_combo.addItem("Devanagari everywhere", "devanagari")
-        self.nepali_output_mode_combo.addItem("English everywhere", "english")
+        self.nepali_output_mode_combo.addItem("Romanized Nepali — k cha", "romanized")
+        self.nepali_output_mode_combo.addItem("Devanagari — के छ", "devanagari")
+        self.nepali_output_mode_combo.addItem("English (translate)", "english")
         nep_idx = self.nepali_output_mode_combo.findData(getattr(self.config, "nepali_output_mode", "auto"))
         if nep_idx >= 0:
             self.nepali_output_mode_combo.setCurrentIndex(nep_idx)
         self.nepali_output_mode_combo.currentIndexChanged.connect(self._on_nepali_output_mode_changed)
-        nep_form.addRow("Nepali Output Mode:", self.nepali_output_mode_combo)
+        ng_form.addRow("Write Nepali as:", self.nepali_output_mode_combo)
 
         self.romanized_style_combo = QComboBox()
         self.romanized_style_combo.addItem("Standard — k cha, thik cha", "cha")
@@ -1495,7 +1558,7 @@ class MainWindow(QMainWindow):
         if rom_idx >= 0:
             self.romanized_style_combo.setCurrentIndex(rom_idx)
         self.romanized_style_combo.currentIndexChanged.connect(self._on_romanized_style_changed)
-        nep_form.addRow("Romanization Spelling:", self.romanized_style_combo)
+        ng_form.addRow("Romanized spelling:", self.romanized_style_combo)
 
         # Context explanation card
         context_card = QFrame()
@@ -1518,7 +1581,11 @@ class MainWindow(QMainWindow):
             row_lbl.setObjectName("helpText")
             cc_layout.addWidget(row_lbl)
 
-        nep_form.addRow("", context_card)
+        ng_form.addRow("", context_card)
+
+        nep_form.addRow(self.nepali_group)
+        self._refresh_kriti_row()
+        self._refresh_nepali_group()
 
         sec_nepali_layout.addLayout(nep_form)
         layout.addWidget(sec_nepali)
@@ -1527,8 +1594,8 @@ class MainWindow(QMainWindow):
         # Section 4: Spoken Languages & Model Tiers
         # ---------------------------------------------------------------------
         sec_langs, sec_langs_layout = self._create_settings_section(
-            "Languages & Models",
-            subtitle="Languages you speak and the on-device models they need.",
+            "Advanced: Speech Engine & Models",
+            subtitle="Which speech service to use, and on-device model files. Most people never need this.",
             badge="",
             default_expanded=False,
         )
@@ -1537,49 +1604,11 @@ class MainWindow(QMainWindow):
         s_lang_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         s_lang_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
 
-        # Spoken Languages Checkbox Grid
-        spoken_langs_container = QWidget()
-        sl_layout = QVBoxLayout(spoken_langs_container)
-        sl_layout.setContentsMargins(0, 0, 0, 0)
-        sl_layout.setSpacing(6)
 
-        sl_desc = QLabel("Select the languages you plan to speak. Just Talk only downloads what you need, saving gigabytes of disk space.")
-        sl_desc.setObjectName("mutedLabel")
-        sl_desc.setWordWrap(True)
-        sl_layout.addWidget(sl_desc)
-
-        grid_container = QWidget()
-        grid = QGridLayout(grid_container)
-        grid.setContentsMargins(0, 4, 0, 4)
-        grid.setHorizontalSpacing(16)
-        grid.setVerticalSpacing(6)
-
-        self.settings_lang_checkboxes: dict[str, QCheckBox] = {}
-        active_spoken = set(getattr(self.config, "spoken_languages", ["en"]) or ["en"])
-
-        for idx, item in enumerate(CORE_SPOKEN_LANGUAGES):
-            chk = QCheckBox(item['name'] if item['native'] == item['name'] else f"{item['name']}  ·  {item['native']}")
-            chk.setChecked(item["code"] in active_spoken)
-            chk.toggled.connect(self._on_settings_spoken_languages_changed)
-            self.settings_lang_checkboxes[item["code"]] = chk
-            grid.addWidget(chk, idx // 2, idx % 2)
-
-        sl_layout.addWidget(grid_container)
-
-        search_row = QHBoxLayout()
-        search_lbl = QLabel("Search more languages:")
-        search_lbl.setObjectName("mutedLabel")
-        search_row.addWidget(search_lbl)
-
-        self.settings_add_lang_combo = QComboBox()
-        self.settings_add_lang_combo.addItem("+ Add other language...", "")
-        for name, code in ADDITIONAL_LANGUAGES:
-            self.settings_add_lang_combo.addItem(f"{name}", code)
-        self.settings_add_lang_combo.currentIndexChanged.connect(self._on_settings_add_language_selected)
-        search_row.addWidget(self.settings_add_lang_combo, 1)
-        sl_layout.addLayout(search_row)
-
-        s_lang_form.addRow("Spoken Languages:", spoken_langs_container)
+        s_lang_form.addRow("Speech engine:", self._with_help(
+            self.stt_provider_combo,
+            "Used for every language except Nepali when Kriti is selected in Languages.",
+        ))
 
         # Model Source (Bundled vs Bring Your Own Model)
         source_row = QHBoxLayout()
@@ -1651,36 +1680,6 @@ class MainWindow(QMainWindow):
         bundled_layout.setContentsMargins(0, 0, 0, 0)
         bundled_layout.setSpacing(10)
 
-        self.nepali_engine_combo = QComboBox()
-        self.nepali_engine_combo.addItem("Whisper — offline", "whisper")
-        self.nepali_engine_combo.addItem(f"Kriti — offline Nepali by Naamche Labs ({KRITI_DOWNLOAD_MB} MB)", "kriti")
-        cur_nep_eng = getattr(self.config, "nepali_asr_engine", "whisper")
-        n_idx = self.nepali_engine_combo.findData(cur_nep_eng)
-        if n_idx >= 0:
-            self.nepali_engine_combo.setCurrentIndex(n_idx)
-        self.nepali_engine_combo.currentIndexChanged.connect(self._on_nepali_engine_changed)
-
-        nepali_row = QHBoxLayout()
-        nepali_lbl = QLabel("Nepali Engine:")
-        nepali_lbl.setFixedWidth(110)
-        nepali_row.addWidget(nepali_lbl)
-        nepali_row.addWidget(self.nepali_engine_combo, 1)
-        bundled_layout.addLayout(nepali_row)
-
-        # Kriti download/status row (shown only when Kriti is selected)
-        self.kriti_row = QWidget()
-        kriti_layout = QHBoxLayout(self.kriti_row)
-        kriti_layout.setContentsMargins(110, 0, 0, 0)
-        self.kriti_status = QLabel("")
-        self.kriti_status.setObjectName("mutedLabel")
-        self.kriti_status.setWordWrap(True)
-        self.kriti_download_btn = QPushButton("Download")
-        self.kriti_download_btn.setObjectName("secondaryBtn")
-        self.kriti_download_btn.clicked.connect(self._on_kriti_download_clicked)
-        kriti_layout.addWidget(self.kriti_status, 1)
-        kriti_layout.addWidget(self.kriti_download_btn)
-        bundled_layout.addWidget(self.kriti_row)
-        self._refresh_kriti_row()
 
         self.tier_combo = QComboBox()
         for tier_id, info in selectable_tiers().items():
@@ -2123,13 +2122,12 @@ class MainWindow(QMainWindow):
         if hasattr(self, "offline_mode_check"):
             self.offline_mode_check.setChecked(getattr(self.config, "offline_mode", False))
 
-        if hasattr(self, "speech_mode_combo"):
-            m_idx = self.speech_mode_combo.findData(getattr(self.config, "speech_mode", "transcribe"))
-            if m_idx >= 0:
-                self.speech_mode_combo.setCurrentIndex(m_idx)
-
-        if hasattr(self, "language_combo") and self.language_combo is not None:
-            self.language_combo.set_current_language(getattr(self.config, "language", "en"))
+        if hasattr(self, "translate_check"):
+            self.translate_check.blockSignals(True)
+            self.translate_check.setChecked(getattr(self.config, "speech_mode", "transcribe") == "translate")
+            self.translate_check.blockSignals(False)
+        self._rebuild_typing_buttons()
+        self._refresh_nepali_group()
 
         if hasattr(self, "nepali_output_mode_combo"):
             nep_idx = self.nepali_output_mode_combo.findData(getattr(self.config, "nepali_output_mode", "auto"))
@@ -2314,8 +2312,13 @@ class MainWindow(QMainWindow):
                 self.settings_lang_checkboxes["en"].setChecked(True)
                 selected = ["en"]
         self.config.spoken_languages = selected
+        # Unticking the language you're typing in moves you to a language you still speak
+        if self.config.language not in {code for code, _ in typing_choices(selected)}:
+            self.config.language = default_typing_language(selected)
         self.config.save()
         self._update_model_status()
+        self._refresh_nepali_group()
+        self._rebuild_typing_buttons()
         if self.on_config_changed_callback:
             self.on_config_changed_callback(self.config)
 
@@ -2410,24 +2413,27 @@ class MainWindow(QMainWindow):
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _on_nepali_engine_changed(self, index: int) -> None:
-        engine = self.nepali_engine_combo.currentData()
-        if engine:
-            self.config.nepali_asr_engine = engine
-            self.config.save()
-            self._update_model_status()
-            self._refresh_kriti_row()
-            if self.on_config_changed_callback:
-                self.on_config_changed_callback(self.config)
+    def _on_nepali_engine_radio(self, kriti_checked: bool) -> None:
+        self.config.nepali_asr_engine = "kriti" if kriti_checked else "whisper"
+        self.config.save()
+        self._update_model_status()
+        self._refresh_kriti_row()
+        self._refresh_home_kriti_banner()
+        if self.on_config_changed_callback:
+            self.on_config_changed_callback(self.config)
+
+    def _refresh_nepali_group(self) -> None:
+        if hasattr(self, "nepali_group"):
+            self.nepali_group.setVisible("ne" in (self.config.spoken_languages or []))
 
     def _refresh_kriti_row(self) -> None:
         if not hasattr(self, "kriti_row"):
             return
-        selected = getattr(self.config, "nepali_asr_engine", "whisper") == "kriti"
+        selected = getattr(self.config, "nepali_asr_engine", "kriti") == "kriti"
         self.kriti_row.setVisible(selected)
         if is_kriti_downloaded(self.model_manager.models_dir):
             self.kriti_status.setText(
-                "Ready. Used when you dictate in Nepali. Model: Kriti by Naamche Labs (MIT), "
+                "Ready ✓ Used whenever you type in Nepali. Kriti is by Naamche Labs (MIT), "
                 "based on AI4Bharat IndicConformer."
             )
             self.kriti_download_btn.hide()
@@ -2439,19 +2445,29 @@ class MainWindow(QMainWindow):
 
     def _on_kriti_download_clicked(self) -> None:
         self.kriti_download_btn.setEnabled(False)
+        if hasattr(self, "home_kriti_btn"):
+            self.home_kriti_btn.setEnabled(False)
         self.kriti_status.setText("Downloading… 0%")
 
+        def show(text: str) -> None:
+            self.kriti_status.setText(text)
+            if hasattr(self, "home_kriti_label"):
+                self.home_kriti_label.setText(text)
+
         def progress(frac: float) -> None:
-            run_on_ui_thread(lambda: self.kriti_status.setText(f"Downloading… {int(frac * 100)}%"))
+            run_on_ui_thread(lambda: show(f"Downloading Kriti… {int(frac * 100)}%"))
 
         def worker() -> None:
             ok, msg = download_kriti(self.model_manager.models_dir, progress)
 
             def done() -> None:
                 self.kriti_download_btn.setEnabled(True)
+                if hasattr(self, "home_kriti_btn"):
+                    self.home_kriti_btn.setEnabled(True)
                 self._refresh_kriti_row()
+                self._refresh_home_kriti_banner()
                 if not ok:
-                    self.kriti_status.setText(msg)
+                    show(msg)
 
             run_on_ui_thread(done)
 
@@ -2708,55 +2724,85 @@ class MainWindow(QMainWindow):
         self.config_changed.emit(self.config)
         self._refresh_home_status()
 
-    def _style_home_mode_buttons(self) -> None:
-        transcribe_active = getattr(self.config, "speech_mode", "transcribe") != "translate"
-        if transcribe_active:
-            self.home_mode_transcribe_btn.setStyleSheet("background-color: #6C8EEF; color: white; border: none; font-weight: bold; border-radius: 8px; padding: 10px 14px;")
-            self.home_mode_translate_btn.setStyleSheet("background-color: rgba(128, 128, 128, 0.12); color: #8E8E93; border: 1px solid rgba(128, 128, 128, 0.2); border-radius: 8px; padding: 10px 14px;")
-        else:
-            self.home_mode_transcribe_btn.setStyleSheet("background-color: rgba(128, 128, 128, 0.12); color: #8E8E93; border: 1px solid rgba(128, 128, 128, 0.2); border-radius: 8px; padding: 10px 14px;")
-            self.home_mode_translate_btn.setStyleSheet("background-color: #6C8EEF; color: white; border: none; font-weight: bold; border-radius: 8px; padding: 10px 14px;")
+    _TYPING_ACTIVE_STYLE = (
+        "background-color: #6C8EEF; color: white; border: none; font-weight: bold; "
+        "border-radius: 8px; padding: 10px 14px;"
+    )
+    _TYPING_IDLE_STYLE = (
+        "background-color: rgba(128, 128, 128, 0.12); color: #8E8E93; "
+        "border: 1px solid rgba(128, 128, 128, 0.2); border-radius: 8px; padding: 10px 14px;"
+    )
+
+    def _rebuild_typing_buttons(self) -> None:
+        """One button per language the user speaks (plus Mixed for English + Nepali)."""
+        if not hasattr(self, "typing_row"):
+            return
+        for btn in list(self._typing_buttons.values()):
+            self.typing_group.removeButton(btn)
+            self.typing_row.removeWidget(btn)
+            # Hide and detach now; deleteLater alone leaves the old button painted over the card
+            btn.hide()
+            btn.setParent(None)
+            btn.deleteLater()
+        self._typing_buttons.clear()
+        for code, label in typing_choices(self.config.spoken_languages):
+            btn = QPushButton(label)
+            btn.setCheckable(True)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            if code == "ne_en":
+                btn.setToolTip("Nepali and English in the same sentence (Nepglish)")
+            btn.clicked.connect(lambda _=False, c=code: self.set_typing_language(c))
+            self.typing_group.addButton(btn)
+            self.typing_row.addWidget(btn, 1)
+            self._typing_buttons[code] = btn
+        self._style_typing_buttons()
+        self._update_home_mode_desc()
+        self._refresh_home_kriti_banner()
+
+    def _style_typing_buttons(self) -> None:
+        current = getattr(self.config, "language", "en")
+        for code, btn in self._typing_buttons.items():
+            btn.setChecked(code == current)
+            btn.setStyleSheet(self._TYPING_ACTIVE_STYLE if code == current else self._TYPING_IDLE_STYLE)
+
+    def set_typing_language(self, code: str) -> None:
+        """Home buttons and the tray menu both switch the typing language through here."""
+        self.config.language = code
+        self.config.save()
+        self._style_typing_buttons()
+        self._update_home_mode_desc()
+        self._refresh_home_kriti_banner()
+        self.config_changed.emit(self.config)
+
+    def set_translate(self, enabled: bool) -> None:
+        self._set_home_speech_mode("translate" if enabled else "transcribe")
+
+    def _on_translate_toggled(self, checked: bool) -> None:
+        self._set_home_speech_mode("translate" if checked else "transcribe")
 
     def _set_home_speech_mode(self, mode: str) -> None:
         self.config.speech_mode = mode
         self.config.save()
-        self._style_home_mode_buttons()
+        if hasattr(self, "translate_check") and self.translate_check.isChecked() != (mode == "translate"):
+            self.translate_check.blockSignals(True)
+            self.translate_check.setChecked(mode == "translate")
+            self.translate_check.blockSignals(False)
         self._update_home_mode_desc()
-        if hasattr(self, "speech_mode_combo"):
-            idx = self.speech_mode_combo.findData(mode)
-            if idx >= 0:
-                self.speech_mode_combo.blockSignals(True)
-                self.speech_mode_combo.setCurrentIndex(idx)
-                self.speech_mode_combo.blockSignals(False)
         self.config_changed.emit(self.config)
 
-    def _on_home_lang_changed(self, code: str) -> None:
-        self.config.language = code
-        self.config.save()
-        self._update_home_mode_desc()
-        if hasattr(self, "language_combo") and self.language_combo is not None:
-            self.language_combo.set_current_language(code)
-        self.config_changed.emit(self.config)
+    def _refresh_home_kriti_banner(self) -> None:
+        if not hasattr(self, "home_kriti_banner"):
+            return
+        needs = (
+            "ne" in (self.config.spoken_languages or [])
+            and getattr(self.config, "nepali_asr_engine", "kriti") == "kriti"
+            and not is_kriti_downloaded(self.model_manager.models_dir)
+        )
+        self.home_kriti_banner.setVisible(needs)
 
     def _update_home_mode_desc(self) -> None:
-        lang_code = getattr(self.config, "language", "en")
-        mode = getattr(self.config, "speech_mode", "transcribe")
-        if mode == "translate":
-            if lang_code == "ne_en":
-                self.home_mode_desc.setText(
-                    "Mixed Nepali and English speech is translated into fluent English."
-                )
-            else:
-                self.home_mode_desc.setText(
-                    "Whatever language you speak is translated into English."
-                )
-        else:
-            if lang_code == "ne_en":
-                self.home_mode_desc.setText("Mixed Nepali and English is typed exactly as you speak it.")
-            elif lang_code == "ne":
-                self.home_mode_desc.setText("Nepali speech is typed in Devanagari (नेपाली).")
-            else:
-                self.home_mode_desc.setText("Text is typed in the language you speak.")
+        if hasattr(self, "home_mode_desc"):
+            self.home_mode_desc.setText(typing_summary(self.config))
 
     def _on_home_fix_fn_clicked(self) -> None:
         acc_ok = PermissionsManager.check_accessibility(prompt_if_needed=False)
@@ -2776,18 +2822,6 @@ class MainWindow(QMainWindow):
             self.fn_fix_status.setText("Emoji picker disabled")
             self.fn_fix_status.setStyleSheet("color: #30D158;")
             self.fn_fix_btn.hide()
-
-    def _on_speech_mode_setting_changed(self, idx: int) -> None:
-        mode = self.speech_mode_combo.itemData(idx)
-        self._set_home_speech_mode(mode)
-
-    def _on_language_setting_changed(self, code: str) -> None:
-        self.config.language = code
-        self.config.save()
-        self._update_home_mode_desc()
-        if hasattr(self, "home_lang_combo") and self.home_lang_combo is not None:
-            self.home_lang_combo.set_current_language(code)
-        self.config_changed.emit(self.config)
 
     def _on_save_settings(self, quiet: bool = False) -> None:
         self.config.shortcut = self.shortcut_combo.currentData()
@@ -2818,10 +2852,6 @@ class MainWindow(QMainWindow):
         self.config.audio_device_index = self.device_combo.currentData()
         self.config.model_tier = self.tier_combo.currentData()
         self.config.appearance = self.theme_combo.currentData()
-        if hasattr(self, "speech_mode_combo"):
-            self.config.speech_mode = self.speech_mode_combo.currentData()
-        if hasattr(self, "language_combo"):
-            self.config.language = self.language_combo.get_current_language()
         autostart_changed = self.config.launch_at_startup != getattr(self, "_last_autostart", None)
         self.config.save()
 

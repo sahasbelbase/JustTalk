@@ -10,10 +10,10 @@ from just_talk.stt.nepali_conformer import NepaliConformerEngine
 
 
 def test_config_spoken_languages_default():
-    """Verify default spoken languages is English only with whisper engine."""
+    """Default: English only; Nepali (if added later) uses Kriti once downloaded."""
     config = AppConfig()
     assert config.spoken_languages == ["en"]
-    assert config.nepali_asr_engine == "whisper"
+    assert config.nepali_asr_engine == "kriti"
 
     # Minimal models for English only:
     required = config.get_required_model_tiers()
@@ -94,7 +94,7 @@ def test_nepali_conformer_engine_lifecycle(tmp_path: Path):
     assert empty_result == ""
 
 
-def test_saved_conformer_choice_falls_back_to_whisper_without_runtime(tmp_path, monkeypatch):
+def test_saved_conformer_choice_moves_to_kriti_without_runtime(tmp_path, monkeypatch):
     """The gated .nemo download can't run without NeMo, so a saved 'conformer' choice is migrated."""
     import json
 
@@ -106,12 +106,12 @@ def test_saved_conformer_choice_falls_back_to_whisper_without_runtime(tmp_path, 
     monkeypatch.setattr(mm_mod, "nepali_conformer_runtime_available", lambda: False)
 
     config = AppConfig.load()
-    assert config.nepali_asr_engine == "whisper"
+    assert config.nepali_asr_engine == "kriti"
     assert "nepali_conformer" not in config.get_required_model_tiers()  # no 462 MB download that can't run
-    assert json.loads(cfg_path.read_text())["nepali_asr_engine"] == "whisper"  # persisted
+    assert json.loads(cfg_path.read_text())["nepali_asr_engine"] == "kriti"  # persisted
 
 
-def test_saved_conformer_choice_kept_when_runtime_present(tmp_path, monkeypatch):
+def test_retired_conformer_choice_moves_to_kriti_even_with_nemo_installed(tmp_path, monkeypatch):
     import json
 
     import just_talk.stt.model_manager as mm_mod
@@ -121,7 +121,7 @@ def test_saved_conformer_choice_kept_when_runtime_present(tmp_path, monkeypatch)
     monkeypatch.setattr(AppConfig, "get_config_path", classmethod(lambda cls: cfg_path))
     monkeypatch.setattr(mm_mod, "nepali_conformer_runtime_available", lambda: True)
 
-    assert AppConfig.load().nepali_asr_engine == "conformer"
+    assert AppConfig.load().nepali_asr_engine == "kriti"
 
 
 def test_conformer_engine_reports_unavailable_without_nemo(tmp_path, monkeypatch):
@@ -178,3 +178,58 @@ def test_retired_nepali_conformer_is_not_offered_anywhere():
 
     assert "nepali_conformer" not in selectable_tiers()
     assert {"quality", "balanced", "fast"} <= set(selectable_tiers())
+
+
+# ── Language setup (one question: which languages do I speak?) ───────────────
+
+def test_typing_choices_follow_spoken_languages():
+    from just_talk.language_setup import typing_choices
+
+    assert [c for c, _ in typing_choices(["en"])] == ["en"]
+    assert [c for c, _ in typing_choices(["ne"])] == ["ne"]
+    assert [c for c, _ in typing_choices(["ne", "en"])] == ["en", "ne", "ne_en"]  # English first, Mixed last
+    assert [c for c, _ in typing_choices(["en", "de"])] == ["en", "de"]
+    assert [c for c, _ in typing_choices([])] == ["en"]
+
+
+@pytest.mark.parametrize(
+    "spoken, language, expected_spoken, expected_lang",
+    [
+        # The reported setup: Nepali-only list, typing English. Keep English; add it to the list.
+        (["ne"], "en", ["en", "ne"], "en"),
+        (["en", "ne"], "ne_en", ["en", "ne"], "ne_en"),
+        (["en"], "ne_en", ["en", "ne"], "ne_en"),
+        (["en", "de"], "fr", ["en", "de", "fr"], "fr"),
+        (["en"], "auto", ["en"], "en"),
+        ([], "en", ["en"], "en"),
+    ],
+)
+def test_normalize_never_switches_the_typing_language(spoken, language, expected_spoken, expected_lang):
+    from just_talk.language_setup import normalize_language_settings
+
+    config = AppConfig(spoken_languages=spoken, language=language)
+    normalize_language_settings(config)
+    assert config.language == expected_lang
+    assert config.spoken_languages == expected_spoken
+
+
+def test_english_is_the_default_typing_language():
+    from just_talk.language_setup import default_typing_language
+
+    assert AppConfig().language == "en"
+    assert default_typing_language(["ne", "en"]) == "en"
+    assert default_typing_language(["en"]) == "en"
+
+
+def test_normalize_leaves_consistent_settings_alone():
+    from just_talk.language_setup import normalize_language_settings
+
+    config = AppConfig(spoken_languages=["en", "ne"], language="ne", nepali_asr_engine="kriti")
+    assert normalize_language_settings(config) is False
+
+
+def test_typing_summary_reads_naturally():
+    from just_talk.language_setup import typing_summary
+
+    assert "Nepali" in typing_summary(AppConfig(language="ne", spoken_languages=["en", "ne"], nepali_output_mode="romanized"))
+    assert "English" in typing_summary(AppConfig(language="ne", spoken_languages=["en", "ne"], speech_mode="translate"))

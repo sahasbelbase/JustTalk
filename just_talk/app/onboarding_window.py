@@ -33,6 +33,7 @@ from ..audio.recorder import AudioRecorder
 from ..config import ADDITIONAL_LANGUAGES, CORE_SPOKEN_LANGUAGES, AppConfig
 from ..security import CredentialManager
 from ..stt.model_manager import TIERS, ModelManager
+from ..language_setup import default_typing_language, normalize_language_settings, typing_choices
 from ..system.autostart import AutostartManager
 from ..system.permissions import PermissionsManager
 from .language_selector import SearchableLanguageComboBox
@@ -671,7 +672,7 @@ class OnboardingWindow(QDialog):
 
         # Spoken Language Dropdown
         lang_row = QHBoxLayout()
-        lang_lbl = QLabel("Spoken Language:")
+        lang_lbl = QLabel("Start typing in:")
         lang_lbl.setFont(ThemeManager.get_ui_font(13, weight=QFont.Weight.DemiBold))
         lang_row.addWidget(lang_lbl)
 
@@ -746,6 +747,8 @@ class OnboardingWindow(QDialog):
 
     def _on_lang_combo_changed(self, code: str) -> None:
         self.config.language = code
+        # Choosing a language you didn't tick adds it to the languages you speak
+        normalize_language_settings(self.config)
         self.config.save()
         self._update_mode_explanation()
         tier_id = getattr(self.config, "model_tier", "quality")
@@ -804,6 +807,11 @@ class OnboardingWindow(QDialog):
                 selected = ["en"]
 
         self.config.spoken_languages = selected
+        if self.config.language not in {code for code, _ in typing_choices(selected)}:
+            # Unticked the language you were set to type in: fall back to one you speak (English first)
+            self.config.language = default_typing_language(selected)
+            if hasattr(self, "onboarding_lang_combo"):
+                self.onboarding_lang_combo.set_current_language(self.config.language)
         self.config.save()
         self._update_model_status_display()
 
