@@ -624,6 +624,11 @@ class JustTalkApp:
 
     def on_action_mode_changed(self, is_action_mode: bool) -> None:
         """Triggered on the main Qt thread when Shift is pressed/released while already holding push-to-talk."""
+        if not is_action_mode and self._is_action_mode:
+            # Sticky for the rest of the recording: people tap Fn+Shift and let go of Shift
+            # first, which used to silently turn Action Mode (and selection editing) back off.
+            print("[Record] Shift released; keeping Action Mode for this recording", file=sys.stderr)
+            return
         self._is_action_mode = is_action_mode
         print(f"[Record] Dynamically toggled Action Mode: {is_action_mode}", file=sys.stderr)
         if self.overlay and self.recorder and self.recorder.is_recording:
@@ -1047,6 +1052,7 @@ class JustTalkApp:
             raw_text=selected_text,
             style=EDIT_SELECTION_STYLE,
             custom_system_instruction=build_edit_selection_prompt(instruction),
+            edit_instruction=instruction,
         )
         if not success or not edited:
             # Leave the user's text untouched rather than pasting an unedited copy over it

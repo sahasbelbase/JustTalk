@@ -11,6 +11,7 @@ import httpx
 from .gemini import CircuitBreaker, ConnectionTestResult, GeminiFormatter
 from .prompts import (
     EDIT_SELECTION_STYLE,
+    edit_selection_user_message,
     TRANSCRIPT_BOUNDARY_RULE,
     build_prompt,
     is_meta_reply,
@@ -272,6 +273,12 @@ class MultiProviderFormatter:
         elif self.provider.id != 'custom':
             self.base_url = self.provider.base_url
 
+    def _user_message(self, raw_text: str) -> str:
+        instruction = getattr(self, "_edit_instruction", None)
+        if instruction:
+            return edit_selection_user_message(raw_text, instruction)
+        return wrap_transcript(raw_text)
+
     def _time_budget(self, raw_text: str) -> float:
         """
         Seconds to wait for the provider. Short phrases keep the snappy 2 s budget; long
@@ -288,9 +295,12 @@ class MultiProviderFormatter:
         raw_text: str,
         style: str = "subtle",
         custom_system_instruction: Optional[str] = None,
+        edit_instruction: Optional[str] = None,
     ) -> Tuple[str, bool, str]:
         """
         Format raw speech with strict time budget and graceful fallback.
+        For style=EDIT_SELECTION_STYLE, raw_text is the selected text and edit_instruction
+        is what the user asked to change.
         Returns:
             Tuple[processed_text, is_success, error_or_status_message]
         """
@@ -331,6 +341,7 @@ class MultiProviderFormatter:
             f"{task_directive}"
         )
         self._budget_floor = 0.0
+        self._edit_instruction = edit_instruction if style == EDIT_SELECTION_STYLE else None
         if style == EDIT_SELECTION_STYLE:
             # The edit prompt carries its own rules; the dictation directives above would contradict it
             wrapped_instruction = system_instruction
@@ -359,7 +370,7 @@ class MultiProviderFormatter:
         }
         payload = {
             "system_instruction": {"parts": [{"text": wrapped_instruction}]},
-            "contents": [{"role": "user", "parts": [{"text": wrap_transcript(raw_text)}]}],
+            "contents": [{"role": "user", "parts": [{"text": self._user_message(raw_text)}]}],
             "generationConfig": {"temperature": 0.1, "maxOutputTokens": 1024},
         }
 
@@ -446,7 +457,7 @@ class MultiProviderFormatter:
             "model": self.model_name,
             "messages": [
                 {"role": "system", "content": wrapped_instruction},
-                {"role": "user", "content": wrap_transcript(raw_text)}
+                {"role": "user", "content": self._user_message(raw_text)}
             ],
             "temperature": 0.1,
             "max_tokens": 1024
@@ -523,7 +534,7 @@ class MultiProviderFormatter:
             "max_tokens": 1024,
             "system": wrapped_instruction,
             "messages": [
-                {"role": "user", "content": wrap_transcript(raw_text)}
+                {"role": "user", "content": self._user_message(raw_text)}
             ],
             "temperature": 0.1
         }

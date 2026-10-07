@@ -147,3 +147,43 @@ def test_pipeline_leaves_selection_alone_when_ai_fails():
     assert inserted == []
     assert saved == []
     assert app.bridge.state_error.calls == [("Couldn't edit selection",)]
+
+
+def test_action_mode_stays_on_after_shift_is_released():
+    """Tap Fn+Shift and let go of Shift first: the recording must stay in Action Mode."""
+    from just_talk.app.main import JustTalkApp
+
+    app = types.SimpleNamespace(_is_action_mode=False, overlay=None, recorder=None)
+    JustTalkApp.on_action_mode_changed(app, True)
+    JustTalkApp.on_action_mode_changed(app, False)  # Shift released
+    JustTalkApp.on_action_mode_changed(app, False)
+    assert app._is_action_mode is True
+
+
+def test_edit_request_repeats_instruction_after_selection():
+    """Small models (e.g. Llama 3.2 11B) follow the instruction far better when it comes last."""
+    f = MultiProviderFormatter(provider_id="gemini", api_key="mock_key")
+    sent = {}
+
+    def fake_format_gemini(raw_text, wrapped_instruction, key):
+        sent["user"] = f._user_message(raw_text)
+        return "Joined text.", True, ""
+
+    f._format_gemini = fake_format_gemini
+    f.format_text(
+        "1. One\n2. Two",
+        style=EDIT_SELECTION_STYLE,
+        custom_system_instruction=build_edit_selection_prompt("make this into paragraph"),
+        edit_instruction="make this into paragraph",
+    )
+    assert sent["user"] == "<transcript>\n1. One\n2. Two\n</transcript>\nInstruction: make this into paragraph"
+
+    # The next normal dictation must not carry the old instruction
+    f.format_text("hello there", style="subtle")
+    assert sent["user"] == "<transcript>\nhello there\n</transcript>"
+
+
+def test_edit_prompt_spells_out_paragraph_and_list_conversions():
+    prompt = build_edit_selection_prompt("make this into paragraph")
+    assert "ONE paragraph" in prompt
+    assert "bullet" in prompt

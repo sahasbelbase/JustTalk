@@ -77,7 +77,7 @@ class HistoryEntryWidget(QFrame):
         
         self.setObjectName("historyCard")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(16, 12, 16, 12)
