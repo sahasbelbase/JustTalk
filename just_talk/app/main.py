@@ -836,7 +836,7 @@ class JustTalkApp:
             use_kriti = (
                 getattr(self.config, "nepali_asr_engine", "whisper") == "kriti"
                 and task == "transcribe"
-                and (cur_lang in ("ne", "ne_en") or getattr(self.config, "spoken_languages", []) == ["ne"])
+                and (lang == "ne" or cur_lang in ("ne", "ne_en"))
                 and self.kriti.is_available()
             )
 

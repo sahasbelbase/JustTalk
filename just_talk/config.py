@@ -353,13 +353,16 @@ class AppConfig:
         else:
             lang = cur
 
+        if lang is not None:
+            return lang  # an explicit dictation language always wins (people switch per session)
+
         spoken = [s for s in (self.spoken_languages or []) if s]
-        if len(spoken) == 1 and (lang is None or lang != spoken[0]):
+        if len(spoken) == 1:
             return spoken[0]
-        if lang is None and self.stt_provider != "whisper" and "ne" in spoken and cur in ("ne", "ne_en"):
+        if self.stt_provider != "whisper" and "ne" in spoken and cur in ("ne", "ne_en"):
             # Google/Apple need one locale; Nepali models cope with English loanwords, not vice versa
             return "ne"
-        return lang
+        return None
 
     def save(self) -> None:
         """Persist current configuration to disk as JSON."""
