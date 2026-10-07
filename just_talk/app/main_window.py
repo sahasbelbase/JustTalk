@@ -45,6 +45,7 @@ from ..audio.recorder import AudioRecorder
 from ..config import ADDITIONAL_LANGUAGES, CORE_SPOKEN_LANGUAGES, AppConfig
 from ..database.history import HistoryDatabase, HistoryItem
 from ..security import CredentialManager
+from ..stt.kriti_engine import KRITI_DOWNLOAD_MB, download_kriti, is_kriti_downloaded
 from ..stt.model_manager import TIERS, ModelManager, nepali_conformer_runtime_available
 from ..system.autostart import AutostartManager
 from ..system.clipboard import ClipboardManager
@@ -1652,6 +1653,7 @@ class MainWindow(QMainWindow):
 
         self.nepali_engine_combo = QComboBox()
         self.nepali_engine_combo.addItem("Whisper — offline", "whisper")
+        self.nepali_engine_combo.addItem(f"Kriti — offline Nepali by Naamche Labs ({KRITI_DOWNLOAD_MB} MB)", "kriti")
         self.nepali_engine_combo.addItem("NepaliConformer — coming soon", "conformer")
         if not nepali_conformer_runtime_available():
             # Disabled until the ONNX port ships; the .nemo checkpoint can't run in this app
@@ -1672,6 +1674,21 @@ class MainWindow(QMainWindow):
         nepali_row.addWidget(nepali_lbl)
         nepali_row.addWidget(self.nepali_engine_combo, 1)
         bundled_layout.addLayout(nepali_row)
+
+        # Kriti download/status row (shown only when Kriti is selected)
+        self.kriti_row = QWidget()
+        kriti_layout = QHBoxLayout(self.kriti_row)
+        kriti_layout.setContentsMargins(110, 0, 0, 0)
+        self.kriti_status = QLabel("")
+        self.kriti_status.setObjectName("mutedLabel")
+        self.kriti_status.setWordWrap(True)
+        self.kriti_download_btn = QPushButton("Download")
+        self.kriti_download_btn.setObjectName("secondaryBtn")
+        self.kriti_download_btn.clicked.connect(self._on_kriti_download_clicked)
+        kriti_layout.addWidget(self.kriti_status, 1)
+        kriti_layout.addWidget(self.kriti_download_btn)
+        bundled_layout.addWidget(self.kriti_row)
+        self._refresh_kriti_row()
 
         self.tier_combo = QComboBox()
         for tier_id, info in TIERS.items():
@@ -1760,7 +1777,7 @@ class MainWindow(QMainWindow):
         self.voice_isolation_check.setChecked(getattr(self.config, "voice_isolation_enabled", True))
         self.voice_isolation_check.toggled.connect(self._on_voice_isolation_toggled)
         spk_form.addRow("Noise Removal:", self._with_help(
-            self.voice_isolation_check, "DeepFilterNet v3 cleans up room noise and laptop-speaker echo."
+            self.voice_isolation_check, "Reduces steady background noise such as fans, hum and room rumble."
         ))
 
         self.speaker_id_check = QCheckBox("Identify who is speaking")
@@ -1774,17 +1791,26 @@ class MainWindow(QMainWindow):
         self.target_isolation_check.setChecked(getattr(self.config, "target_speaker_isolation", False))
         self.target_isolation_check.toggled.connect(self._on_target_isolation_toggled)
         spk_form.addRow("Background Voices:", self._with_help(
-            self.target_isolation_check, "Drops speech from voices that don't match an enrolled profile."
+            self.target_isolation_check,
+            "Skips dictations that clearly come from someone else. If it was you, press Paste Last "
+            "Dictation right after: Just Talk types it and learns your voice.",
         ))
 
         self.profiles_container = QVBoxLayout()
         self._refresh_profiles_list()
         spk_form.addRow("Enrolled Profiles:", self.profiles_container)
 
-        self.enroll_btn = QPushButton("Enroll a voice  ·  4 s")
+        enroll_row = QHBoxLayout()
+        self.enroll_btn = QPushButton("Enroll a voice")
         self.enroll_btn.setObjectName("secondaryBtn")
         self.enroll_btn.clicked.connect(self._on_enroll_voice_clicked)
-        spk_form.addRow("", self.enroll_btn)
+        self.test_voice_btn = QPushButton("Test my voice")
+        self.test_voice_btn.setObjectName("secondaryBtn")
+        self.test_voice_btn.clicked.connect(self._on_test_voice_clicked)
+        enroll_row.addWidget(self.enroll_btn)
+        enroll_row.addWidget(self.test_voice_btn)
+        enroll_row.addStretch()
+        spk_form.addRow("", enroll_row)
 
         sec_spk_layout.addLayout(spk_form)
         layout.addWidget(sec_spk)
@@ -2226,7 +2252,7 @@ class MainWindow(QMainWindow):
 
         profiles = self.db.list_voice_profiles() if hasattr(self.db, "list_voice_profiles") else []
         if not profiles:
-            empty_lbl = QLabel("No voice profiles enrolled yet. Click 'Enroll New Voice Profile' below.")
+            empty_lbl = QLabel("No voice profiles yet. Click “Enroll a voice” below.")
             empty_lbl.setObjectName("mutedLabel")
             self.profiles_container.addWidget(empty_lbl)
             return
@@ -2237,7 +2263,11 @@ class MainWindow(QMainWindow):
             name_lbl.setStyleSheet("font-weight: 600;")
             p_row.addWidget(name_lbl)
 
-            date_lbl = QLabel(f"Added {p['created_at'][:10]}")
+            legacy = p.get("threshold") is None
+            date_text = f"Added {p['created_at'][:10]}" + (" · re-enroll recommended" if legacy else "")
+            date_lbl = QLabel(date_text)
+            if legacy:
+                date_lbl.setToolTip("Made with the old single 4-second recording. Re-enrolling with three phrases recognises you far more reliably.")
             date_lbl.setObjectName("mutedLabel")
             p_row.addWidget(date_lbl)
 
@@ -2260,40 +2290,20 @@ class MainWindow(QMainWindow):
             self._refresh_profiles_list()
 
     def _on_enroll_voice_clicked(self) -> None:
-        from PySide6.QtWidgets import QInputDialog, QMessageBox
-        name, ok = QInputDialog.getText(self, "Enroll Voice Profile", "Enter a name for this voice profile (e.g. Speaker 1):")
-        if not ok or not name.strip():
+        from .voice_enroll_dialog import VoiceEnrollDialog
+
+        VoiceEnrollDialog(self.db, self.config, mode="enroll", parent=self).exec()
+        self._refresh_profiles_list()
+
+    def _on_test_voice_clicked(self) -> None:
+        from .voice_enroll_dialog import VoiceEnrollDialog
+
+        if not self.db.list_voice_profiles():
+            from PySide6.QtWidgets import QMessageBox
+
+            QMessageBox.information(self, "No voice profile yet", "Enroll your voice first, then test it here.")
             return
-
-        profile_name = name.strip()
-        QMessageBox.information(
-            self,
-            "Calibrating Voice Profile",
-            f"Click OK and speak clearly for 4 seconds to calibrate '{profile_name}'.",
-        )
-
-        try:
-            import sounddevice as sd
-            from ..audio.speaker_recognizer import SpeakerRecognizer
-
-            sr = SpeakerRecognizer()
-            if not sr.is_available():
-                QMessageBox.warning(self, "Model Missing", "WeSpeaker CAM++ model is downloading or not yet loaded.")
-                return
-
-            audio = sd.rec(int(16000 * 4.0), samplerate=16000, channels=1, dtype="float32", device=self.config.audio_device_index)
-            sd.wait()
-            audio_flat = audio.flatten()
-
-            emb = sr.extract_embedding(audio_flat)
-            if emb is not None:
-                self.db.save_voice_profile(profile_name, emb)
-                self._refresh_profiles_list()
-                QMessageBox.information(self, "Voice Enrolled", f"Successfully enrolled voice profile: '{profile_name}'!")
-            else:
-                QMessageBox.warning(self, "Calibration Failed", "Could not extract voice embedding. Ensure your microphone is working and speak clearly.")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Voice enrollment failed: {e}")
+        VoiceEnrollDialog(self.db, self.config, mode="test", parent=self).exec()
 
     def _on_tier_selection_changed(self) -> None:
         tier_id = self.tier_combo.currentData()
@@ -2414,8 +2424,46 @@ class MainWindow(QMainWindow):
             self.config.nepali_asr_engine = engine
             self.config.save()
             self._update_model_status()
+            self._refresh_kriti_row()
             if self.on_config_changed_callback:
                 self.on_config_changed_callback(self.config)
+
+    def _refresh_kriti_row(self) -> None:
+        if not hasattr(self, "kriti_row"):
+            return
+        selected = getattr(self.config, "nepali_asr_engine", "whisper") == "kriti"
+        self.kriti_row.setVisible(selected)
+        if is_kriti_downloaded(self.model_manager.models_dir):
+            self.kriti_status.setText(
+                "Ready. Used when you dictate in Nepali. Model: Kriti by Naamche Labs (MIT), "
+                "based on AI4Bharat IndicConformer."
+            )
+            self.kriti_download_btn.hide()
+        else:
+            self.kriti_status.setText(
+                f"Not downloaded yet ({KRITI_DOWNLOAD_MB} MB). Until then Nepali uses your current speech engine."
+            )
+            self.kriti_download_btn.show()
+
+    def _on_kriti_download_clicked(self) -> None:
+        self.kriti_download_btn.setEnabled(False)
+        self.kriti_status.setText("Downloading… 0%")
+
+        def progress(frac: float) -> None:
+            run_on_ui_thread(lambda: self.kriti_status.setText(f"Downloading… {int(frac * 100)}%"))
+
+        def worker() -> None:
+            ok, msg = download_kriti(self.model_manager.models_dir, progress)
+
+            def done() -> None:
+                self.kriti_download_btn.setEnabled(True)
+                self._refresh_kriti_row()
+                if not ok:
+                    self.kriti_status.setText(msg)
+
+            run_on_ui_thread(done)
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _update_model_status(self) -> None:
         tier_id = self.tier_combo.currentData() or self.config.model_tier

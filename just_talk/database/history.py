@@ -127,6 +127,12 @@ class HistoryDatabase:
                 )
                 """
             )
+            # Per-profile acceptance threshold (from multi-take enrollment) and sample count
+            for col_def in ["threshold REAL DEFAULT NULL", "sample_count INTEGER DEFAULT 1"]:
+                try:
+                    conn.execute(f"ALTER TABLE voice_profiles ADD COLUMN {col_def}")
+                except sqlite3.OperationalError:
+                    pass
 
             conn.execute(
                 """
@@ -341,7 +347,13 @@ class HistoryDatabase:
             return [self._row_to_item(row) for row in cursor.fetchall()]
 
 
-    def save_voice_profile(self, name: str, embedding: np.ndarray) -> str:
+    def save_voice_profile(
+        self,
+        name: str,
+        embedding: np.ndarray,
+        threshold: Optional[float] = None,
+        sample_count: int = 1,
+    ) -> str:
         """Save or update an enrolled speaker voice profile."""
         profile_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
@@ -349,16 +361,43 @@ class HistoryDatabase:
         with self._get_connection() as conn:
             conn.execute(
                 """
-                INSERT INTO voice_profiles (id, name, created_at, embedding)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO voice_profiles (id, name, created_at, embedding, threshold, sample_count)
+                VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(name) DO UPDATE SET
                     created_at = excluded.created_at,
-                    embedding = excluded.embedding
+                    embedding = excluded.embedding,
+                    threshold = excluded.threshold,
+                    sample_count = excluded.sample_count
                 """,
-                (profile_id, name.strip(), now, blob),
+                (profile_id, name.strip(), now, blob, threshold, int(sample_count)),
             )
             conn.commit()
         return profile_id
+
+    def update_voice_profile_embedding(self, name: str, embedding: np.ndarray, sample_count: int) -> None:
+        """Replace a profile's embedding after learning from a confirmed sample; keeps its threshold."""
+        with self._get_connection() as conn:
+            conn.execute(
+                "UPDATE voice_profiles SET embedding = ?, sample_count = ? WHERE name = ?",
+                (embedding.astype(np.float32).tobytes(), int(sample_count), name.strip()),
+            )
+            conn.commit()
+
+    def get_voice_profile_records(self) -> List[dict]:
+        """Profiles with their embedding, acceptance threshold and sample count."""
+        with self._get_connection() as conn:
+            cur = conn.execute(
+                "SELECT name, embedding, threshold, sample_count FROM voice_profiles ORDER BY created_at ASC"
+            )
+            return [
+                {
+                    "name": row["name"],
+                    "embedding": np.frombuffer(row["embedding"], dtype=np.float32) if row["embedding"] else None,
+                    "threshold": row["threshold"],
+                    "sample_count": row["sample_count"] or 1,
+                }
+                for row in cur.fetchall()
+            ]
 
     def get_voice_profiles(self) -> Dict[str, np.ndarray]:
         """Load all enrolled speaker profiles as a mapping of name -> normalized embedding."""
@@ -382,7 +421,9 @@ class HistoryDatabase:
     def list_voice_profiles(self) -> List[dict]:
         """List metadata for all enrolled voice profiles."""
         with self._get_connection() as conn:
-            cur = conn.execute("SELECT id, name, created_at FROM voice_profiles ORDER BY created_at ASC")
+            cur = conn.execute(
+                "SELECT id, name, created_at, threshold, sample_count FROM voice_profiles ORDER BY created_at ASC"
+            )
             return [dict(row) for row in cur.fetchall()]
 
     def clear(self) -> None:

@@ -28,6 +28,7 @@ if sys.platform == "win32":
     except Exception as e:
         print(f"[Main] Warning: Could not set AppUserModelID: {e}", file=sys.stderr)
 
+import numpy as np
 from PySide6.QtCore import QEvent, QObject, Qt, Signal, Slot, QTimer
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import QApplication
@@ -39,6 +40,7 @@ from ..ai.providers import MultiProviderFormatter
 from ..audio.noise_filter import NoiseFilter
 from ..audio.recorder import AudioRecorder
 from ..audio.speaker_recognizer import SpeakerRecognizer
+from ..audio.voice_match import adapt_profile, decide, profiles_from_records, speech_only
 from ..audio.vad import VoiceActivityDetector
 from ..config import AppConfig
 from ..database.history import HistoryDatabase
@@ -46,6 +48,7 @@ from ..security import CredentialManager
 from ..shortcuts.manager import ShortcutManager
 from ..stt import create_stt_engine_for_config, get_native_stt_engine
 from ..stt.model_manager import ModelManager, nepali_conformer_runtime_available
+from ..stt.kriti_engine import KritiEngine
 from ..stt.nepali_conformer import NepaliConformerEngine
 from ..stt.whisper_engine import WhisperSTTEngine
 from ..system.audio_ducker import SystemAudioDucker
@@ -272,6 +275,7 @@ class JustTalkApp:
         self.audio_ducker = SystemAudioDucker()
         self.noise_filter = NoiseFilter()
         self.speaker_recognizer = SpeakerRecognizer()
+        self.kriti = KritiEngine(self.model_manager.models_dir)
         self.shortcut_manager: Optional[ShortcutManager] = None
 
         self._is_action_mode = False
@@ -721,8 +725,12 @@ class JustTalkApp:
             daemon=True,
         ).start()
 
-    def _process_audio_pipeline(self, audio, is_action_mode: bool) -> None:
-        """Background pipeline: STT -> Gemini -> Insertion -> Database."""
+    def _process_audio_pipeline(self, audio, is_action_mode: bool, force_accept_speaker: bool = False) -> None:
+        """Background pipeline: STT -> Gemini -> Insertion -> Database.
+
+        force_accept_speaker re-runs a dictation the voice filter ignored, after the user
+        confirmed it was them (Paste Last Dictation right after the "ignored" notice).
+        """
         try:
             start_time = time.time()
 
@@ -749,26 +757,38 @@ class JustTalkApp:
                     self.bridge.state_error.emit("Speech model downloading")
                     return
 
-            # 1. Voice & Echo Isolation (DeepFilterNet v3)
-            if getattr(self.config, "voice_isolation_enabled", True) and hasattr(self, "noise_filter"):
-                audio = self.noise_filter.filter(audio, sr=16000)
-
-            # 2. Speaker Identification & Target Voice Isolation (WeSpeaker CAM++)
+            # 1. Speaker identification on the raw, speech-only audio: the same signal
+            #    enrollment captures. Comparing noise-filtered audio against a raw profile,
+            #    silence included, scored the user's own voice anywhere from 0.23 to 0.76.
             identified_speaker = None
             if (
-                getattr(self.config, "speaker_id_enabled", True)
+                not force_accept_speaker
+                and getattr(self.config, "speaker_id_enabled", True)
                 and hasattr(self, "speaker_recognizer")
                 and self.speaker_recognizer.is_available()
             ):
-                profiles = self.db.get_voice_profiles()
+                profiles = profiles_from_records(self.db.get_voice_profile_records())
                 if profiles:
-                    identified_speaker, sim = self.speaker_recognizer.identify_speaker(audio, profiles)
-                    if identified_speaker:
-                        print(f"[SpeakerID] Identified speaker: '{identified_speaker}' (similarity={sim:.2f})", file=sys.stderr)
-                    elif getattr(self.config, "target_speaker_isolation", False):
-                        print(f"[SpeakerID] Unrecognized speaker (similarity={sim:.2f}) filtered out.", file=sys.stderr)
-                        self.bridge.state_error.emit("Filtered background voice")
-                        return
+                    emb = self.speaker_recognizer.extract_embedding(speech_only(audio))
+                    if emb is not None:
+                        decision = decide(emb, profiles)
+                        print(
+                            f"[SpeakerID] {decision.action} (speaker={decision.speaker}, score={decision.score:.2f})",
+                            file=sys.stderr,
+                        )
+                        if decision.action == "match":
+                            identified_speaker = decision.speaker
+                        elif decision.action == "other" and getattr(self.config, "target_speaker_isolation", False):
+                            # Only clearly-different voices are dropped; keep the audio so the
+                            # user can say "that was me" with Paste Last Dictation.
+                            self._last_ignored = (audio, emb, time.time(), is_action_mode)
+                            shortcut = "\u2303\u2318V" if sys.platform == "darwin" else "Win+Alt+V"
+                            self.bridge.state_error.emit(f"Ignored another voice \u00b7 {shortcut} if it was you")
+                            return
+
+            # 2. Background noise reduction
+            if getattr(self.config, "voice_isolation_enabled", True) and hasattr(self, "noise_filter"):
+                audio = self.noise_filter.filter(audio, sr=16000)
 
             # 3. Local Speech-to-Text with Multilingual & Dual-Task Support
             speech_mode = getattr(self.config, "speech_mode", "transcribe")
@@ -820,8 +840,20 @@ class JustTalkApp:
                 and self.model_manager.is_model_downloaded("nepali_conformer")
             )
 
+            # Kriti is Nepali-only: route to it only when the user dictates in Nepali (or mixed),
+            # never just because Nepali is one of several selected languages.
+            use_kriti = (
+                getattr(self.config, "nepali_asr_engine", "whisper") == "kriti"
+                and task == "transcribe"
+                and (cur_lang in ("ne", "ne_en") or getattr(self.config, "spoken_languages", []) == ["ne"])
+                and self.kriti.is_available()
+            )
+
             raw_text = ""
-            if use_conformer:
+            if use_kriti:
+                raw_text = self.kriti.transcribe(audio, language="ne")
+                print(f"[STT] Kriti: {raw_text!r}", file=sys.stderr)
+            elif use_conformer:
                 try:
                     raw_text = self.nepali_conformer.transcribe(
                         audio,
@@ -1100,6 +1132,18 @@ class JustTalkApp:
         threading.Thread(target=self._paste_last_worker, daemon=True).start()
 
     def _paste_last_worker(self) -> None:
+        ignored = getattr(self, "_last_ignored", None)
+        if ignored and time.time() - ignored[2] < self.IGNORED_VOICE_RECOVERY_SEC:
+            # "That was me": type the dictation the voice filter skipped and learn from it
+            self._last_ignored = None
+            audio, emb, _, was_action_mode = ignored
+            self._learn_voice_sample(emb)
+            self.inserter.wait_for_modifiers_released()
+            self.inserter.capture_active_target()
+            print("[PasteLast] Recovering dictation ignored as another voice", file=sys.stderr)
+            self._process_audio_pipeline(audio, was_action_mode, force_accept_speaker=True)
+            return
+
         text = self.last_dictation_text()
         if not text:
             self.bridge.state_error.emit("Nothing to paste yet")
@@ -1113,6 +1157,21 @@ class JustTalkApp:
             self.bridge.state_inserted.emit()
         else:
             self.bridge.state_copied.emit()
+
+    IGNORED_VOICE_RECOVERY_SEC = 60.0
+
+    def _learn_voice_sample(self, emb) -> None:
+        """Fold a confirmed sample into the closest enrolled profile."""
+        try:
+            profiles = profiles_from_records(self.db.get_voice_profile_records())
+            if not profiles:
+                return
+            best = max(profiles, key=lambda p: float(np.dot(emb, p.embedding)))
+            updated = adapt_profile(best.embedding, emb, best.sample_count)
+            self.db.update_voice_profile_embedding(best.name, updated, best.sample_count + 1)
+            print(f"[SpeakerID] Learned from confirmed sample for '{best.name}'", file=sys.stderr)
+        except Exception as e:
+            print(f"[SpeakerID] Could not update profile: {e}", file=sys.stderr)
 
     def copy_last_dictation(self) -> None:
         """Tray menu: put the last dictation on the clipboard."""

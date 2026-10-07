@@ -11,7 +11,7 @@ import os
 import sys
 import threading
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -89,6 +89,11 @@ class SpeakerRecognizer:
     EMBEDDING_DIM = 512
     DEFAULT_SIMILARITY_THRESHOLD = 0.65  # Verified cosine threshold for CAM++
 
+    # Wespeaker CAM++ trained on VoxCeleb (Apache-2.0, ungated)
+    MODEL_URL = "https://huggingface.co/Wespeaker/wespeaker-voxceleb-campplus/resolve/main/voxceleb_CAM%2B%2B.onnx"
+    MODEL_SHA256 = "b50810498b5bcf5773d086f6993d344476bd0c88b566a41e8d801aaf8461efad"
+    MODEL_SIZE_MB = 28
+
     def __init__(self, model_path: Optional[str] = None):
         self._lock = threading.Lock()
         self._session: Optional[ort.InferenceSession] = None
@@ -107,6 +112,39 @@ class SpeakerRecognizer:
         if ort is None:
             return False
         return os.path.exists(self._model_path) and os.path.getsize(self._model_path) > 1000000
+
+    def download(self, progress: Optional[Callable[[float], None]] = None) -> Tuple[bool, str]:
+        """Download and verify the speaker model. Returns (ok, message)."""
+        import hashlib
+
+        import httpx
+
+        target = Path(self._model_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        partial = target.with_suffix(".part")
+        digest = hashlib.sha256()
+        try:
+            with httpx.stream("GET", self.MODEL_URL, follow_redirects=True, timeout=60.0) as resp:
+                resp.raise_for_status()
+                total = int(resp.headers.get("content-length") or 0)
+                done = 0
+                with open(partial, "wb") as f:
+                    for chunk in resp.iter_bytes(1 << 16):
+                        f.write(chunk)
+                        digest.update(chunk)
+                        done += len(chunk)
+                        if progress and total:
+                            progress(done / total)
+            if digest.hexdigest() != self.MODEL_SHA256:
+                partial.unlink(missing_ok=True)
+                return False, "Downloaded voice model failed its integrity check. Please try again."
+            os.replace(partial, target)
+            with self._lock:
+                self._session = None
+            return True, "Voice model ready."
+        except Exception as e:
+            partial.unlink(missing_ok=True)
+            return False, f"Couldn't download the voice model: {e}"
 
     def _ensure_session(self) -> bool:
         """Lazy-load ONNX session in thread-safe manner."""
