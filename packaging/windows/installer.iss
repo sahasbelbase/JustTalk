@@ -83,7 +83,7 @@ Name: "{app}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"; IconFilename: 
 ; Desktop Shortcut
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\icon.ico"; Tasks: desktopicon; AppUserModelID: "{#MyAppID}"
 ; Startup Shortcut
-Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\icon.ico"; Tasks: startupicon; AppUserModelID: "{#MyAppID}"
+Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--minimized"; IconFilename: "{app}\icon.ico"; Tasks: startupicon; AppUserModelID: "{#MyAppID}"
 
 [Run]
 ; Option to launch Just Talk immediately upon completing installation (opens app with live download progress if needed)

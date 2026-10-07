@@ -9,13 +9,75 @@ from pathlib import Path
 
 
 class AutostartManager:
-    """Manages system-level autostart (LaunchAgent on macOS, Run key on Windows)."""
+    """Manages system-level autostart (LaunchAgent on macOS, Startup-folder shortcut on Windows)."""
 
     MACOS_LABEL = "com.justtalk.desktop"
+    WINDOWS_SHORTCUT_NAME = "Just Talk"
 
     @classmethod
     def get_macos_plist_path(cls) -> Path:
         return Path.home() / "Library" / "LaunchAgents" / f"{cls.MACOS_LABEL}.plist"
+
+    @classmethod
+    def get_windows_shortcut_path(cls) -> Path:
+        # Same name the installer's "startup" task uses, so both stay in sync.
+        appdata = os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
+        return (
+            Path(appdata) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
+            / f"{cls.WINDOWS_SHORTCUT_NAME}.lnk"
+        )
+
+    @classmethod
+    def _windows_launch_target(cls) -> tuple[str, str]:
+        if getattr(sys, "frozen", False):
+            return sys.executable, "--minimized"
+        # Dev run: pythonw avoids a console window at login
+        pythonw = Path(sys.executable).with_name("pythonw.exe")
+        exe = str(pythonw) if pythonw.exists() else sys.executable
+        return exe, "-m just_talk.app.main --minimized"
+
+    @classmethod
+    def _create_windows_shortcut(cls, shortcut: Path) -> bool:
+        import subprocess
+
+        target, args = cls._windows_launch_target()
+        # Paths go through env vars so quotes/spaces in them can't break the script
+        script = (
+            "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($env:JT_LNK); "
+            "$s.TargetPath = $env:JT_TARGET; $s.Arguments = $env:JT_ARGS; "
+            "$s.WorkingDirectory = $env:JT_DIR; $s.Save()"
+        )
+        env = dict(os.environ, JT_LNK=str(shortcut), JT_TARGET=target, JT_ARGS=args,
+                   JT_DIR=str(Path(target).parent))
+        try:
+            shortcut.parent.mkdir(parents=True, exist_ok=True)
+            subprocess.run(
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+                env=env,
+                capture_output=True,
+                timeout=15,
+                check=True,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            return shortcut.exists()
+        except Exception as e:
+            print(f"[Autostart] Failed to create startup shortcut: {e}", file=sys.stderr)
+            return False
+
+    @classmethod
+    def _remove_windows_run_value(cls) -> None:
+        try:
+            import winreg
+
+            with winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r"Software\Microsoft\Windows\CurrentVersion\Run",
+                0,
+                winreg.KEY_SET_VALUE,
+            ) as key:
+                winreg.DeleteValue(key, "JustTalk")
+        except OSError:
+            pass
 
     @classmethod
     def is_autostart_enabled(cls) -> bool:
@@ -24,28 +86,7 @@ class AutostartManager:
             return cls.get_macos_plist_path().exists()
 
         if sys.platform == "win32":
-            try:
-                import winreg
-
-                try:
-                    key = winreg.OpenKey(
-                        winreg.HKEY_CURRENT_USER,
-                        r"Software\Microsoft\Windows\CurrentVersion\Run",
-                        0,
-                        winreg.KEY_READ,
-                    )
-                except FileNotFoundError:
-                    return False
-
-                try:
-                    val, _ = winreg.QueryValueEx(key, "JustTalk")
-                    return bool(val)
-                except FileNotFoundError:
-                    return False
-                finally:
-                    winreg.CloseKey(key)
-            except Exception:
-                return False
+            return cls.get_windows_shortcut_path().exists()
 
         return False
 
@@ -89,30 +130,18 @@ class AutostartManager:
                 return False
 
         if sys.platform == "win32":
-            try:
-                import winreg
-
-                key = winreg.CreateKeyEx(
-                    winreg.HKEY_CURRENT_USER,
-                    r"Software\Microsoft\Windows\CurrentVersion\Run",
-                    0,
-                    winreg.KEY_SET_VALUE | winreg.KEY_QUERY_VALUE,
-                )
+            # Legacy builds wrote a Run registry value. Unsigned apps writing Run keys
+            # get flagged by Defender as persistence and the exe is quarantined, so
+            # we now use a Startup-folder shortcut and remove any old Run value.
+            cls._remove_windows_run_value()
+            shortcut = cls.get_windows_shortcut_path()
+            if not enabled:
                 try:
-                    if enabled:
-                        exe_path = sys.executable
-                        cmd = f'"{exe_path}" --minimized'
-                        winreg.SetValueEx(key, "JustTalk", 0, winreg.REG_SZ, cmd)
-                    else:
-                        try:
-                            winreg.DeleteValue(key, "JustTalk")
-                        except FileNotFoundError:
-                            pass
+                    shortcut.unlink(missing_ok=True)
                     return True
-                finally:
-                    winreg.CloseKey(key)
-            except Exception as e:
-                print(f"[Autostart] Windows registry update failed: {e}", file=sys.stderr)
-                return False
+                except Exception as e:
+                    print(f"[Autostart] Failed to remove startup shortcut: {e}", file=sys.stderr)
+                    return False
+            return cls._create_windows_shortcut(shortcut)
 
         return False

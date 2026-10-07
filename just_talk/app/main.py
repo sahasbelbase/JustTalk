@@ -48,7 +48,6 @@ from ..stt.model_manager import ModelManager
 from ..stt.nepali_conformer import NepaliConformerEngine
 from ..stt.whisper_engine import WhisperSTTEngine
 from ..system.audio_ducker import SystemAudioDucker
-from ..system.autostart import AutostartManager
 from ..system.caret_locator import CaretLocator
 from ..system.clipboard import ClipboardManager
 from ..system.context_detector import detect_context
@@ -462,9 +461,9 @@ class JustTalkApp:
         if not self.config.has_completed_onboarding and self.onboarding_window and self.onboarding_window.isVisible():
             self.show_onboarding()
         else:
-            self.open_main_window("home")
+            self.open_main_window(None)
 
-    def open_main_window(self, screen_name: Optional[str] = "home") -> None:
+    def open_main_window(self, screen_name: Optional[str] = None) -> None:
         """Open or raise the main full application window."""
         if self.main_window:
             self.main_window.show_and_activate(screen_name)
@@ -1060,9 +1059,6 @@ class JustTalkApp:
                 action_shortcut=self.config.action_shortcut,
                 push_to_talk=self.config.push_to_talk,
             )
-        # Sync autostart
-        AutostartManager.set_autostart(self.config.launch_at_startup)
-
         # Hot-swap or reload STT engine if provider/tier changed
         self.stt_engine = create_stt_engine_for_config(self.config, self.model_manager)
         if getattr(self.config, "stt_provider", "os_native") == "whisper":

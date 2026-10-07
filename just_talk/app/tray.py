@@ -69,7 +69,7 @@ class SystemTrayManager:
         font = open_action.font()
         font.setBold(True)
         open_action.setFont(font)
-        open_action.triggered.connect(lambda: self.on_open_main("home"))
+        open_action.triggered.connect(lambda: self.on_open_main(None))
         menu.addAction(open_action)
 
         # Circuit Breaker warning badge item if paused
@@ -151,13 +151,13 @@ class SystemTrayManager:
         # Intercepting Trigger on macOS and popping up a window causes an NSMenuTrackingSession assertion crash!
         if sys.platform == "darwin":
             if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
-                self.on_open_main("home")
+                self.on_open_main(None)
         else:
             if reason in (
                 QSystemTrayIcon.ActivationReason.DoubleClick,
                 QSystemTrayIcon.ActivationReason.Trigger,
             ):
-                self.on_open_main("home")
+                self.on_open_main(None)
 
     def show(self) -> None:
         self.tray_icon.show()
