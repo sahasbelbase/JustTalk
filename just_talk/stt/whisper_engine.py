@@ -24,7 +24,7 @@ class WhisperSTTEngine(STTEngine):
         self._model = None
         self._current_tier: Optional[str] = None
         self._current_custom_target: Optional[str] = None
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()  # transcribe() reloads the model while holding it
         self._is_loading = False
         self._loading_status = "Not initialized"
 
@@ -228,6 +228,20 @@ class WhisperSTTEngine(STTEngine):
             except Exception as e:
                 print(f"[STT] Transcription error: {e}", file=sys.stderr)
                 return ""
+
+    def detect_language(self, audio: np.ndarray):
+        """Best-guess spoken language as (code, probability), or None if the model isn't loaded."""
+        if audio is None or len(audio) == 0:
+            return None
+        with self._lock:
+            if self._model is None:
+                return None
+            try:
+                lang, prob, _ = self._model.detect_language(audio=audio)
+                return lang, float(prob)
+            except Exception as e:
+                print(f"[STT] Language detection failed: {e}", file=sys.stderr)
+                return None
 
     def unload(self) -> None:
         """Unload model from RAM."""

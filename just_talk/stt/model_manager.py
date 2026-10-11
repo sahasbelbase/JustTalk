@@ -66,16 +66,6 @@ TIERS: Dict[str, ModelTierInfo] = {
         accuracy_rating="Basic",
         description="Minimal 74M model for legacy hardware with low RAM.",
     ),
-    "nepali_conformer": ModelTierInfo(
-        tier_id="nepali_conformer",
-        display_name="Ampixa NepaliConformer (Offline · 121M)",
-        model_name="nepali-conformer-offline",
-        disk_size_mb=462,
-        ram_mb=350,
-        speed_factor="~180ms latency",
-        accuracy_rating="36.3% WER on NepTel (Ampixa)",
-        description="Ampixa's offline Nepali ASR (CC BY-NC 4.0, github.com/Ampixa/nepaliconformer), trained on ~1,655 h of mostly conversational Nepali: 36.3% WER on NepTel vs 96.3% for Whisper.",
-    ),
     "small.en": ModelTierInfo(
         tier_id="small.en",
         display_name="English Balanced (small.en · 461 MB)",
@@ -98,24 +88,6 @@ TIERS: Dict[str, ModelTierInfo] = {
     ),
 }
 
-
-# Model tiers offered in the UI. NepaliConformer is retired in favour of Kriti
-# (see stt/kriti_engine.py) and is no longer listed anywhere.
-def selectable_tiers() -> Dict[str, ModelTierInfo]:
-    return {k: v for k, v in TIERS.items() if k != "nepali_conformer"}
-
-
-def nepali_conformer_runtime_available() -> bool:
-    """
-    The Ampixa NepaliConformer ships as a .nemo checkpoint, which needs NVIDIA NeMo (PyTorch).
-    NeMo is not bundled with Just Talk, so the engine stays unavailable until an ONNX port lands.
-    """
-    import importlib.util
-
-    try:
-        return importlib.util.find_spec("nemo") is not None
-    except (ImportError, ValueError):
-        return False
 
 
 # Exact HuggingFace repositories and deterministic file manifests for instant error-free streaming
@@ -156,13 +128,6 @@ TIER_REPOS: Dict[str, Tuple[str, list[Tuple[str, int]]]] = {
             ("tokenizer.json", 2203239),
             ("vocabulary.txt", 459861),
             ("model.bin", 145217532),
-        ],
-    ),
-    "nepali_conformer": (
-        "ampixa/nepali-conformer-offline",
-        [
-            ("README.md", 3127),
-            ("nepali_conformer_offline.nemo", 484669440),
         ],
     ),
     "small.en": (
@@ -289,16 +254,11 @@ class ModelManager:
         return False
 
     def _verify_directory_integrity(self, dir_path: Path) -> bool:
-        """Verify that a directory contains a valid Whisper or Conformer model."""
+        """Verify that a directory contains a valid Whisper model."""
         if not dir_path.exists() or not dir_path.is_dir():
             return False
 
-        # 1. Check for NeMo offline model archive (Ampixa NepaliConformer)
-        nemo_files = list(dir_path.glob("*.nemo"))
-        if nemo_files:
-            return any(f.stat().st_size > 20_000_000 for f in nemo_files)
-
-        # 2. Check for Whisper CTranslate2/faster-whisper models
+        # Whisper CTranslate2/faster-whisper models
         has_config = (dir_path / "config.json").exists()
         has_tokenizer = (dir_path / "tokenizer.json").exists() or (dir_path / "vocabulary.txt").exists() or (dir_path / "vocabulary.json").exists()
         
@@ -353,16 +313,13 @@ class ModelManager:
                 needs_multilingual = True
 
         if "ne" in langs or "ne_en" in langs:
-            if nepali_engine == "conformer":
-                models.append("nepali_conformer")
-            else:
-                needs_multilingual = True
+            needs_multilingual = True
 
         if needs_multilingual:
             models.append(tier_preference if tier_preference in ("quality", "balanced", "fast") else "quality")
         else:
             # English only
-            if "en" in langs and not ("ne" in langs and len(langs) == 1 and nepali_engine == "conformer"):
+            if "en" in langs:
                 models.append("small.en" if tier_preference in ("quality", "balanced") else "base.en")
 
         return list(dict.fromkeys(models))
@@ -557,13 +514,7 @@ class ModelManager:
                                     # Requested range not satisfiable (part already complete)
                                     pass
                                 elif resp.status_code in (401, 403):
-                                    if tier_id == "nepali_conformer":
-                                        err_msg = (
-                                            f"Ampixa NepaliConformer is a gated model on Hugging Face (HTTP {resp.status_code}). "
-                                            "Request access at https://huggingface.co/ampixa/nepali-conformer-offline or use OpenAI Whisper for Nepali."
-                                        )
-                                    else:
-                                        err_msg = f"Repository '{repo_id}' requires authentication or is gated (HTTP {resp.status_code})."
+                                    err_msg = f"Repository '{repo_id}' requires authentication or is gated (HTTP {resp.status_code})."
                                     print(f"[ModelManager] {err_msg}", file=sys.stderr)
                                     notify(-1.0, err_msg)
                                     return False

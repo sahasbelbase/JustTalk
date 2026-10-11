@@ -35,7 +35,13 @@ from PySide6.QtWidgets import QApplication
 
 from ..ai.actions import ActionIntent, ActionRouter
 from ..ai.gemini import GeminiFormatter
-from ..ai.prompts import EDIT_SELECTION_STYLE, build_edit_selection_prompt, build_prompt
+from ..ai.prompts import (
+    EDIT_SELECTION_STYLE,
+    GENERATE_STYLE,
+    build_edit_selection_prompt,
+    build_generate_prompt,
+    build_prompt,
+)
 from ..ai.providers import MultiProviderFormatter
 from ..audio.noise_filter import NoiseFilter
 from ..audio.recorder import AudioRecorder
@@ -47,9 +53,10 @@ from ..database.history import HistoryDatabase
 from ..security import CredentialManager
 from ..shortcuts.manager import ShortcutManager
 from ..stt import create_stt_engine_for_config, get_native_stt_engine
-from ..stt.model_manager import ModelManager, nepali_conformer_runtime_available
+from ..stt.model_manager import ModelManager
 from ..stt.kriti_engine import KritiEngine
-from ..stt.nepali_conformer import NepaliConformerEngine
+from ..model_lifecycle import ModelLifecycle
+from ..language_setup import english_dominant
 from ..stt.whisper_engine import WhisperSTTEngine
 from ..system.audio_ducker import SystemAudioDucker
 from ..system.caret_locator import CaretLocator
@@ -276,6 +283,10 @@ class JustTalkApp:
         self.noise_filter = NoiseFilter()
         self.speaker_recognizer = SpeakerRecognizer()
         self.kriti = KritiEngine(self.model_manager.models_dir)
+        self.lifecycle = ModelLifecycle(
+            targets=self._unloadable_models,
+            idle_minutes=lambda: getattr(self.config, "model_idle_unload_minutes", 10),
+        )
         self.shortcut_manager: Optional[ShortcutManager] = None
 
         self._is_action_mode = False
@@ -403,14 +414,19 @@ class JustTalkApp:
                 PermissionsManager.request_microphone()
 
         # 7. Warm up speech engine (only download/load background thread if Whisper is selected)
+        # Whisper is the big one: unless the user chose to keep models loaded, it loads on the
+        # first recording instead of at launch, so an idle app costs almost nothing.
         if getattr(self.config, "stt_provider", "os_native") == "whisper":
-            custom_stt = self.config.custom_stt_model_path if getattr(self.config, "stt_model_source", "bundled") == "custom" else None
-            threading.Thread(
-                target=lambda: self.stt_engine.load(self.config.model_tier, custom_target=custom_stt),
-                daemon=True,
-            ).start()
+            if not getattr(self.config, "model_idle_unload_minutes", 10):
+                self._preload_models_async()
         else:
             self.stt_engine.load()
+
+        # Frees the models after the idle limit (checked once a minute)
+        self._lifecycle_timer = QTimer(self.bridge)
+        self._lifecycle_timer.setInterval(60_000)
+        self._lifecycle_timer.timeout.connect(self._lifecycle_tick)
+        self._lifecycle_timer.start()
 
         # 8. Start keyboard shortcuts
         # The shortcut callbacks fire from a Quartz CFRunLoop thread (not the Qt thread).
@@ -432,6 +448,44 @@ class JustTalkApp:
         self._level_timer = QTimer(self.bridge)
         self._level_timer.setInterval(20)
         self._level_timer.timeout.connect(self._poll_audio_level)
+
+    def _unloadable_models(self):
+        """Models that can be freed when idle and reloaded on demand."""
+        targets = [("speech model", self.stt_engine.is_loaded, self.stt_engine.unload)]
+        if hasattr(self.kriti, "unload"):
+            targets.append(("Kriti", self.kriti.is_loaded, self.kriti.unload))
+        targets.append(("voice ID", self.speaker_recognizer.is_loaded, self.speaker_recognizer.unload))
+        return [t for t in targets if hasattr(t[2], "__call__")]
+
+    def _lifecycle_tick(self) -> None:
+        if self.recorder.is_recording:
+            self.lifecycle.touch()  # a long recording must not outlast the idle limit
+            return
+        self.lifecycle.unload_if_idle()
+
+    def _preload_models_async(self) -> None:
+        """Warm the models the next transcription will need, without blocking the caller."""
+        self.lifecycle.touch()
+        cfg = self.config
+
+        def worker():
+            try:
+                with self.lifecycle.busy():
+                    if getattr(cfg, "stt_provider", "os_native") == "whisper" and not self.stt_engine.is_loaded():
+                        custom = cfg.custom_stt_model_path if getattr(cfg, "stt_model_source", "bundled") == "custom" else None
+                        self.stt_engine.load(cfg.model_tier, custom_target=custom)
+                    if (
+                        getattr(cfg, "nepali_asr_engine", "whisper") == "kriti"
+                        and getattr(cfg, "language", "en") in ("ne", "ne_en")
+                        and self.kriti.is_available()
+                    ):
+                        self.kriti.load()
+                    if getattr(cfg, "speaker_id_enabled", True) and self.speaker_recognizer.is_available():
+                        self.speaker_recognizer._ensure_session()
+            except Exception as e:
+                print(f"[Lifecycle] Preload failed: {e}", file=sys.stderr)
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _start_permissions_watcher(self) -> None:
         """Poll Accessibility and Input Monitoring periodically until granted, then seamlessly reload shortcuts."""
@@ -537,6 +591,7 @@ class JustTalkApp:
         self._has_detected_speech = False
         self._last_speech_time = time.time()
         self.inserter.capture_active_target()
+        self._preload_models_async()  # loads while the user speaks; no-op if already resident
 
         # Temporarily mute computer audio (music, YouTube, movies, Reels) while holding shortcut
         if getattr(self.config, "mute_audio_while_recording", True):
@@ -729,6 +784,10 @@ class JustTalkApp:
         ).start()
 
     def _process_audio_pipeline(self, audio, is_action_mode: bool, force_accept_speaker: bool = False) -> None:
+        with self.lifecycle.busy():
+            self._run_audio_pipeline(audio, is_action_mode, force_accept_speaker)
+
+    def _run_audio_pipeline(self, audio, is_action_mode: bool, force_accept_speaker: bool = False) -> None:
         """Background pipeline: STT -> Gemini -> Insertion -> Database.
 
         force_accept_speaker re-runs a dictation the voice filter ignored, after the user
@@ -790,6 +849,7 @@ class JustTalkApp:
                             return
 
             # 2. Background noise reduction
+            unfiltered_audio = audio
             if getattr(self.config, "voice_isolation_enabled", True) and hasattr(self, "noise_filter"):
                 audio = self.noise_filter.filter(audio, sr=16000)
 
@@ -827,19 +887,20 @@ class JustTalkApp:
                     prompt_parts.append(f"Custom vocabulary: {clean_terms}.")
             initial_prompt = " ".join(prompt_parts) if prompt_parts else None
 
-            use_conformer = (
-                (cur_lang in ("ne", "ne_en") or "ne" in getattr(self.config, "spoken_languages", []))
-                and getattr(self.config, "nepali_asr_engine", "whisper") == "conformer"
-                and nepali_conformer_runtime_available()
-                and hasattr(self, "nepali_conformer")
-                and self.model_manager.is_model_downloaded("nepali_conformer")
-            )
-
             # Kriti is Nepali-only: route to it only when the user dictates in Nepali (or mixed),
             # never just because Nepali is one of several selected languages.
+            # In mixed mode, ask Whisper (when it is the loaded engine) which language dominates:
+            # mostly-English speech goes to Whisper so English isn't spelled in Devanagari.
+            if cur_lang == "ne_en" and lang is None and task == "transcribe" and hasattr(self.stt_engine, "detect_language"):
+                detected = self.stt_engine.detect_language(audio)
+                print(f"[STT] Mixed mode language check: {detected}", file=sys.stderr)
+                if english_dominant(detected):
+                    lang = "en"
+
             use_kriti = (
                 getattr(self.config, "nepali_asr_engine", "whisper") == "kriti"
                 and task == "transcribe"
+                and lang != "en"
                 and (lang == "ne" or cur_lang in ("ne", "ne_en"))
                 and self.kriti.is_available()
             )
@@ -848,17 +909,6 @@ class JustTalkApp:
             if use_kriti:
                 raw_text = self.kriti.transcribe(audio, language="ne")
                 print(f"[STT] Kriti: {raw_text!r}", file=sys.stderr)
-            elif use_conformer:
-                try:
-                    raw_text = self.nepali_conformer.transcribe(
-                        audio,
-                        language="ne",
-                        task=task,
-                        initial_prompt=initial_prompt,
-                    )
-                except Exception as c_err:
-                    print(f"[STT] Conformer transcription warning ({c_err}), falling back to Whisper...", file=sys.stderr)
-                    raw_text = ""
 
             if not raw_text or not raw_text.strip():
                 raw_text = self.stt_engine.transcribe(
@@ -876,6 +926,20 @@ class JustTalkApp:
                         initial_prompt=initial_prompt,
                     )
 
+            # The live words are recognised from the raw microphone audio, so if the cleaned-up audio
+            # comes back empty (noise reduction can eat quiet speech in a loud room), try the raw audio
+            if (not raw_text or not raw_text.strip()) and unfiltered_audio is not audio:
+                if use_kriti:
+                    raw_text = self.kriti.transcribe(unfiltered_audio, language="ne")
+                if not raw_text or not raw_text.strip():
+                    raw_text = self.stt_engine.transcribe(
+                        unfiltered_audio,
+                        language=lang,
+                        task=task,
+                        initial_prompt=initial_prompt,
+                    )
+                if raw_text and raw_text.strip():
+                    print("[STT] Recovered transcription from unfiltered audio", file=sys.stderr)
 
             if not raw_text or not raw_text.strip():
                 if self._last_partial_transcript and self._last_partial_transcript.strip():
@@ -906,6 +970,13 @@ class JustTalkApp:
                 intent = ActionRouter.parse_intent(raw_text, is_action_mode=True, context=detected_context, conventions=conventions)
                 action_name = intent.action_type
                 final_text = intent.target_payload
+                if use_gemini and action_name == "format" and final_text.strip():
+                    # Action key, nothing selected, and no translate/rewrite/summarize command:
+                    # the speech is a request ("write me a poem"), so write it.
+                    self._edit_selected_text(
+                        "", raw_text, audio, start_time, detected_context, identified_speaker, generate=True
+                    )
+                    return
             elif is_translation_mode:
                 intent = ActionIntent(
                     action_type="translate",
@@ -976,6 +1047,7 @@ class JustTalkApp:
                     raw_text=final_text,
                     style=self.config.prompt_style,
                     custom_system_instruction=intent.system_instruction,
+                    draft_on_screen=draft_emitted,
                 )
                 if success and cleaned:
                     final_text = cleaned
@@ -1072,20 +1144,31 @@ class JustTalkApp:
         start_time: float,
         detected_context: str,
         identified_speaker: Optional[str],
+        generate: bool = False,
     ) -> None:
-        """Action Mode with a selection: rewrite the selected text per the spoken instruction."""
-        print(f"[EditSelection] {len(selected_text)} chars selected, instruction: {instruction!r}", file=sys.stderr)
-        self.bridge.state_processing.emit("Editing selection...")
-        edited, success, msg = self.gemini.format_text(
-            raw_text=selected_text,
-            style=EDIT_SELECTION_STYLE,
-            custom_system_instruction=build_edit_selection_prompt(instruction, context=detected_context),
-            edit_instruction=instruction,
-        )
+        """Action Mode: rewrite the selection per the spoken instruction, or (generate=True,
+        nothing selected) write new text from the spoken request."""
+        if generate:
+            print(f"[Generate] request: {instruction!r}", file=sys.stderr)
+            self.bridge.state_processing.emit("Writing...")
+            edited, success, msg = self.gemini.format_text(
+                raw_text=instruction,
+                style=GENERATE_STYLE,
+                custom_system_instruction=build_generate_prompt(context=detected_context),
+            )
+        else:
+            print(f"[EditSelection] {len(selected_text)} chars selected, instruction: {instruction!r}", file=sys.stderr)
+            self.bridge.state_processing.emit("Editing selection...")
+            edited, success, msg = self.gemini.format_text(
+                raw_text=selected_text,
+                style=EDIT_SELECTION_STYLE,
+                custom_system_instruction=build_edit_selection_prompt(instruction, context=detected_context),
+                edit_instruction=instruction,
+            )
         if not success or not edited:
             # Leave the user's text untouched rather than pasting an unedited copy over it
-            print(f"[EditSelection] AI edit failed: {CredentialManager.redact(msg)}", file=sys.stderr)
-            self.bridge.state_error.emit("Couldn't edit selection")
+            print(f"[{'Generate' if generate else 'EditSelection'}] AI failed: {CredentialManager.redact(msg)}", file=sys.stderr)
+            self.bridge.state_error.emit("Couldn't write that" if generate else "Couldn't edit selection")
             return
 
         inserted_ok, status, active_app = self.inserter.insert(
@@ -1101,7 +1184,7 @@ class JustTalkApp:
             self.db.add(
                 raw_transcription=instruction,
                 processed_text=edited,
-                action=EDIT_SELECTION_STYLE,
+                action=GENERATE_STYLE if generate else EDIT_SELECTION_STYLE,
                 application=active_app,
                 status=status,
                 duration_ms=int((time.time() - start_time) * 1000),

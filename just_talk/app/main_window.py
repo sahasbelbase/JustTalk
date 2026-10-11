@@ -47,7 +47,7 @@ from ..database.history import HistoryDatabase, HistoryItem
 from ..security import CredentialManager
 from ..language_setup import default_typing_language, typing_choices, typing_summary
 from ..stt.kriti_engine import KRITI_DOWNLOAD_MB, download_kriti, is_kriti_downloaded
-from ..stt.model_manager import TIERS, ModelManager, selectable_tiers
+from ..stt.model_manager import TIERS, ModelManager
 from ..system.autostart import AutostartManager
 from ..system.clipboard import ClipboardManager
 from ..system.permissions import PermissionsManager
@@ -243,7 +243,7 @@ class MainWindow(QMainWindow):
         # Timer to keep status and circuit breaker badges fresh
         self._status_timer = QTimer(self)
         self._status_timer.timeout.connect(self._refresh_home_status)
-        self._status_timer.start(5000)
+        # Only ticks while the window is visible (see showEvent/hideEvent): a hidden app should not wake the CPU
 
         # Check for updates in background after startup
         QTimer.singleShot(3000, self._check_updates_background)
@@ -267,6 +267,15 @@ class MainWindow(QMainWindow):
                 NSApp.activateIgnoringOtherApps_(True)
             except Exception:
                 pass
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self._refresh_home_status()
+        self._status_timer.start(5000)
+
+    def hideEvent(self, event) -> None:
+        super().hideEvent(event)
+        self._status_timer.stop()
 
     def closeEvent(self, event: QCloseEvent) -> None:
         """
@@ -1682,7 +1691,7 @@ class MainWindow(QMainWindow):
 
 
         self.tier_combo = QComboBox()
-        for tier_id, info in selectable_tiers().items():
+        for tier_id, info in TIERS.items():
             self.tier_combo.addItem(f"{info.display_name} — {info.speed_factor} ({info.disk_size_mb} MB)", tier_id)
         self.tier_combo.currentIndexChanged.connect(self._on_tier_selection_changed)
 
@@ -1855,6 +1864,16 @@ class MainWindow(QMainWindow):
         self.retention_combo.addItem("Keep forever", 0)
         s4_form.addRow("History Retention:", self.retention_combo)
 
+        self.idle_unload_combo = QComboBox()
+        self.idle_unload_combo.addItem("After 10 minutes idle", 10)
+        self.idle_unload_combo.addItem("After 5 minutes idle", 5)
+        self.idle_unload_combo.addItem("After 30 minutes idle", 30)
+        self.idle_unload_combo.addItem("Never (fastest, uses more memory)", 0)
+        s4_form.addRow("Free Memory:", self._with_help(
+            self.idle_unload_combo,
+            "Releases the speech models from memory when you haven't dictated for a while. They reload automatically while you speak.",
+        ))
+
         sec4_layout.addLayout(s4_form)
         layout.addWidget(sec4)
 
@@ -1949,6 +1968,7 @@ class MainWindow(QMainWindow):
         self.device_combo.currentIndexChanged.connect(self._autosave_settings)
         self.theme_combo.currentIndexChanged.connect(self._autosave_settings)
         self.retention_combo.currentIndexChanged.connect(self._autosave_settings)
+        self.idle_unload_combo.currentIndexChanged.connect(self._autosave_settings)
         self.startup_check.toggled.connect(self._autosave_settings)
         self.minimized_check.toggled.connect(self._autosave_settings)
         self.vocab_input.editingFinished.connect(self._autosave_settings)
@@ -2149,6 +2169,10 @@ class MainWindow(QMainWindow):
         ret_idx = self.retention_combo.findData(self.config.history_retention_days)
         if ret_idx >= 0:
             self.retention_combo.setCurrentIndex(ret_idx)
+
+        idle_idx = self.idle_unload_combo.findData(getattr(self.config, "model_idle_unload_minutes", 10))
+        if idle_idx >= 0:
+            self.idle_unload_combo.setCurrentIndex(idle_idx)
 
         self.startup_check.setChecked(self.config.launch_at_startup)
         self.minimized_check.setChecked(self.config.start_minimized)
@@ -2847,6 +2871,7 @@ class MainWindow(QMainWindow):
         if hasattr(self, "vocab_input"):
             self.config.custom_vocabulary = self.vocab_input.text().strip()
         self.config.history_retention_days = self.retention_combo.currentData()
+        self.config.model_idle_unload_minutes = self.idle_unload_combo.currentData()
         self.config.launch_at_startup = self.startup_check.isChecked()
         self.config.start_minimized = self.minimized_check.isChecked()
         self.config.audio_device_index = self.device_combo.currentData()

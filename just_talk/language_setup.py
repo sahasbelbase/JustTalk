@@ -114,3 +114,19 @@ def typing_summary(config) -> str:
         }.get(mode, "in Romanized or Devanagari depending on the app")
         return f"Nepali, typed {style}."
     return f"{language_label(lang)}, typed as you speak."
+
+
+ENGLISH_DOMINANT_CONFIDENCE = 0.6
+
+
+def english_dominant(detected: "tuple[str, float] | None") -> bool:
+    """True when language detection says a mixed Nepali/English recording is mostly English.
+
+    Kriti only knows Nepali, so it spells English words in Devanagari ("ट्रान्सलेट दिस टु इङ्ग्लिस").
+    Only a confident "en" moves a recording off Kriti; any other result (including Hindi, which
+    Whisper often reports for Nepali) keeps Kriti.
+    """
+    if not detected:
+        return False
+    lang, prob = detected
+    return lang == "en" and prob >= ENGLISH_DOMINANT_CONFIDENCE

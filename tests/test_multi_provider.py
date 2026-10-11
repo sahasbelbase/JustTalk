@@ -194,3 +194,15 @@ def test_timeouts_do_not_pause_ai_formatting_but_network_errors_do(monkeypatch):
     for _ in range(3):
         f.format_text("hello there")
     assert f.circuit_breaker.is_paused  # a real outage still pauses it
+
+
+def test_budget_is_longer_when_the_draft_is_already_on_screen(monkeypatch):
+    """With the raw draft typed, waiting for the polish is free, so short phrases get 5 s, not 2 s."""
+    from just_talk.ai.providers import MultiProviderFormatter
+
+    f = MultiProviderFormatter(provider_id="custom", api_key="k", model_name="m", custom_base_url="http://x", timeout=2.0)
+    seen = []
+    monkeypatch.setattr(f, "_format_openai_compatible", lambda raw, instr, key: (seen.append(f._time_budget(raw)), ("ok", True, ""))[1])
+    f.format_text("short phrase")
+    f.format_text("short phrase", draft_on_screen=True)
+    assert seen == [2.0, 5.0]
