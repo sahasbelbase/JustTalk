@@ -3,9 +3,12 @@
 > **A fast, quiet voice keyboard for macOS and Windows.**  
 > Think → Speak → Done.
 
+**Website and downloads: [sahasbelbase.github.io/JustTalk](https://sahasbelbase.github.io/JustTalk/)**
+
 [![Tests](https://github.com/sahasbelbase/JustTalk/actions/workflows/build.yml/badge.svg)](https://github.com/sahasbelbase/JustTalk/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.md)
 [![Python: 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
+[![Website](https://img.shields.io/badge/Website-sahasbelbase.github.io%2FJustTalk-blue)](https://sahasbelbase.github.io/JustTalk/)
 [![Releases](https://img.shields.io/github/v/release/sahasbelbase/JustTalk?color=blue&label=Latest%20Release)](https://github.com/sahasbelbase/JustTalk/releases/latest)
 
 Just Talk is a lightweight desktop productivity utility that runs quietly in your system tray or menu bar. Tap your hotkey, speak naturally, and your words appear directly in whatever application you are using (Chrome, VS Code, Slack, Notion, Discord, Terminal, etc.)—complete with instant draft streaming and optional AI-powered grammar polishing.
