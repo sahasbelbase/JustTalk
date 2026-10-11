@@ -27,6 +27,14 @@ Download the latest version of Just Talk directly for your operating system:
 
 ---
 
+## What's New (next release)
+
+* **Lighter when idle:** Just Talk frees the speech models from memory after you haven't dictated for a while (Settings › Free Memory, 10 minutes by default, or never) and reloads them while you speak. On our test Mac this dropped memory use from about 2.4 GB to about 0.7 GB with the large Whisper model and Kriti loaded. The window's status refresh also stops while it is hidden.
+* **Action Mode writes for you:** With nothing selected, hold your shortcut + Shift and say *"write me a sick leave email"* or *"write a short poem about rain"*. It needs AI formatting turned on.
+* **Better mixed Nepali + English:** Mostly-English speech in Mixed mode now goes to Whisper instead of Kriti, so English words are no longer spelled in Devanagari.
+* **Fewer "not recognized" results in noisy rooms:** If the noise-reduced audio gives no text, Just Talk tries the original microphone audio before giving up.
+* **AI polish times out less:** The polish step waits up to 5 seconds when your raw words are already typed, instead of 2.
+
 ## What's New in Version 2.3.0
 
 * **Simpler language setup:** Tell Just Talk once which languages you speak (Settings › Languages), then pick what you're typing in right now from the **Typing in** buttons on Home or the tray menu — English, नेपाली, or Mixed — with a single **Translate to English** switch. Settings that used to contradict each other can no longer get out of step, and English stays the default.
@@ -77,6 +85,7 @@ Download the latest version of Just Talk directly for your operating system:
   * Say *"translate this into Spanish: Let's meet tomorrow at 10 AM"* → types Spanish translation.
   * Say *"rewrite this professionally: Need those reports ASAP"* → types polished business prose.
   * Say *"summarize this in bullet points: ... "* → types a concise summary.
+  * Say *"write me a sick leave email"* with **nothing selected** → writes the email where your cursor is.
   * **Select text first** and just say the change, e.g. *"make this shorter"* → the selection is rewritten in place.
 * **Paste Last Dictation:** **Ctrl + Cmd + V** (macOS) / **Win + Alt + V** (Windows) types your last dictation again.
 
