@@ -84,7 +84,7 @@
           {"@type": "Question", "name": "Does it support Nepali and Nepglish?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Speak Nepali, English or a mix of both. Nepali can be recognised fully offline by Kriti, the open Nepali speech model by Naamche Labs. Just Talk can type Romanized Nepali (“k cha”), Devanagari (“के छ”), or translate to English — and in Automatic mode it picks the right one for each app, such as Romanized in chat apps and Devanagari in documents."}},
           {"@type": "Question", "name": "Which apps can I type into?", "acceptedAnswer": {"@type": "Answer", "text": "Any app with a text field: VS Code, Cursor, Slack, Chrome, Word, Notion, Gmail, WhatsApp, terminals and more. If no text field is focused, the text is copied to your clipboard so you can paste it yourself."}},
           {"@type": "Question", "name": "Can I speak one language and get English text?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Choose “Translate to English” on the Home screen. Whatever language you speak is typed as fluent English."}},
-          {"@type": "Question", "name": "How does Action Mode work?", "acceptedAnswer": {"@type": "Answer", "text": "Press Shift while dictating to switch to Action Mode. Instead of typing your words verbatim, Just Talk follows them as an instruction — for example translating them into English."}},
+          {"@type": "Question", "name": "How does Action Mode work?", "acceptedAnswer": {"@type": "Answer", "text": "Press Shift while dictating to switch to Action Mode. Instead of typing your words verbatim, Just Talk follows them as an instruction — for example translating them into English, rewriting selected text, or writing an email or poem from a spoken request."}},
           {"@type": "Question", "name": "Can I edit text I already wrote by voice?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Select the text in any app, hold your shortcut plus Shift (Fn + Shift on macOS, Right Alt + Shift on Windows) and say what to change, such as “make this shorter”, “make it more polite” or “translate to Nepali”. Just Talk rewrites the selection in place. This needs AI formatting turned on."}},
           {"@type": "Question", "name": "How do I paste my last dictation again?", "acceptedAnswer": {"@type": "Answer", "text": "Press Ctrl + Cmd + V on macOS or Win + Alt + V on Windows. Just Talk types your most recent dictation into the app you are using now — useful when the cursor was in the wrong place. You can also choose Copy Last Dictation from the tray or menu bar icon."}},
           {"@type": "Question", "name": "Why does macOS or Windows show an unidentified developer warning?", "acceptedAnswer": {"@type": "Answer", "text": "Just Talk is an independent open-source project and isn't signed with a paid Apple or Microsoft certificate. On macOS, run xattr -cr /Applications/JustTalk.app once in Terminal (or right-click the app and choose Open). On Windows, click “More info” then “Run anyway”. All source code is public on GitHub."}},
@@ -416,7 +416,7 @@
             </div>
             <h3 class="card-title">Edit Any Text by Voice</h3>
             <p class="card-desc">
-              Select text in any app, hold your trigger key + <kbd>Shift</kbd>, and say “make this shorter” or “translate to Nepali” — the selection is rewritten in place. With nothing selected, Action Mode follows your spoken instruction instead.
+              Select text in any app, hold your trigger key + <kbd>Shift</kbd>, and say “make this shorter” or “translate to Nepali” — the selection is rewritten in place. With nothing selected, Action Mode writes what you ask for — “write me a sick leave email” or “write a short poem about rain” — right where your cursor is (needs AI formatting turned on).
             </p>
           </div>
         </div>
@@ -493,7 +493,7 @@
       <div class="roadmap-box">
         <div class="roadmap-badge">Voice isolation</div>
         <p class="roadmap-text">
-          <strong>DeepFilterNet v3</strong> noise and echo removal and <strong>WeSpeaker CAM++</strong> speaker recognition are available in Settings › Voice Isolation, so Just Talk can focus on your voice in noisy rooms.
+          Background noise reduction and <strong>WeSpeaker CAM++</strong> speaker recognition are available in Settings › Voice Isolation, so Just Talk can tell your voice from other people's. Noise reduction is light-touch on purpose: heavy denoising tends to make speech recognition less accurate.
         </p>
       </div>
 

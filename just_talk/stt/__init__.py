@@ -9,7 +9,6 @@ from .engine import STTEngine
 from .google_web_engine import GoogleWebSTTEngine
 from .mac_native_engine import MacNativeSTTEngine
 from .model_manager import ModelManager, ModelTierInfo
-from .nepali_conformer import NepaliConformerEngine
 from .whisper_engine import WhisperSTTEngine
 from .windows_native_engine import WindowsNativeSTTEngine
 
@@ -55,7 +54,6 @@ __all__ = [
     "ModelManager",
     "ModelTierInfo",
     "WhisperSTTEngine",
-    "NepaliConformerEngine",
     "GoogleWebSTTEngine",
     "MacNativeSTTEngine",
     "WindowsNativeSTTEngine",

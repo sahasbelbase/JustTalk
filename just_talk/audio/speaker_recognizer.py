@@ -166,6 +166,13 @@ class SpeakerRecognizer:
                 print(f"[SpeakerRecognizer] Failed to load CAM++ model: {e}", file=sys.stderr)
                 return False
 
+    def is_loaded(self) -> bool:
+        return self._session is not None
+
+    def unload(self) -> None:
+        with self._lock:
+            self._session = None
+
     def extract_embedding(self, audio: np.ndarray, sr: int = 16000) -> Optional[np.ndarray]:
         """
         Extract a normalized 512-dim embedding from an audio sample.
@@ -183,7 +190,11 @@ class SpeakerRecognizer:
                 return None
 
             inp_data = feats[np.newaxis, ...]  # (1, T, 80)
-            outputs = self._session.run(None, {"feats": inp_data})
+            with self._lock:
+                session = self._session
+                if session is None:
+                    return None
+                outputs = session.run(None, {"feats": inp_data})
             embs = outputs[0][0]  # (512,)
 
             # L2 normalize

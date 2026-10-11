@@ -292,6 +292,35 @@ def edit_selection_user_message(selected_text: str, instruction: str) -> str:
     return f"{wrap_transcript(selected_text)}\nInstruction: {instruction.strip()}"
 
 
+GENERATE_STYLE = "generate"
+
+_SYSTEM_PROMPT_GENERATE = """You are the writing engine of a voice keyboard. The user pressed the action key with nothing selected and spoke a request. Write what they asked for; your output is typed straight into the app they are using.
+RULES:
+1. Do what the request asks, in full: "write me a poem about rain", "write a sick leave email to my manager", "draft a reply saying I'll be late", "give me a bash command to list files", "write a function that reverses a string".
+2. Output ONLY the finished text. No preamble ("Here is..."), no explanations, no notes after it, no surrounding quotes, no markdown fences.
+3. Emails and messages: include a short subject line only when the user asks for an email, then the greeting, body and sign-off. Use a placeholder in square brackets only for facts you cannot know, such as [Manager's name] or [dates]. Keep it concise and natural, never invent specific facts.
+4. Match the length the request implies: a poem is a poem, a one-line reply is one line.
+5. Write in the language of the request unless the user names another language.
+6. If the speech is not a request to create anything and is just a statement or note, return it cleaned up: fix grammar and punctuation, keep the wording.
+The request arrives between <transcript> and </transcript> tags. Reply with only the text to type, without the tags."""
+
+
+def generate_user_message(request: str) -> str:
+    return wrap_transcript(request)
+
+
+def build_generate_prompt(context: str = "text") -> str:
+    """System prompt for writing new text from a spoken request (action mode, no selection)."""
+    prompt = _SYSTEM_PROMPT_GENERATE
+    language = _CODE_LANGUAGE_NAMES.get(context)
+    if language:
+        prompt += (
+            f"\nCONTEXT: The user is in a {language} editor. For code requests write valid {language} "
+            f"with no markdown fences."
+        )
+    return prompt
+
+
 _CODE_LANGUAGE_NAMES = {
     "sql": "SQL", "python": "Python", "javascript": "JavaScript", "typescript": "TypeScript",
     "java": "Java", "csharp": "C#", "go": "Go", "rust": "Rust", "php": "PHP",

@@ -111,7 +111,7 @@ class KritiEngine(STTEngine):
     def __init__(self, models_dir: Path):
         self.models_dir = Path(models_dir)
         self._model = None
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self.loading_status = ""
 
     def is_available(self) -> bool:
@@ -151,7 +151,11 @@ class KritiEngine(STTEngine):
         if not self.load():
             return ""
         try:
-            return self._model.transcribe(np.asarray(audio, dtype=np.float32))
+            # Under the lock so unload() can't drop the model mid-inference
+            with self._lock:
+                if self._model is None and not self.load():
+                    return ""
+                return self._model.transcribe(np.asarray(audio, dtype=np.float32))
         except Exception as e:
             print(f"[Kriti] Transcription error: {e}", file=sys.stderr)
             return ""

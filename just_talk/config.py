@@ -129,10 +129,7 @@ class AppConfig:
                 needs_multilingual = True
 
         if "ne" in langs or "ne_en" in langs or self.language in ("ne", "ne_en"):
-            if self.nepali_asr_engine == "conformer":
-                models.append("nepali_conformer")
-            else:
-                needs_multilingual = True
+            needs_multilingual = True
 
         if needs_multilingual:
             models.append(self.model_tier if self.model_tier in ("quality", "balanced", "fast") else "quality")
@@ -195,6 +192,8 @@ class AppConfig:
 
     # Optional Pill Indicators
     show_idle_indicator: bool = False
+    # Minutes of inactivity before speech models are freed from RAM (0 = keep loaded). They reload on the next recording.
+    model_idle_unload_minutes: int = 10
     sound_effects: bool = False
 
     # Words-saved formula speeds (editable in Settings)
@@ -317,16 +316,6 @@ class AppConfig:
             config = cls(**filtered)
 
             needs_save = bool(migrated_key)
-            if config.nepali_asr_engine == "conformer":
-                from .stt.model_manager import nepali_conformer_runtime_available
-
-                if not nepali_conformer_runtime_available():
-                    # The gated .nemo download can't run without NeMo; it only produced
-                    # HTTP 401 errors and then silently used Whisper anyway.
-                    print("[Config] NepaliConformer retired; using Kriti for Nepali.", file=sys.stderr)
-                    config.nepali_asr_engine = "kriti"
-                    needs_save = True
-
             from .language_setup import normalize_language_settings
 
             if normalize_language_settings(config):

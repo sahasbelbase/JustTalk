@@ -11,6 +11,7 @@ import httpx
 from .gemini import CircuitBreaker, ConnectionTestResult, GeminiFormatter
 from .prompts import (
     EDIT_SELECTION_STYLE,
+    GENERATE_STYLE,
     edit_selection_user_message,
     is_refusal,
     TRANSCRIPT_BOUNDARY_RULE,
@@ -219,6 +220,8 @@ class MultiProviderFormatter:
     """Unified AI text formatter supporting multiple LLM providers."""
 
     EDIT_SELECTION_BUDGET_SEC = 8.0
+    # The raw draft is already typed while the polish runs, so waiting longer costs the user nothing
+    DRAFT_ON_SCREEN_BUDGET_SEC = 5.0
 
     def __init__(
         self,
@@ -275,6 +278,8 @@ class MultiProviderFormatter:
             self.base_url = self.provider.base_url
 
     def _user_message(self, raw_text: str) -> str:
+        if getattr(self, "_generating", False):
+            return wrap_transcript(raw_text)
         instruction = getattr(self, "_edit_instruction", None)
         if instruction:
             return edit_selection_user_message(raw_text, instruction)
@@ -297,6 +302,7 @@ class MultiProviderFormatter:
         style: str = "subtle",
         custom_system_instruction: Optional[str] = None,
         edit_instruction: Optional[str] = None,
+        draft_on_screen: bool = False,
     ) -> Tuple[str, bool, str]:
         """
         Format raw speech with strict time budget and graceful fallback.
@@ -341,9 +347,12 @@ class MultiProviderFormatter:
             f"{TRANSCRIPT_BOUNDARY_RULE} "
             f"{task_directive}"
         )
-        self._budget_floor = 0.0
-        self._edit_instruction = edit_instruction if style == EDIT_SELECTION_STYLE else None
-        if style == EDIT_SELECTION_STYLE:
+        self._budget_floor = self.DRAFT_ON_SCREEN_BUDGET_SEC if draft_on_screen else 0.0
+        self._generating = style == GENERATE_STYLE
+        # Generated text may legitimately start like an assistant reply ("Dear...", "The..."),
+        # so it gets the same lenient output check as edited text
+        self._edit_instruction = edit_instruction if style == EDIT_SELECTION_STYLE else (raw_text if self._generating else None)
+        if style in (EDIT_SELECTION_STYLE, GENERATE_STYLE):
             # The edit prompt carries its own rules; the dictation directives above would contradict it
             wrapped_instruction = system_instruction
             self._budget_floor = self.EDIT_SELECTION_BUDGET_SEC
