@@ -301,6 +301,10 @@ JustTalk/
 ## License
 MIT License. Free and open source. See [LICENSE.md](LICENSE.md) for full license details.
 
+## Author
+
+Built by Sahas Belbase. Portfolio: [sahas.netlify.app](https://sahas.netlify.app/)
+
 ## Third-Party Models & Credits
 
 **Offline Nepali speech engine: Kriti.** Just Talk's optional offline Nepali engine is an ONNX conversion of [Kriti](https://github.com/Naamche-Labs/kriti) by [Naamche Labs](https://naamchelabs.com), an open Nepali speech recognition model (119M parameters) derived from the [AI4Bharat Nepali IndicConformer](https://huggingface.co/ai4bharat/indicconformer_stt_ne_hybrid_ctc_rnnt_large). Naamche Labs report 4.1% WER on clean read Nepali and 40.6% on the NepTel real-call benchmark (Whisper Large-V3: 96.3%). All credit for the model goes to Naamche Labs and AI4Bharat.
