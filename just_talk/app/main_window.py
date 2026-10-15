@@ -2088,7 +2088,7 @@ class MainWindow(QMainWindow):
             return
         self.local_ai_btn.setVisible(not downloaded)
         if local_model.is_tuned(models_dir):
-            self.local_ai_status.setText("Just Talk's tuned model (Qwen3 0.6B) is on this computer.")
+            self.local_ai_status.setText("Just Talk's tuned model (Qwen3 1.7B) is on this computer.")
         else:
             self.local_ai_status.setText("Qwen3 1.7B is on this computer." if downloaded else "The model isn't downloaded yet.")
 

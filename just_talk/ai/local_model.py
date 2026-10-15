@@ -28,7 +28,7 @@ MODEL_SHA256 = "061b54daade076b5d3362dac252678d17da8c68f07560be70818cace6590cb1a
 MODEL_SIZE = 1834426016
 MODEL_DOWNLOAD_MB = round(MODEL_SIZE / 1e6)
 # A Just Talk fine-tune placed next to it (not downloadable yet) is preferred when present.
-TUNED_MODEL_FILE = "justtalk-qwen3-0.6b-v1-Q8_0.gguf"
+TUNED_MODEL_FILE = "justtalk-qwen3-1.7b-v2-Q4_K_M.gguf"
 
 _DEVANAGARI = re.compile(r"[ऀ-ॿ]")
 _PROMPT_LEAKS = ("output only", "keep every detail", "this dictation", "<think", "</think", "translate this")

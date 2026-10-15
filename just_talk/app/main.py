@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import datetime
-import itertools
 import multiprocessing
 import os
 import sys
@@ -242,6 +241,9 @@ class JustTalkApplication(QApplication):
 MIXED_APPLE_MIN_CONFIDENCE = 0.6
 MIXED_MIN_SOUND_OVERLAP = 0.55
 MIXED_PIECE_SEC = 8.0  # language is decided per stretch of this length at most, cut at pauses
+# The on-device model drops whole sentences from long Nepali (it trained on up to ~80 words), so
+# Mixed mode translates a few stretches at a time: on 15 Oct dictations, 33 -> 57 chrF++.
+MIXED_TRANSLATE_MAX_WORDS = 40
 
 
 class JustTalkApp:
@@ -662,16 +664,27 @@ class JustTalkApp:
 
     def _translate_segments(self, segments: list):
         """Translate the Nepali stretches and clean up the English ones (punctuation, misheard
-        words), each run of same-language stretches in one go so the model sees whole sentences."""
+        words), a few same-language stretches per call: whole sentences for context, short enough
+        that the model keeps every detail."""
         context = self._speaker_context()
         parts = []
-        for seg_lang, run in itertools.groupby(segments, key=lambda seg: seg[1]):
-            text = " ".join(t for t, _ in run)
+        for seg_lang, text in self._segment_runs(segments):
             result, ok, msg = self.local_ai.run("translate" if seg_lang == "ne" else "cleanup", text, context)
             if not ok:
                 return "", False, msg
             parts.append(result)
         return " ".join(parts), True, ""
+
+    @staticmethod
+    def _segment_runs(segments: list, max_words: int = MIXED_TRANSLATE_MAX_WORDS) -> list:
+        """[(lang, text)]: consecutive same-language stretches joined, up to max_words per run."""
+        runs: list = []
+        for text, seg_lang in segments:
+            if runs and runs[-1][0] == seg_lang and len(runs[-1][1].split()) + len(text.split()) <= max_words:
+                runs[-1] = (seg_lang, f"{runs[-1][1]} {text}")
+            else:
+                runs.append((seg_lang, text))
+        return runs
 
     @staticmethod
     def _local_task(intent, action_name: str, text: str, is_action_mode: bool) -> Optional[str]:
@@ -1250,7 +1263,7 @@ class JustTalkApp:
                 cleaned, success, msg = "", False, ""
                 if local_task:
                     t_local = time.time()
-                    if local_task == "translate" and any(seg_lang == "en" for _, seg_lang in mixed_segments):
+                    if local_task == "translate" and mixed_segments:
                         cleaned, success, msg = self._translate_segments(mixed_segments)
                     else:
                         cleaned, success, msg = self.local_ai.run(local_task, final_text, self._speaker_context())

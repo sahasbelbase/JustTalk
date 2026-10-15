@@ -158,3 +158,20 @@ def test_nepali_stretches_are_translated_and_english_ones_cleaned_up():
     )
     assert ok and text == "Hello, how are you? I'm hungry. So my name is Sahas. I push to git."
     assert calls == [("translate", "हेलो के छ हलखबर भोक लागिरहेको छ"), ("cleanup", "So my name is Sahas I push to get")]
+
+
+def test_long_nepali_is_translated_a_few_stretches_at_a_time():
+    """The on-device model drops sentences from 200-word Nepali, so runs are capped in words."""
+    app, _ = _bare_app()
+    calls = []
+
+    class Local:
+        def run(self, task, text, context=""):
+            calls.append((task, len(text.split())))
+            return "ok.", True, ""
+
+    app.local_ai = Local()
+    stretch = " ".join(["शब्द"] * 15)
+    text, ok, _ = app._translate_segments([(stretch, "ne")] * 5 + [("So my name is Sahas", "en")])
+    assert ok and text == "ok. ok. ok. ok."
+    assert calls == [("translate", 30), ("translate", 30), ("translate", 15), ("cleanup", 5)]
