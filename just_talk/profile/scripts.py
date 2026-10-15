@@ -275,3 +275,23 @@ def vocabulary_terms(config, learner=None) -> List[str]:
     learned = learner.known_terms() if learner is not None else []
     seed = role_terms(getattr(config, "user_role", "")) if len(learned) < SEED_UNTIL_TERMS else []
     return list(dict.fromkeys(own + learned + seed))
+
+
+# Apple hears "git" as "get" or "gate", and the on-device model can't tell which was meant. Fixed
+# only where git is the one sensible reading, after a version-control verb ("push the changes to
+# get"), and only for people who use the word: "get the file" is left alone.
+_GIT_MISHEARD = re.compile(
+    r"\b((?:push|pushed|pushing|pull|pulled|pulling|commit|committed|merge|merged|clone|cloned)\b"
+    r"[^.?!]{0,40}?\b(?:to|from|in|into|on|with)\s+)(?:the\s+)?(?:get|gate)\b",
+    re.IGNORECASE,
+)
+_GITHUB_MISHEARD = re.compile(r"\b(?:get|git)\s?hub\b", re.IGNORECASE)
+
+
+def fix_known_mishearings(text: str, terms) -> str:
+    words = {t.lower() for t in terms}
+    if "git" in words:
+        text = _GIT_MISHEARD.sub(lambda m: m.group(1) + "git", text)
+    if "github" in words:
+        text = _GITHUB_MISHEARD.sub("GitHub", text)
+    return text

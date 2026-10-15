@@ -59,7 +59,7 @@ from ..stt.model_manager import ModelManager
 from ..stt.kriti_engine import KritiEngine
 from ..model_lifecycle import ModelLifecycle
 from ..profile.learner import Learner
-from ..profile.scripts import ROLES_BY_ID, vocabulary_terms
+from ..profile.scripts import ROLES_BY_ID, fix_known_mishearings, vocabulary_terms
 from ..profile.store import VoiceProfile
 from ..language_setup import english_dominant
 from ..stt.whisper_engine import WhisperSTTEngine
@@ -246,6 +246,17 @@ MIXED_PIECE_SEC = 8.0  # language is decided per stretch of this length at most,
 MIXED_TRANSLATE_MAX_WORDS = 40
 
 
+class _MixedEarly:
+    """Mixed mode work done while the user is still talking: each finished stretch recognized
+    (Apple + Kriti) and, in Translate mode, each finished run of stretches translated."""
+
+    def __init__(self, pieces: EarlyPieces, translate: bool) -> None:
+        self.pieces = pieces
+        self.translate = translate
+        self.translated: dict = {}  # (lang, text) -> (result, ok, message)
+        self.thread: Optional[threading.Thread] = None
+
+
 class JustTalkApp:
     """Core controller coordinating audio, local ML, Gemini formatting, and system insertion."""
 
@@ -282,7 +293,7 @@ class JustTalkApp:
         )
         self._streaming_thread: Optional[threading.Thread] = None
         self._whisper_partial: Optional[IncrementalTranscriber] = None
-        self._early_pieces: Optional[EarlyPieces] = None  # Mixed mode work done while the user talks
+        self._early_mixed: Optional[_MixedEarly] = None  # Mixed mode work done while the user talks
 
         provider_id = getattr(self.config, "ai_provider", "gemini") or "gemini"
         model = getattr(self.config, "ai_model", "") or self.config.gemini_model
@@ -615,15 +626,21 @@ class JustTalkApp:
             and self.kriti.is_available()
         )
 
-    def _early_pieces_loop(self, pieces: EarlyPieces) -> None:
-        """Apple takes about 10 s for 90 s of Nepali (Kriti about 1.5 s), so in Mixed mode each
-        finished stretch of speech is recognized while the user is still talking."""
+    def _early_mixed_loop(self, early: _MixedEarly) -> None:
+        """Apple takes about 10 s for 90 s of Nepali (Kriti about 1.5 s) and the on-device model
+        about 4 s to translate it, so in Mixed mode each finished stretch of speech is recognized,
+        and each finished run of stretches translated, while the user is still talking."""
         while self.recorder and self.recorder.is_recording:
             time.sleep(0.5)
             try:
-                pieces.update(self.recorder.get_current_audio())
+                early.pieces.update(self.recorder.get_current_audio())
+                if early.translate:
+                    runs = self._segment_runs(self._segments_from(early.pieces.results()))
+                    for run in runs[:-1]:  # the last run can still grow
+                        if run not in early.translated:
+                            early.translated[run] = self._run_local_ai(*run)
             except Exception as e:
-                print(f"[STT] Mixed early recognition stopped: {e}", file=sys.stderr)
+                print(f"[STT] Mixed early work stopped: {e}", file=sys.stderr)
                 return
 
     def _mixed_piece(self, piece) -> tuple:
@@ -637,39 +654,49 @@ class JustTalkApp:
         devanagari = (self.kriti.transcribe(piece, language="ne") or "").strip()
         return english, sum(confs) / len(confs) if confs else 0.0, devanagari
 
-    def _mixed_transcribe(self, audio, early: Optional[EarlyPieces] = None) -> list:
-        """People who mix Nepali and English switch language mid-dictation, so the engine is chosen
-        per stretch of speech (split at pauses): Apple's English where Apple was confident and
-        heard the same sounds as Kriti, Kriti's Devanagari everywhere else. `early` has the
-        stretches already recognized while the user was talking."""
-        started = time.monotonic()
-        pieces = early if early is not None else EarlyPieces(self._mixed_piece, max_piece_sec=MIXED_PIECE_SEC)
-        done_early = len(pieces)
-        results = pieces.finish(audio)
+    def _segments_from(self, results: list, log: bool = False) -> list:
+        """[(text, "en" | "ne")] from recognized stretches: Apple's English where Apple was confident
+        and heard the same sounds as Kriti, Kriti's Devanagari everywhere else."""
         segments = []
         for start, end, (english, confidence, devanagari) in results:
             if not english and not devanagari:
                 continue
             overlap = sound_overlap(english, devanagari)
             use_english = bool(english) and confidence >= MIXED_APPLE_MIN_CONFIDENCE and overlap >= MIXED_MIN_SOUND_OVERLAP
-            print(f"[STT] Mixed {(end - start) / 16000:.1f}s -> {'EN' if use_english else 'NE'} "
-                  f"(Apple confidence {confidence:.2f}, sound overlap {overlap:.2f}) Apple={english!r} Kriti={devanagari!r}",
-                  file=sys.stderr)
+            if log:
+                print(f"[STT] Mixed {(end - start) / 16000:.1f}s -> {'EN' if use_english else 'NE'} "
+                      f"(Apple confidence {confidence:.2f}, sound overlap {overlap:.2f}) Apple={english!r} Kriti={devanagari!r}",
+                      file=sys.stderr)
             text = english if use_english else devanagari
             if text:
                 segments.append((text, "en" if use_english else "ne"))
+        return segments
+
+    def _mixed_transcribe(self, audio, early: Optional[EarlyPieces] = None) -> list:
+        """People who mix Nepali and English switch language mid-dictation, so the engine is chosen
+        per stretch of speech (split at pauses). `early` has the stretches already recognized
+        while the user was talking."""
+        started = time.monotonic()
+        pieces = early if early is not None else EarlyPieces(self._mixed_piece, max_piece_sec=MIXED_PIECE_SEC)
+        done_early = len(pieces)
+        results = pieces.finish(audio)
+        segments = self._segments_from(results, log=True)
         print(f"[STT] Mixed: {done_early} of {len(results)} stretches done while talking, "
               f"rest took {time.monotonic() - started:.2f}s", file=sys.stderr)
         return segments
 
-    def _translate_segments(self, segments: list):
+    def _run_local_ai(self, seg_lang: str, text: str) -> tuple:
+        return self.local_ai.run("translate" if seg_lang == "ne" else "cleanup", text, self._speaker_context())
+
+    def _translate_segments(self, segments: list, done: Optional[dict] = None):
         """Translate the Nepali stretches and clean up the English ones (punctuation, misheard
         words), a few same-language stretches per call: whole sentences for context, short enough
-        that the model keeps every detail."""
-        context = self._speaker_context()
+        that the model keeps every detail. `done` has runs already translated while the user talked."""
         parts = []
-        for seg_lang, text in self._segment_runs(segments):
-            result, ok, msg = self.local_ai.run("translate" if seg_lang == "ne" else "cleanup", text, context)
+        for run in self._segment_runs(segments):
+            result, ok, msg = (done or {}).get(run) or (None, False, "")
+            if not ok:
+                result, ok, msg = self._run_local_ai(*run)
             if not ok:
                 return "", False, msg
             parts.append(result)
@@ -816,11 +843,15 @@ class JustTalkApp:
             IncrementalTranscriber(self.stt_engine.transcribe, window_sec=6.0)
             if isinstance(self.stt_engine, WhisperSTTEngine) else None
         )
-        self._early_pieces = None
+        self._early_mixed = None
         if self._mixed_mode_ready():
             self.stt_engine.vocabulary = vocabulary_terms(self.config, self.learner)
-            self._early_pieces = EarlyPieces(self._mixed_piece, max_piece_sec=MIXED_PIECE_SEC)
-            threading.Thread(target=self._early_pieces_loop, args=(self._early_pieces,), daemon=True).start()
+            translate = (getattr(self.config, "speech_mode", "") == "translate" and getattr(self.config, "local_ai", False)
+                         and self.local_ai.is_available())
+            early = _MixedEarly(EarlyPieces(self._mixed_piece, max_piece_sec=MIXED_PIECE_SEC), translate)
+            early.thread = threading.Thread(target=self._early_mixed_loop, args=(early,), daemon=True)
+            early.thread.start()
+            self._early_mixed = early
         self._streaming_thread = threading.Thread(
             target=self._streaming_stt_loop,
             daemon=True,
@@ -978,7 +1009,7 @@ class JustTalkApp:
         print("[Record] VAD passed → sending to transcription pipeline", file=sys.stderr)
         self.bridge.state_processing.emit("Transcribing...")
         # Dispatch transcription and formatting to background worker
-        early, self._early_pieces = self._early_pieces, None
+        early, self._early_mixed = self._early_mixed, None
         threading.Thread(
             target=self._process_audio_pipeline,
             args=(audio, self._is_action_mode),
@@ -987,19 +1018,19 @@ class JustTalkApp:
         ).start()
 
     def _process_audio_pipeline(
-        self, audio, is_action_mode: bool, force_accept_speaker: bool = False, early: Optional[EarlyPieces] = None
+        self, audio, is_action_mode: bool, force_accept_speaker: bool = False, early: Optional[_MixedEarly] = None
     ) -> None:
         with self.lifecycle.busy():
             self._run_audio_pipeline(audio, is_action_mode, force_accept_speaker, early)
 
     def _run_audio_pipeline(
-        self, audio, is_action_mode: bool, force_accept_speaker: bool = False, early: Optional[EarlyPieces] = None
+        self, audio, is_action_mode: bool, force_accept_speaker: bool = False, early: Optional[_MixedEarly] = None
     ) -> None:
         """Background pipeline: STT -> Gemini -> Insertion -> Database.
 
         force_accept_speaker re-runs a dictation the voice filter ignored, after the user
         confirmed it was them (Paste Last Dictation right after the "ignored" notice).
-        early holds the Mixed mode stretches already recognized while the user was talking.
+        early holds the Mixed mode work already done while the user was talking.
         """
         try:
             start_time = time.time()
@@ -1118,7 +1149,7 @@ class JustTalkApp:
             raw_text = ""
             mixed_segments: list = []  # [(text, "en" | "ne")] when Mixed mode decides per stretch of speech
             if use_kriti and cur_lang == "ne_en" and isinstance(self.stt_engine, MacNativeSTTEngine):
-                mixed_segments = self._mixed_transcribe(unfiltered_audio, early)
+                mixed_segments = self._mixed_transcribe(unfiltered_audio, early.pieces if early else None)
                 raw_text = " ".join(t for t, _ in mixed_segments)
                 if mixed_segments and all(seg_lang == "en" for _, seg_lang in mixed_segments):
                     lang = "en"
@@ -1264,7 +1295,9 @@ class JustTalkApp:
                 if local_task:
                     t_local = time.time()
                     if local_task == "translate" and mixed_segments:
-                        cleaned, success, msg = self._translate_segments(mixed_segments)
+                        if early and early.thread:
+                            early.thread.join(timeout=15)  # let a translation it started finish
+                        cleaned, success, msg = self._translate_segments(mixed_segments, early.translated if early else None)
                     else:
                         cleaned, success, msg = self.local_ai.run(local_task, final_text, self._speaker_context())
                     print(f"[LocalAI] {local_task} in {int((time.time() - t_local) * 1000)}ms: "
@@ -1292,6 +1325,8 @@ class JustTalkApp:
             else:
                 final_text = GeminiFormatter.light_local_cleanup(final_text)
                 is_offline_fallback = True
+
+            final_text = fix_known_mishearings(final_text, vocabulary_terms(self.config, self.learner))
 
             # 6. Final Insertion: In-Place Polish replacement or single-phase insertion
             if draft_emitted:

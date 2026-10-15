@@ -88,7 +88,9 @@ def _mixed_engines(app):
 
     class Kriti:
         def transcribe(self, piece, language=None):
-            return "सो माइ नेम इज सहस एन्ड आई एम फ्रम काठमाडौँ" if piece.max() > 0.15 else "हेलो के छ हलखबर भोक लागिरहेको छ"
+            if piece.max() > 0.15:
+                return "सो माइ नेम इज सहस एन्ड आई एम फ्रम काठमाडौँ"
+            return "म भोलि अफिस जान्छु" if piece.max() > 0.11 else "हेलो के छ हलखबर भोक लागिरहेको छ"
 
     app.stt_engine, app.kriti = Apple(), Kriti()
     app.config.voice_isolation_enabled = False
@@ -175,3 +177,59 @@ def test_long_nepali_is_translated_a_few_stretches_at_a_time():
     text, ok, _ = app._translate_segments([(stretch, "ne")] * 5 + [("So my name is Sahas", "en")])
     assert ok and text == "ok. ok. ok. ok."
     assert calls == [("translate", 30), ("translate", 30), ("translate", 15), ("cleanup", 5)]
+
+
+def test_runs_translated_while_talking_are_not_translated_again(monkeypatch):
+    import sys
+    from just_talk.app.main import MIXED_PIECE_SEC, _MixedEarly
+    main_mod = sys.modules["just_talk.app.main"]  # just_talk.app.main is also a function name
+    from just_talk.stt.long_form import EarlyPieces
+
+    app, np = _bare_app()
+    _mixed_engines(app)
+    calls = []
+
+    class Local:
+        def run(self, task, text, context=""):
+            calls.append(task)
+            return {"translate": "Hello, how are you? I'm hungry.", "cleanup": "So my name is Sahas."}[task], True, ""
+
+    app.local_ai = Local()
+    quiet = np.zeros(8000, np.float32)
+    audio = np.concatenate([_nepali_then_english(np, sec=5), quiet, np.full(16000 * 5, 0.12, np.float32)])  # NE, EN, NE
+
+    class Recorder:
+        """Recording that grows by a second per poll, then stops."""
+        def __init__(self):
+            self.n = 0
+        @property
+        def is_recording(self):
+            return self.n * 16000 < len(audio)
+        def get_current_audio(self):
+            self.n += 1
+            return audio[: self.n * 16000]
+
+    app.recorder = Recorder()
+    monkeypatch.setattr(main_mod.time, "sleep", lambda s: None)
+    early = _MixedEarly(EarlyPieces(app._mixed_piece, max_piece_sec=MIXED_PIECE_SEC), translate=True)
+    app._early_mixed_loop(early)
+    assert calls == ["translate"]  # the first Nepali run was finished (English followed), so it was done early
+
+    segments = app._mixed_transcribe(audio, early.pieces)
+    assert [lang for _, lang in segments] == ["ne", "en", "ne"]
+    text, ok, _ = app._translate_segments(segments, early.translated)
+    assert ok and text == "Hello, how are you? I'm hungry. So my name is Sahas. Hello, how are you? I'm hungry."
+    assert calls == ["translate", "cleanup", "translate"]  # the first run wasn't translated twice
+
+
+def test_git_is_fixed_only_where_it_can_only_mean_git():
+    from just_talk.profile.scripts import fix_known_mishearings
+
+    dev = ["git", "GitHub", "pull request"]
+    assert fix_known_mishearings("Then push the changes to get and open a pull request.", dev) == \
+        "Then push the changes to git and open a pull request."
+    assert fix_known_mishearings("Can you push it to the gate?", dev) == "Can you push it to git?"
+    assert fix_known_mishearings("Pull from get hub first.", dev) == "Pull from GitHub first."
+    assert fix_known_mishearings("I want to get the file.", dev) == "I want to get the file."
+    assert fix_known_mishearings("Get the changes and commit them.", dev) == "Get the changes and commit them."
+    assert fix_known_mishearings("Push the changes to get.", []) == "Push the changes to get."  # not a developer

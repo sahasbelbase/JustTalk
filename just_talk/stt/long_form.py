@@ -40,6 +40,11 @@ class EarlyPieces:
     def __len__(self) -> int:
         return len(self._results)
 
+    def results(self) -> list:
+        """[(start, end, result)] of the pieces finished so far."""
+        with self._lock:
+            return list(self._results)
+
     def update(self, audio: np.ndarray) -> None:
         with self._lock:
             if self._finished or audio is None:
