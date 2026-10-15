@@ -233,3 +233,20 @@ def test_git_is_fixed_only_where_it_can_only_mean_git():
     assert fix_known_mishearings("I want to get the file.", dev) == "I want to get the file."
     assert fix_known_mishearings("Get the changes and commit them.", dev) == "Get the changes and commit them."
     assert fix_known_mishearings("Push the changes to get.", []) == "Push the changes to get."  # not a developer
+
+
+def test_long_english_is_cleaned_up_a_few_stretches_at_a_time():
+    """A 96 s English story was one 260-word call; the model cut it short and was rejected."""
+    app, _ = _bare_app()
+    calls = []
+
+    class Local:
+        def run(self, task, text, context=""):
+            calls.append((task, len(text.split())))
+            return text, True, ""
+
+    app.local_ai = Local()
+    stretch = " ".join(["word"] * 20)
+    text, ok, _ = app._translate_segments([(stretch, "en")] * 5)
+    assert ok and len(text.split()) == 100
+    assert calls == [("cleanup", 40), ("cleanup", 40), ("cleanup", 20)]

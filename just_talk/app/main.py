@@ -1294,7 +1294,7 @@ class JustTalkApp:
                 cleaned, success, msg = "", False, ""
                 if local_task:
                     t_local = time.time()
-                    if local_task == "translate" and mixed_segments:
+                    if mixed_segments:  # a few stretches per call: the model drops parts of long text
                         if early and early.thread:
                             early.thread.join(timeout=15)  # let a translation it started finish
                         cleaned, success, msg = self._translate_segments(mixed_segments, early.translated if early else None)
