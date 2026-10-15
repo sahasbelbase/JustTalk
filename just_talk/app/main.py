@@ -64,7 +64,7 @@ from ..profile.store import VoiceProfile
 from ..language_setup import english_dominant
 from ..stt.whisper_engine import WhisperSTTEngine
 from ..stt.mac_native_engine import MacNativeSTTEngine
-from ..profile.scoring import has_devanagari, sound_overlap
+from ..profile.scoring import has_devanagari, language_words, sound_overlap
 from ..stt.long_form import EarlyPieces, IncrementalTranscriber
 from ..system.audio_ducker import SystemAudioDucker
 from ..system.caret_locator import CaretLocator
@@ -240,6 +240,11 @@ class JustTalkApplication(QApplication):
 # sounds Kriti did. Logged on every mixed dictation so these can be tuned from real speech.
 MIXED_APPLE_MIN_CONFIDENCE = 0.6
 MIXED_MIN_SOUND_OVERLAP = 0.55
+MIXED_APPLE_SURE = 0.9  # the user's Nepali never got above 0.54 from Apple
+# Kriti itself wrote English ("द", "एन्ड", "इज") and no Nepali grammar words: it was English, even when
+# Apple was unsure (0.5-0.6 on a 15 Oct English story, whose stretches then came out as Devanagari).
+MIXED_KRITI_ENGLISH_WORDS = 0.1
+MIXED_APPLE_MIN_IF_KRITI_ENGLISH = 0.4
 MIXED_PIECE_SEC = 8.0  # language is decided per stretch of this length at most, cut at pauses
 # The on-device model drops whole sentences from long Nepali (it trained on up to ~80 words), so
 # Mixed mode translates a few stretches at a time: on 15 Oct dictations, 33 -> 57 chrF++.
@@ -662,11 +667,16 @@ class JustTalkApp:
             if not english and not devanagari:
                 continue
             overlap = sound_overlap(english, devanagari)
-            use_english = bool(english) and confidence >= MIXED_APPLE_MIN_CONFIDENCE and overlap >= MIXED_MIN_SOUND_OVERLAP
+            en_words, ne_words = language_words(devanagari)
+            use_english = bool(english) and (
+                (confidence >= MIXED_APPLE_MIN_CONFIDENCE and overlap >= MIXED_MIN_SOUND_OVERLAP)
+                or confidence >= MIXED_APPLE_SURE
+                or (en_words >= MIXED_KRITI_ENGLISH_WORDS and ne_words == 0 and confidence >= MIXED_APPLE_MIN_IF_KRITI_ENGLISH)
+            )
             if log:
                 print(f"[STT] Mixed {(end - start) / 16000:.1f}s -> {'EN' if use_english else 'NE'} "
-                      f"(Apple confidence {confidence:.2f}, sound overlap {overlap:.2f}) Apple={english!r} Kriti={devanagari!r}",
-                      file=sys.stderr)
+                      f"(Apple confidence {confidence:.2f}, sound overlap {overlap:.2f}, Kriti English/Nepali words "
+                      f"{en_words:.2f}/{ne_words:.2f}) Apple={english!r} Kriti={devanagari!r}", file=sys.stderr)
             text = english if use_english else devanagari
             if text:
                 segments.append((text, "en" if use_english else "ne"))

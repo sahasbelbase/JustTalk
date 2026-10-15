@@ -173,6 +173,32 @@ def sound_overlap(english: str, devanagari: str) -> float:
     return matched / max(len(a), len(b))
 
 
+# English as Kriti spells it in Devanagari, and Nepali grammar words. On 15 Oct dictations every real
+# Nepali stretch had none of the first and nearly always some of the second; every English stretch
+# the reverse, even where Apple was unsure of its English.
+_DEV_ENGLISH_WORDS = set(
+    "द दि टु एन्ड एण्ड अ एन अफ इन इज वाज वज ही शी आई आइ यु यू वी माइ हिज द्याट दिस दिज विथ फर फ्रम अन एट "
+    "बट नट क्यान विल वुड हु व्हाट वाट वेन वेयर हाउ द्याट्स इट इट्स बाइ एभ्री एभ्रि देन देयर देम हिम आर बी "
+    "ह्याभ ह्याड डु डिड इफ ओर बिकज बिकौज भेरी वान्ट आफ्टर बिफोर एनी मोर मेनी".split()
+)
+_NEPALI_WORDS = set(
+    "छ छु छन् छौ हो हुन् होइन मा को का की ले लाई अनि पनि त्यो यो म मैले मेरो तिमी तपाईं तपाईँ हामी के कि भने "
+    "भन्ने गरेँ गर्नु गर्छु भयो थियो थिएँ चाहिँ नि त अब एउटा धेरै सबै आज भोलि हिजो पर्छ हुन्छ गर्ने गरेर भएर".split()
+)
+_NEPALI_SUFFIXES = ("मा", "को", "ले", "लाई", "हरू", "बाट", "सँग")
+
+
+def language_words(devanagari: str) -> Tuple[float, float]:
+    """(share of English words, share of Nepali words) in a Kriti transcript."""
+    words = [strip_word(w) for w in (devanagari or "").split()]
+    words = [w for w in words if w]
+    if not words:
+        return 0.0, 0.0
+    english = sum(w in _DEV_ENGLISH_WORDS for w in words)
+    nepali = sum(w in _NEPALI_WORDS or (len(w) > 3 and w.endswith(_NEPALI_SUFFIXES)) for w in words)
+    return english / len(words), nepali / len(words)
+
+
 # ── Alignment ─────────────────────────────────────────────────────────────────
 
 def align(a: Sequence, b: Sequence) -> List[Tuple[str, Optional[int], Optional[int]]]:

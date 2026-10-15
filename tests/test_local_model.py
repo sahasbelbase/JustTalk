@@ -250,3 +250,24 @@ def test_long_english_is_cleaned_up_a_few_stretches_at_a_time():
     text, ok, _ = app._translate_segments([(stretch, "en")] * 5)
     assert ok and len(text.split()) == 100
     assert calls == [("cleanup", 40), ("cleanup", 40), ("cleanup", 20)]
+
+
+def test_english_that_apple_was_unsure_of_is_still_english_when_kriti_wrote_english_words():
+    """15 Oct English story: Apple at 0.49-0.74 with repeated words, so these went to Kriti and
+    the model invented sentences. Kriti's own words (द, एन्ड, इज, no Nepali) say it was English."""
+    app, _ = _bare_app()
+    english_story = ("Although he said and disappeared in the clouds the next morning", 0.49,
+                     "अभोभ ही सेड एन्ड डिसिप्लिन इन टु क्लाउड द नेक्स्ट मर्निङ रोहन")
+    nepali_story = ("This bike start got office going", 0.54, "त्यसपछि मैले बाइक स्टार्ट गरेँ र म अफिस गएँ")
+    sure_apple = ("The boy who", 0.97, "कुटिर दबाइ")
+    segments = app._segments_from([(0, 16000, r) for r in (english_story, nepali_story, sure_apple)])
+    assert [lang for _, lang in segments] == ["en", "ne", "en"]
+
+
+def test_language_words_tell_kriti_english_from_nepali():
+    from just_talk.profile.scoring import language_words
+
+    en, ne = language_words("एन्ड द लेक लुक्स लाइक एन वाइज ए")
+    assert en >= 0.3 and ne == 0
+    en, ne = language_words("छ महिना अगाडि म एउटा ताल गएको थिएँ")
+    assert en == 0 and ne > 0
