@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import difflib
 import os
 import sys
 import tempfile
@@ -15,6 +16,17 @@ from ..audio.vad import VoiceActivityDetector
 from .engine import STTEngine
 from .long_form import IncrementalTranscriber, join_segments
 from .google_web_engine import GoogleWebSTTEngine
+
+
+def _revises(old: str, new: str, share: float = 0.6) -> bool:
+    """Whether `new` is Apple's revision of `old` rather than different words: most of `old`'s words
+    come back in order ("Turn to Daniel and said never" -> "Return to Danielle and said never").
+    Short phrases are left to exact matching, since a word or two can match by chance."""
+    a, b = old.lower().split(), new.lower().split()
+    if len(a) < 3:
+        return False
+    matched = sum(m.size for m in difflib.SequenceMatcher(None, a, b, autojunk=False).get_matching_blocks())
+    return matched / len(a) >= share
 
 
 class UtteranceTracker:
@@ -48,9 +60,10 @@ class UtteranceTracker:
             return
         # Partial results may arrive without timings and the final one with them:
         # the timed result supersedes any untimed text it contains.
-        self._committed = [c for c in self._committed if c.lower() not in lowered]
+        self._committed = [c for c in self._committed if c.lower() not in lowered and not _revises(c, text)]
         if self._latest and (
             self._latest.lower() in lowered or lowered.split()[0] == self._latest.lower().split()[0]
+            or _revises(self._latest, text)
         ):
             self._latest = ""
         start, end = span
@@ -306,7 +319,7 @@ class MacNativeSTTEngine(STTEngine):
             is_new_utterance = len(cur) < len(prev) * 0.5
         else:
             prev_next = prev_words[1:3]
-            is_new_utterance = not prev_next or cur_words[1 : 1 + len(prev_next)] != prev_next
+            is_new_utterance = (not prev_next or cur_words[1 : 1 + len(prev_next)] != prev_next) and not _revises(prev, cur)
         if is_new_utterance:
             committed.append(prev)
         return cur

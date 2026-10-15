@@ -197,3 +197,20 @@ def test_tracker_untimed_partials_then_timed_final_do_not_duplicate():
     t.add("The problem is now I am seeing double", (6.0, 9.0))
     t.add("The problem is now I am seeing double", None)  # re-sent without timings
     assert t.text() == "The problem is now I am seeing double"
+
+
+def test_mac_merge_treats_reworded_revision_as_same_utterance():
+    # 15 Oct English story: Apple revised "Turn to Daniel…" to "Return to Danielle…" and both were kept
+    committed = []
+    latest = ""
+    for partial in ["Turn to Daniel and said never", "Return to Danielle and said never"]:
+        latest = MacNativeSTTEngine.merge_utterances(committed, latest, partial)
+    assert committed == []
+    assert latest == "Return to Danielle and said never"
+
+
+def test_tracker_timed_result_replaces_reworded_untimed_partial():
+    t = UtteranceTracker()
+    t.add("Return to Danielle and said never", None)
+    t.add("The old man turned to Daniel and said never be so busy", (20.0, 24.0))
+    assert t.text() == "The old man turned to Daniel and said never be so busy"
