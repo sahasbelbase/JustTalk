@@ -77,16 +77,10 @@ def _bare_app():
     return app, np
 
 
-def test_mixed_dictation_is_routed_per_stretch_of_speech(monkeypatch):
-    from just_talk.audio.vad import VoiceActivityDetector
-
-    app, np = _bare_app()
-    nepali_piece, english_piece = np.full(16000, 0.1, np.float32), np.full(16000, 0.2, np.float32)
-    monkeypatch.setattr(VoiceActivityDetector, "split_on_pauses", classmethod(lambda cls, a, **kw: [nepali_piece, english_piece]))
-
+def _mixed_engines(app):
     class Apple:
         def transcribe(self, piece, language=None, confidences=None):
-            if piece[0] > 0.15:
+            if piece.max() > 0.15:
                 confidences.append(0.9)
                 return "So my name is Sahas and I am from Kathmandu."
             confidences.append(0.3)
@@ -94,23 +88,73 @@ def test_mixed_dictation_is_routed_per_stretch_of_speech(monkeypatch):
 
     class Kriti:
         def transcribe(self, piece, language=None):
-            return "सो माइ नेम इज सहस एन्ड आई एम फ्रम काठमाडौँ" if piece[0] > 0.15 else "हेलो के छ हलखबर भोक लागिरहेको छ"
+            return "सो माइ नेम इज सहस एन्ड आई एम फ्रम काठमाडौँ" if piece.max() > 0.15 else "हेलो के छ हलखबर भोक लागिरहेको छ"
 
     app.stt_engine, app.kriti = Apple(), Kriti()
-    segments = app._mixed_transcribe(np.zeros(32000, np.float32))
+    app.config.voice_isolation_enabled = False
+
+
+def _nepali_then_english(np, sec=10):
+    """Nepali-ish audio, a pause, English-ish audio: one cut at the pause."""
+    quiet = np.zeros(8000, np.float32)
+    return np.concatenate([np.full(16000 * sec, 0.1, np.float32), quiet, np.full(16000 * sec, 0.2, np.float32)])
+
+
+def test_mixed_dictation_is_routed_per_stretch_of_speech():
+    app, np = _bare_app()
+    _mixed_engines(app)
+    segments = app._mixed_transcribe(_nepali_then_english(np, sec=5))
     assert segments == [("हेलो के छ हलखबर भोक लागिरहेको छ", "ne"), ("So my name is Sahas and I am from Kathmandu.", "en")]
 
 
-def test_only_nepali_stretches_are_translated():
+def test_mixed_stretches_recognized_while_talking_are_not_redone():
+    from just_talk.app.main import MIXED_PIECE_SEC
+    from just_talk.stt.long_form import EarlyPieces
+
+    app, np = _bare_app()
+    _mixed_engines(app)
+    audio = _nepali_then_english(np, sec=5)
+    calls = []
+    piece = app._mixed_piece
+    early = EarlyPieces(lambda a: calls.append(len(a)) or piece(a), max_piece_sec=MIXED_PIECE_SEC)
+    early.update(audio[: 16000 * 9])  # the Nepali stretch is finished; the English one isn't yet
+    assert len(early) == 1 and len(calls) == 1
+    segments = app._mixed_transcribe(audio, early)
+    assert segments == [("हेलो के छ हलखबर भोक लागिरहेको छ", "ne"), ("So my name is Sahas and I am from Kathmandu.", "en")]
+    assert len(calls) == 2  # only the English stretch was left after the user stopped
+
+
+def test_early_pieces_cut_the_same_pieces_as_split_on_pauses():
+    import numpy as np
+    from just_talk.audio.vad import VoiceActivityDetector
+    from just_talk.stt.long_form import EarlyPieces
+
+    rng = np.random.default_rng(0)
+    audio = np.concatenate([np.concatenate([rng.normal(0, 0.1, 16000 * n).astype(np.float32), np.zeros(4000, np.float32)])
+                            for n in (3, 6, 2, 9, 4, 7)])
+    early = EarlyPieces(lambda a: len(a), max_piece_sec=8.0)
+    for end in range(16000, len(audio), 8000):  # the recording growing every half second
+        early.update(audio[:end])
+    spans = [(a, b) for a, b, _ in early.finish(audio)]
+    assert [audio[a:b].tolist() for a, b in spans] == [
+        c.tolist() for c in VoiceActivityDetector.split_on_pauses(audio, max_chunk_sec=8.0, min_chunk_sec=1.0)
+    ]
+    early.update(audio)  # after finish, nothing more is added
+    assert len(early) == len(spans)
+
+
+def test_nepali_stretches_are_translated_and_english_ones_cleaned_up():
     app, _ = _bare_app()
     calls = []
 
     class Local:
         def run(self, task, text, context=""):
-            calls.append(text)
-            return "Hello, how are you? I'm hungry.", True, ""
+            calls.append((task, text))
+            return {"translate": "Hello, how are you? I'm hungry.", "cleanup": "So my name is Sahas. I push to git."}[task], True, ""
 
     app.local_ai = Local()
-    text, ok, _ = app._translate_segments([("हेलो के छ हलखबर भोक लागिरहेको छ", "ne"), ("So my name is Sahas.", "en")])
-    assert ok and text == "Hello, how are you? I'm hungry. So my name is Sahas."
-    assert calls == ["हेलो के छ हलखबर भोक लागिरहेको छ"]
+    text, ok, _ = app._translate_segments(
+        [("हेलो के छ हलखबर भोक लागिरहेको छ", "ne"), ("So my name is Sahas", "en"), ("I push to get", "en")]
+    )
+    assert ok and text == "Hello, how are you? I'm hungry. So my name is Sahas. I push to git."
+    assert calls == [("translate", "हेलो के छ हलखबर भोक लागिरहेको छ"), ("cleanup", "So my name is Sahas I push to get")]

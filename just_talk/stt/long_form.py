@@ -15,6 +15,52 @@ def join_segments(parts: Iterable[str]) -> str:
     return " ".join(p.strip() for p in parts if p and p.strip())
 
 
+class EarlyPieces:
+    """
+    Runs ``process`` on each pause-aligned piece of a recording as soon as that piece can no
+    longer change, while the user is still talking. ``finish`` processes what is left, so a
+    long dictation only has its last few seconds to do after the user stops.
+    Pieces are the same as VoiceActivityDetector.split_on_pauses would cut.
+    """
+
+    def __init__(
+        self,
+        process: Callable[[np.ndarray], object],
+        max_piece_sec: float,
+        min_piece_sec: float = 1.0,
+        sample_rate: int = 16000,
+    ) -> None:
+        self._process = process
+        self._split = dict(sample_rate=sample_rate, max_chunk_sec=max_piece_sec, min_chunk_sec=min_piece_sec)
+        self._lock = threading.Lock()
+        self._done = 0  # samples covered by finished pieces
+        self._results: list = []  # [(start, end, result)]
+        self._finished = False
+
+    def __len__(self) -> int:
+        return len(self._results)
+
+    def update(self, audio: np.ndarray) -> None:
+        with self._lock:
+            if self._finished or audio is None:
+                return
+            self._run(audio, VoiceActivityDetector.pause_spans(audio[self._done :], **self._split)[:-1])
+
+    def finish(self, audio: np.ndarray) -> list:
+        """[(start, end, result)] for the whole recording, in order."""
+        with self._lock:
+            self._finished = True
+            if len(audio) > self._done:
+                self._run(audio, VoiceActivityDetector.pause_spans(audio[self._done :], **self._split))
+            return list(self._results)
+
+    def _run(self, audio: np.ndarray, spans: list) -> None:
+        base = self._done
+        for start, end in spans:
+            self._results.append((base + start, base + end, self._process(audio[base + start : base + end])))
+            self._done = base + end
+
+
 class IncrementalTranscriber:
     """
     Live-partial helper that never forgets earlier speech.
