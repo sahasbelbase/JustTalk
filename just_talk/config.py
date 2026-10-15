@@ -143,6 +143,12 @@ class AppConfig:
 
     # Custom Vocabulary (comma-separated words, personal names, product terms)
     custom_vocabulary: str = ""
+    # What the user does (profile.scripts.ROLES id, e.g. "software"); its words seed the vocabulary on day one
+    user_role: str = ""
+    # Let the AI provider read past dictation text (never audio) to learn the user's words and mix-ups
+    learn_with_ai: bool = False
+    # Clean up and translate dictation with the on-device model (ai/local_model.py) instead of the cloud
+    local_ai: bool = False
 
     # Voice Isolation & Speaker Identification
     voice_isolation_enabled: bool = True  # DeepFilterNet v3 noise & laptop audio cancellation

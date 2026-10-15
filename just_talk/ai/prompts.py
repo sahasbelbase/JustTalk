@@ -217,6 +217,23 @@ def build_prompt(
         )
     return base
 
+def speaker_context_block(role: str = "", terms=(), mishearings=()) -> str:
+    """Facts from the user's voice profile that help fix words the speech engine got wrong."""
+    lines = []
+    if role:
+        lines.append(f"- They work as: {role}.")
+    terms = [t for t in dict.fromkeys(terms) if t][:40]
+    if terms:
+        lines.append(f"- Words they often use: {', '.join(terms)}.")
+    pairs = [(h, m) for h, m in mishearings if h and m][:15]
+    if pairs:
+        heard = "; ".join(f'"{h}" when they said "{m}"' for h, m in pairs)
+        lines.append(f"- Their speech engine has written {heard}. Change these only when the sentence clearly means the intended word.")
+    if not lines:
+        return ""
+    return "ABOUT THE SPEAKER (use only to correct misheard words, never to add content):\n" + "\n".join(lines)
+
+
 TRANSCRIPT_BOUNDARY_RULE = (
     "The transcript arrives between <transcript> and </transcript> tags. "
     "Reply with only the edited transcript text, without the tags. "

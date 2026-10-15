@@ -204,6 +204,7 @@ class MainWindow(QMainWindow):
 
     config_changed = Signal(AppConfig)
     replay_tutorial_requested = Signal()
+    learn_now_requested = Signal()
     update_available = Signal(object)
 
     def __init__(
@@ -1825,6 +1826,7 @@ class MainWindow(QMainWindow):
             default_expanded=False,
         )
 
+        sec3_layout.addWidget(self._build_local_ai_card())
         self.ai_view = AIFormattingView(self.config, self.gemini, parent=self)
         self.ai_view.config_changed.connect(self._on_ai_config_changed)
         sec3_layout.addWidget(self.ai_view)
@@ -1896,16 +1898,42 @@ class MainWindow(QMainWindow):
 
         replay_box = QVBoxLayout()
         replay_box.setSpacing(4)
-        replay_desc = QLabel("Walk through microphone, permissions and shortcut setup again.")
+        replay_desc = QLabel("Permissions, languages, your work, and the voice profile that teaches Just Talk your accent.")
         replay_desc.setObjectName("mutedLabel")
         replay_desc.setFont(ThemeManager.get_ui_font(11))
         replay_box.addWidget(replay_desc)
 
-        replay_btn = QPushButton("Replay walkthrough")
+        replay_btn = QPushButton("Run setup again")
         replay_btn.setObjectName("secondaryBtn")
         replay_btn.clicked.connect(lambda: self.replay_tutorial_requested.emit())
         replay_box.addWidget(replay_btn)
-        s6_form.addRow("Tutorial:", replay_box)
+        s6_form.addRow("Setup:", replay_box)
+
+        learn_box = QVBoxLayout()
+        learn_box.setSpacing(6)
+        self.learning_status = QLabel("")
+        self.learning_status.setObjectName("helpText")
+        self.learning_status.setWordWrap(True)
+        learn_box.addWidget(self.learning_status)
+        self.learn_ai_check = QCheckBox("Let AI review my past dictations to learn faster")
+        self.learn_ai_check.setChecked(bool(getattr(self.config, "learn_with_ai", False)))
+        self.learn_ai_check.toggled.connect(self._on_learn_ai_toggled)
+        learn_box.addWidget(self._with_help(
+            self.learn_ai_check,
+            "Sends the text of recent dictations (never audio) to your AI provider to find your words and mix-ups, like “gate” when you said “git”.",
+        ))
+        learn_row = QHBoxLayout()
+        self.learn_now_btn = QPushButton("Learn now")
+        self.learn_now_btn.setObjectName("secondaryBtn")
+        self.learn_now_btn.clicked.connect(self._on_learn_now)
+        learned_btn = QPushButton("See what it learned")
+        learned_btn.setObjectName("secondaryBtn")
+        learned_btn.clicked.connect(self._show_learned)
+        learn_row.addWidget(self.learn_now_btn)
+        learn_row.addWidget(learned_btn)
+        learn_row.addStretch()
+        learn_box.addLayout(learn_row)
+        s6_form.addRow("Learning:", learn_box)
 
         u_row = QHBoxLayout()
         self.update_status_label = QLabel(f"Current version: v{__version__}")
@@ -1973,6 +2001,135 @@ class MainWindow(QMainWindow):
         self.minimized_check.toggled.connect(self._autosave_settings)
         self.vocab_input.editingFinished.connect(self._autosave_settings)
         return scroll
+
+    # ── Learning ─────────────────────────────────────────────────────────────
+
+    def refresh_learning(self) -> None:
+        learner = getattr(self, "learner", None)
+        if learner is None or not hasattr(self, "learning_status"):
+            return
+        words, mixups = len(learner.known_terms()), len(learner.known_mixups())
+        text = f"Knows {words} of your words and {mixups} mix-up{'s' if mixups != 1 else ''}."
+        if learner.last_review:
+            text += f" Last AI review {learner.last_review[:10]}."
+        self.learning_status.setText(text)
+
+    def _on_learn_ai_toggled(self, on: bool) -> None:
+        self.config.learn_with_ai = on
+        self.config.save()
+        if on:
+            self._on_learn_now()
+
+    def _on_learn_now(self) -> None:
+        self.learn_now_btn.setEnabled(False)
+        self.learning_status.setText("Learning from your dictations…")
+        self.learn_now_requested.emit()
+
+    def on_learning_done(self, message: str) -> None:
+        self.learn_now_btn.setEnabled(True)
+        self.refresh_learning()
+        self.learning_status.setText(f"{message} {self.learning_status.text()}")
+
+    def _show_learned(self) -> None:
+        if getattr(self, "learner", None) is None:
+            return
+        from .learned_dialog import LearnedDialog
+
+        LearnedDialog(self.learner, self).exec()
+        self.refresh_learning()
+
+    # ── On-device AI ─────────────────────────────────────────────────────────
+
+    def _build_local_ai_card(self) -> QWidget:
+        from ..ai import local_model
+
+        card = QFrame()
+        card.setObjectName("surfaceCard")
+        v = QVBoxLayout(card)
+        v.setSpacing(8)
+        self.local_ai_check = QCheckBox("Use the on-device AI model (experimental)")
+        self.local_ai_check.setChecked(bool(getattr(self.config, "local_ai", False)))
+        self.local_ai_check.toggled.connect(self._on_local_ai_toggled)
+        v.addWidget(self._with_help(
+            self.local_ai_check,
+            "Cleans up English and translates Nepglish into English on this computer: private, works offline, "
+            "no API key, usually under half a second. It isn't tuned for Nepglish yet, so translations can be rough; "
+            "the AI provider below is used as a backup when one is set up.",
+        ))
+        row = QHBoxLayout()
+        self.local_ai_status = QLabel("")
+        self.local_ai_status.setObjectName("helpText")
+        row.addWidget(self.local_ai_status, 1)
+        self.local_ai_btn = QPushButton(f"Download ({local_model.MODEL_DOWNLOAD_MB / 1000:.1f} GB)")
+        self.local_ai_btn.setObjectName("secondaryBtn")
+        self.local_ai_btn.clicked.connect(self._download_local_ai)
+        row.addWidget(self.local_ai_btn)
+        v.addLayout(row)
+        self.local_ai_bar = QProgressBar()
+        self.local_ai_bar.setRange(0, 100)
+        self.local_ai_bar.setFixedHeight(4)
+        self.local_ai_bar.setTextVisible(False)
+        self.local_ai_bar.hide()
+        v.addWidget(self.local_ai_bar)
+        self._refresh_local_ai()
+        return card
+
+    def _refresh_local_ai(self) -> None:
+        from ..ai import local_model
+
+        models_dir = self.model_manager.models_dir
+        downloaded = local_model.model_path(models_dir).exists()
+        if not local_model.runtime_available():
+            self.local_ai_check.setEnabled(False)
+            self.local_ai_status.setText("Not available on this computer yet.")
+            self.local_ai_btn.hide()
+            return
+        if getattr(self, "_local_ai_downloading", False):
+            return
+        self.local_ai_btn.setVisible(not downloaded)
+        if local_model.is_tuned(models_dir):
+            self.local_ai_status.setText("Just Talk's tuned model (Qwen3 0.6B) is on this computer.")
+        else:
+            self.local_ai_status.setText("Qwen3 1.7B is on this computer." if downloaded else "The model isn't downloaded yet.")
+
+    def _on_local_ai_toggled(self, on: bool) -> None:
+        from ..ai import local_model
+
+        self.config.local_ai = on
+        self.config.save()
+        if on and not local_model.model_path(self.model_manager.models_dir).exists():
+            self._download_local_ai()
+
+    def _download_local_ai(self) -> None:
+        from ..ai import local_model
+
+        if getattr(self, "_local_ai_downloading", False):
+            return
+        self._local_ai_downloading = True
+        self.local_ai_btn.hide()
+        self.local_ai_bar.setValue(0)
+        self.local_ai_bar.show()
+        self.local_ai_status.setText("Downloading…")
+
+        def progress(frac: float) -> None:
+            run_on_ui_thread(lambda: (self.local_ai_bar.setValue(int(frac * 100)),
+                                      self.local_ai_status.setText(f"Downloading… {frac * 100:.0f}%")))
+
+        def worker() -> None:
+            ok, msg = local_model.download_model(self.model_manager.models_dir, progress)
+
+            def done() -> None:
+                self._local_ai_downloading = False
+                self.local_ai_bar.hide()
+                self._refresh_local_ai()
+                if not ok:
+                    self.local_ai_status.setText(msg)
+                    self.local_ai_btn.setText("Try again")
+                    self.local_ai_btn.show()
+
+            run_on_ui_thread(done)
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _with_help(self, field: QWidget, help_text: str = "") -> QWidget:
         """Stack a short muted explanation under a settings control."""

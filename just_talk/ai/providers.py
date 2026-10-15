@@ -303,9 +303,13 @@ class MultiProviderFormatter:
         custom_system_instruction: Optional[str] = None,
         edit_instruction: Optional[str] = None,
         draft_on_screen: bool = False,
+        speaker_context: str = "",
+        budget_sec: Optional[float] = None,
     ) -> Tuple[str, bool, str]:
         """
         Format raw speech with strict time budget and graceful fallback.
+        speaker_context (from the voice profile) tells the model the speaker's field, words and
+        known mishearings, so "push to gate" from a software engineer comes back as "push to git".
         For style=EDIT_SELECTION_STYLE, raw_text is the selected text and edit_instruction
         is what the user asked to change.
         Returns:
@@ -330,6 +334,8 @@ class MultiProviderFormatter:
             if style == "translate"
             else build_prompt(style)
         )
+        if speaker_context and style not in (EDIT_SELECTION_STYLE, GENERATE_STYLE):
+            system_instruction = f"{system_instruction}\n{speaker_context}"
 
         # Anti-prompt injection: explicit data boundaries
         is_translation = "translate" in system_instruction.lower() or style == "translate"
@@ -356,6 +362,8 @@ class MultiProviderFormatter:
             # The edit prompt carries its own rules; the dictation directives above would contradict it
             wrapped_instruction = system_instruction
             self._budget_floor = self.EDIT_SELECTION_BUDGET_SEC
+        if budget_sec:
+            self._budget_floor = budget_sec  # background work (learning) nobody is waiting on
 
         try:
             if self.provider.api_format == 'gemini':

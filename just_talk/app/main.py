@@ -9,7 +9,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 # CRITICAL FOR PYINSTALLER & MULTIPROCESSING:
 # Must call freeze_support immediately to prevent child processes from re-launching the main app!
@@ -42,6 +42,8 @@ from ..ai.prompts import (
     build_generate_prompt,
     build_prompt,
 )
+from ..ai.prompts import speaker_context_block
+from ..ai.local_model import LocalModel
 from ..ai.providers import MultiProviderFormatter
 from ..audio.noise_filter import NoiseFilter
 from ..audio.recorder import AudioRecorder
@@ -56,8 +58,14 @@ from ..stt import create_stt_engine_for_config, get_native_stt_engine
 from ..stt.model_manager import ModelManager
 from ..stt.kriti_engine import KritiEngine
 from ..model_lifecycle import ModelLifecycle
+from ..profile.learner import Learner
+from ..profile.scripts import ROLES_BY_ID, vocabulary_terms
+from ..profile.store import VoiceProfile
 from ..language_setup import english_dominant
 from ..stt.whisper_engine import WhisperSTTEngine
+from ..stt.mac_native_engine import MacNativeSTTEngine
+from ..profile.scoring import has_devanagari, sound_overlap
+from ..stt.long_form import IncrementalTranscriber
 from ..system.audio_ducker import SystemAudioDucker
 from ..system.caret_locator import CaretLocator
 from ..system.clipboard import ClipboardManager
@@ -228,6 +236,13 @@ class JustTalkApplication(QApplication):
         return super().event(event)
 
 
+# Mixed Nepali + English with Apple: use Apple's English only when it was sure and heard the same
+# sounds Kriti did. Logged on every mixed dictation so these can be tuned from real speech.
+MIXED_APPLE_MIN_CONFIDENCE = 0.6
+MIXED_MIN_SOUND_OVERLAP = 0.55
+MIXED_PIECE_SEC = 8.0  # language is decided per stretch of this length at most, cut at pauses
+
+
 class JustTalkApp:
     """Core controller coordinating audio, local ML, Gemini formatting, and system insertion."""
 
@@ -263,6 +278,7 @@ class JustTalkApp:
             offline_mode=getattr(self.config, "offline_mode", False),
         )
         self._streaming_thread: Optional[threading.Thread] = None
+        self._whisper_partial: Optional[IncrementalTranscriber] = None
 
         provider_id = getattr(self.config, "ai_provider", "gemini") or "gemini"
         model = getattr(self.config, "ai_model", "") or self.config.gemini_model
@@ -283,6 +299,10 @@ class JustTalkApp:
         self.noise_filter = NoiseFilter()
         self.speaker_recognizer = SpeakerRecognizer()
         self.kriti = KritiEngine(self.model_manager.models_dir)
+        self.voice_profile: Optional[VoiceProfile] = VoiceProfile.load()
+        self.local_ai = LocalModel(self.model_manager.models_dir)
+        self.learner = Learner.load()
+        self._review_running = False
         self.lifecycle = ModelLifecycle(
             targets=self._unloadable_models,
             idle_minutes=lambda: getattr(self.config, "model_idle_unload_minutes", 10),
@@ -367,6 +387,9 @@ class JustTalkApp:
             on_config_changed=self._on_config_updated,
         )
         self.main_window.replay_tutorial_requested.connect(self.show_onboarding)
+        self.main_window.learner = self.learner
+        self.main_window.refresh_learning()
+        self.main_window.learn_now_requested.connect(lambda: self.review_history(on_done=self.main_window.on_learning_done))
 
         # 4. System Tray
         self.tray = SystemTrayManager(
@@ -455,6 +478,7 @@ class JustTalkApp:
         if hasattr(self.kriti, "unload"):
             targets.append(("Kriti", self.kriti.is_loaded, self.kriti.unload))
         targets.append(("voice ID", self.speaker_recognizer.is_loaded, self.speaker_recognizer.unload))
+        targets.append(("on-device AI", self.local_ai.is_loaded, self.local_ai.unload))
         return [t for t in targets if hasattr(t[2], "__call__")]
 
     def _lifecycle_tick(self) -> None:
@@ -482,6 +506,8 @@ class JustTalkApp:
                         self.kriti.load()
                     if getattr(cfg, "speaker_id_enabled", True) and self.speaker_recognizer.is_available():
                         self.speaker_recognizer._ensure_session()
+                    if getattr(cfg, "local_ai", False):
+                        self.local_ai.load()  # loads while the user speaks; first answer is then instant
             except Exception as e:
                 print(f"[Lifecycle] Preload failed: {e}", file=sys.stderr)
 
@@ -534,13 +560,16 @@ class JustTalkApp:
             self.main_window.show_and_activate(screen_name)
 
     def show_onboarding(self) -> None:
-        """Open the 5-step onboarding wizard."""
-        if not self.onboarding_window:
+        """Open setup: permissions, languages, role, voice profile, first try."""
+        if not self.onboarding_window or not self.onboarding_window.isVisible():
             self.onboarding_window = OnboardingWindow(
                 config=self.config,
                 gemini=self.gemini,
                 model_manager=self.model_manager,
-                on_complete=lambda: self.open_main_window("home"),
+                on_complete=self._on_onboarding_complete,
+                kriti=self.kriti,
+                on_engines_changed=lambda: self.set_stt_provider(self.config.stt_provider),
+                learner=self.learner,
             )
         if sys.platform == "darwin":
             try:
@@ -553,6 +582,134 @@ class JustTalkApp:
         self.onboarding_window.show()
         self.onboarding_window.raise_()
         self.onboarding_window.activateWindow()
+
+    def _on_onboarding_complete(self) -> None:
+        self.voice_profile = VoiceProfile.load()
+        self.review_history()  # no-op unless AI review is on
+        if self.main_window:
+            # Setup changed languages, vocabulary and engines; show them in Settings without saving again
+            self.main_window._loading_settings = True
+            try:
+                self.main_window._load_settings_values()
+            finally:
+                self.main_window._loading_settings = False
+            if self.tray:
+                self.tray.refresh_menu()
+        self.open_main_window("home")
+
+    def _speaker_context(self) -> str:
+        role = ROLES_BY_ID.get(getattr(self.config, "user_role", ""))
+        return speaker_context_block(
+            role.label if role else "", vocabulary_terms(self.config, self.learner), self.learner.known_mixups()
+        )
+
+    def _mixed_transcribe(self, audio) -> list:
+        """People who mix Nepali and English switch language mid-dictation, so the engine is chosen
+        per stretch of speech (split at pauses): Apple's English where Apple was confident and
+        heard the same sounds as Kriti, Kriti's Devanagari everywhere else."""
+        pieces = VoiceActivityDetector.split_on_pauses(audio, max_chunk_sec=MIXED_PIECE_SEC, min_chunk_sec=1.0)
+        apple: list = [("", 0.0)] * len(pieces)
+
+        def run_apple() -> None:  # one recognizer at a time; runs while Kriti works through the pieces
+            for i, piece in enumerate(pieces):
+                confs: list = []
+                text = self.stt_engine.transcribe(piece, language="en", confidences=confs)
+                apple[i] = ((text or "").strip(), sum(confs) / len(confs) if confs else 0.0)
+
+        worker = threading.Thread(target=run_apple, daemon=True)
+        worker.start()
+        nepali = [(self.kriti.transcribe(piece, language="ne") or "").strip() for piece in pieces]
+        worker.join()
+
+        segments = []
+        for (english, confidence), devanagari, piece in zip(apple, nepali, pieces):
+            overlap = sound_overlap(english, devanagari)
+            use_english = bool(english) and confidence >= MIXED_APPLE_MIN_CONFIDENCE and overlap >= MIXED_MIN_SOUND_OVERLAP
+            print(f"[STT] Mixed {len(piece) / 16000:.1f}s -> {'EN' if use_english else 'NE'} "
+                  f"(Apple confidence {confidence:.2f}, sound overlap {overlap:.2f}) Apple={english!r} Kriti={devanagari!r}",
+                  file=sys.stderr)
+            text = english if use_english else devanagari
+            if text:
+                segments.append((text, "en" if use_english else "ne"))
+        return segments
+
+    def _translate_segments(self, segments: list):
+        """Translate only the Nepali stretches; English ones stay exactly as said."""
+        context = self._speaker_context()
+        parts = []
+        for text, seg_lang in segments:
+            if seg_lang != "ne":
+                parts.append(text)
+                continue
+            translated, ok, msg = self.local_ai.run("translate", text, context)
+            if not ok:
+                return "", False, msg
+            parts.append(translated)
+        return " ".join(parts), True, ""
+
+    @staticmethod
+    def _local_task(intent, action_name: str, text: str, is_action_mode: bool) -> Optional[str]:
+        """What the on-device model can do for this dictation: translate to English or clean up
+        English. Nepali-script output and Action Mode stay with the cloud model."""
+        if is_action_mode:
+            return None
+        if action_name == "translate" and (getattr(intent, "target_language", None) or "English").lower() == "english":
+            return "translate" if has_devanagari(text) else "cleanup"  # English already: just tidy it
+        if action_name == "format" and not any("\u0900" <= c <= "\u097f" for c in text):
+            return "cleanup"
+        return None
+
+    def _learn_from_dictation(self, raw_text: str, final_text: str, action_name: str) -> None:
+        """Every dictation teaches the learner (locally); now and then the AI review runs too."""
+        translated = action_name == "translate" or getattr(self.config, "speech_mode", "transcribe") == "translate"
+        self.learner.observe_dictation(raw_text, final_text, translated=translated)
+        if self.learner.review_due():
+            self.review_history()
+
+    def review_history(self, on_done: Optional[Callable[[str], None]] = None) -> bool:
+        """Ask the AI provider to learn this user's words and mix-ups from past dictation text.
+        Runs in the background with its own client so it never disturbs live cleanup."""
+        cfg = self.config
+        if not getattr(cfg, "learn_with_ai", False) or not getattr(cfg, "gemini_enabled", True) or getattr(cfg, "offline_mode", False):
+            if on_done:
+                on_done("Turn on AI review and AI cleanup to learn from past dictations.")
+            return False
+        if self._review_running:
+            return False
+        self._review_running = True
+        g = self.gemini
+        reviewer = MultiProviderFormatter(
+            provider_id=g.provider_id, api_key=g.api_key, model_name=g.model_name,
+            custom_base_url=getattr(g, "base_url", None) if g.provider_id in ("custom", "ollama") else None,
+        )
+
+        def ask(system: str, user: str) -> Optional[str]:
+            text, ok, msg = reviewer.format_text(raw_text=user, style=GENERATE_STYLE, custom_system_instruction=system, budget_sec=45.0)
+            if not ok:
+                print(f"[Learner] Review failed: {CredentialManager.redact(msg)}", file=sys.stderr)
+            return text if ok else None
+
+        def worker() -> None:
+            message = "Couldn't reach the AI provider. Try again later."
+            try:
+                rows = [
+                    (item.raw_transcription, item.processed_text)
+                    for item in self.db.get_recent(limit=200)
+                    if item.action not in (EDIT_SELECTION_STYLE, GENERATE_STYLE)  # those store a command, not speech
+                ]
+                terms, mixups = self.learner.review(rows, ask)
+                if terms or mixups:
+                    message = f"Learned {terms} words and {mixups} mix-ups from your dictations."
+                print(f"[Learner] Review: {message}", file=sys.stderr)
+            except Exception as e:
+                print(f"[Learner] Review error: {e}", file=sys.stderr)
+            finally:
+                self._review_running = False
+            if on_done:
+                run_on_ui_thread(lambda: on_done(message))
+
+        threading.Thread(target=worker, daemon=True).start()
+        return True
 
     def _poll_audio_level(self) -> None:
         """Poll current RMS level from recorder on main Qt thread and update visualizer."""
@@ -616,19 +773,43 @@ class JustTalkApp:
         for engine in (self.stt_engine, getattr(self, "native_stt_engine", None)):
             if hasattr(engine, "reset_partial"):
                 engine.reset_partial()
+        self._whisper_partial = (
+            IncrementalTranscriber(self.stt_engine.transcribe, window_sec=6.0)
+            if isinstance(self.stt_engine, WhisperSTTEngine) else None
+        )
         self._streaming_thread = threading.Thread(
             target=self._streaming_stt_loop,
             daemon=True,
         )
         self._streaming_thread.start()
 
+    def _preview_transcriber(self, lang):
+        """The engine that shows words live while you talk. It runs several times a second, so it
+        has to be light: re-running Whisper Turbo on the whole recording each time kept the CPU at
+        100% for the entire dictation and made Macs hot."""
+        cur = (getattr(self.config, "language", "en") or "").lower()
+        if (cur in ("ne", "ne_en") and getattr(self.config, "nepali_asr_engine", "kriti") == "kriti"
+                and self.kriti.is_available()):
+            return lambda audio: self.kriti.transcribe(audio, language="ne")  # ~0.1 s per pass
+        engine = self.stt_engine
+        if engine is not None and engine.is_loaded() and hasattr(engine, "transcribe_partial"):
+            return lambda audio: engine.transcribe_partial(audio, language=lang, task="transcribe")
+        if isinstance(engine, WhisperSTTEngine) and engine.is_loaded() and self._whisper_partial is not None:
+            partial = self._whisper_partial  # only the last few seconds are re-decoded
+            return lambda audio: partial.update(audio, language=lang, task="transcribe")
+        native = getattr(self, "native_stt_engine", None)
+        if native is not None and hasattr(native, "transcribe_partial"):
+            return lambda audio: native.transcribe_partial(audio, language=lang, task="transcribe")
+        return None
+
     def _streaming_stt_loop(self) -> None:
-        """Continuously decode partial audio buffers while speaking and emit words in real-time to overlay."""
+        """Decode the growing recording while the user speaks and show the words in the HUD."""
         min_samples = int(16000 * 0.35)  # 350ms minimum audio before partial decoding begins
         last_audio_samples = 0
+        pause = 0.18
 
         while self.recorder and self.recorder.is_recording:
-            time.sleep(0.18)  # ~180ms polling rate for responsive live streaming
+            time.sleep(pause)
             if not self.recorder or not self.recorder.is_recording:
                 break
 
@@ -644,38 +825,14 @@ class JustTalkApp:
 
             try:
                 lang = self.config.stt_language(getattr(self.config, "speech_mode", "transcribe") == "translate")
-                task = "transcribe"
-
-                partial_text = ""
-                # Priority 1: Main STT engine (Whisper or specialized)
-                if self.stt_engine and self.stt_engine.is_loaded():
-                    if hasattr(self.stt_engine, "transcribe_partial"):
-                        partial_text = self.stt_engine.transcribe_partial(
-                            cur_audio,
-                            language=lang,
-                            task=task,
-                        )
-                    elif sys.platform == "darwin" or isinstance(self.stt_engine, WhisperSTTEngine):
-                        partial_text = self.stt_engine.transcribe(
-                            cur_audio,
-                            language=lang,
-                            task=task,
-                        )
-                # Priority 2: Use native OS speech engine (macOS SFSpeechRecognizer or Windows hybrid Whisper)
-                elif hasattr(self, "native_stt_engine") and self.native_stt_engine:
-                    if hasattr(self.native_stt_engine, "transcribe_partial"):
-                        partial_text = self.native_stt_engine.transcribe_partial(
-                            cur_audio,
-                            language=lang,
-                            task=task,
-                        )
-                    elif sys.platform == "darwin":
-                        partial_text = self.native_stt_engine.transcribe(
-                            cur_audio,
-                            language=lang,
-                            task=task,
-                        )
-
+                preview = self._preview_transcriber(lang)
+                if preview is None:
+                    continue
+                started = time.monotonic()
+                partial_text = preview(cur_audio)
+                # Rest at least as long as the decode took, so the preview never uses more than
+                # about half the CPU however slow the engine is.
+                pause = max(0.18, 1.2 * (time.monotonic() - started))
 
                 if partial_text and partial_text.strip() and self.recorder and self.recorder.is_recording:
                     cleaned = partial_text.strip()
@@ -856,13 +1013,14 @@ class JustTalkApp:
             # 3. Local Speech-to-Text with Multilingual & Dual-Task Support
             speech_mode = getattr(self.config, "speech_mode", "transcribe")
             use_gemini = self.config.gemini_enabled and not self.config.offline_mode
+            use_local = getattr(self.config, "local_ai", False) and self.local_ai.is_available()  # works offline too
             is_translation_mode = (speech_mode == "translate")
 
             # High-fidelity 2-stage translation for mixed language / Nepglish code-switching:
             # Stage 1: Whisper transcribes raw speech faithfully without translation distortion
             # Stage 2: Gemini / LLM translates mixed speech into clean, idiomatic English
             # When offline without AI, Whisper must fall back to built-in task="translate"
-            task = "translate" if (is_translation_mode and not use_gemini) else "transcribe"
+            task = "translate" if (is_translation_mode and not (use_gemini or use_local)) else "transcribe"
 
             cur_lang = getattr(self.config, "language", "en")
             lang = self.config.stt_language(is_translation_mode)
@@ -874,17 +1032,18 @@ class JustTalkApp:
 
             # Construct context prompt (bilingual acoustic priming, active app name, custom vocabulary)
             app_name = self.inserter.get_active_app_name()
-            custom_vocab = getattr(self.config, "custom_vocabulary", "")
             prompt_parts = []
             if is_translation_mode or cur_lang in ("ne_en", "ne", "auto", None):
                 # Priming Whisper with bilingual context prevents acoustic hallucinations on code-switched / Nepali speech
                 prompt_parts.append("Namaste, yo meeting ma we will discuss code, features, bug fixes, ra testing: आजको काम र भोलिको अपडेट।")
             if app_name and app_name != "Active Application":
                 prompt_parts.append(f"Dictation into {app_name}.")
-            if custom_vocab and custom_vocab.strip():
-                clean_terms = ", ".join(w.strip() for w in custom_vocab.split(",") if w.strip())
-                if clean_terms:
-                    prompt_parts.append(f"Custom vocabulary: {clean_terms}.")
+            vocab_terms = vocabulary_terms(self.config, self.learner)
+            for engine in (self.stt_engine, getattr(self, "native_stt_engine", None)):
+                if hasattr(engine, "vocabulary"):
+                    engine.vocabulary = vocab_terms
+            if vocab_terms:
+                prompt_parts.append(f"Custom vocabulary: {', '.join(vocab_terms)}.")
             initial_prompt = " ".join(prompt_parts) if prompt_parts else None
 
             # Kriti is Nepali-only: route to it only when the user dictates in Nepali (or mixed),
@@ -906,7 +1065,13 @@ class JustTalkApp:
             )
 
             raw_text = ""
-            if use_kriti:
+            mixed_segments: list = []  # [(text, "en" | "ne")] when Mixed mode decides per stretch of speech
+            if use_kriti and cur_lang == "ne_en" and isinstance(self.stt_engine, MacNativeSTTEngine):
+                mixed_segments = self._mixed_transcribe(audio)
+                raw_text = " ".join(t for t, _ in mixed_segments)
+                if mixed_segments and all(seg_lang == "en" for _, seg_lang in mixed_segments):
+                    lang = "en"
+            elif use_kriti:
                 raw_text = self.kriti.transcribe(audio, language="ne")
                 print(f"[STT] Kriti: {raw_text!r}", file=sys.stderr)
 
@@ -1037,18 +1202,30 @@ class JustTalkApp:
                         )
                         self.bridge.state_processing.emit("Polishing...")
 
-            # 5. Gemini / AI Formatting Layer (Strict 2.0s circuit breaker)
-            if use_gemini:
+            # 5. AI Formatting Layer: on-device model first (if on), cloud model as backup
+            local_task = self._local_task(intent, action_name, final_text, is_action_mode) if use_local else None
+            if use_gemini or local_task:
                 if not draft_emitted:
                     self.bridge.state_processing.emit(
                         "Translating..." if (action_name == "translate" or intent.action_type == "translate") else "Cleaning..."
                     )
-                cleaned, success, msg = self.gemini.format_text(
-                    raw_text=final_text,
-                    style=self.config.prompt_style,
-                    custom_system_instruction=intent.system_instruction,
-                    draft_on_screen=draft_emitted,
-                )
+                cleaned, success, msg = "", False, ""
+                if local_task:
+                    t_local = time.time()
+                    if local_task == "translate" and any(seg_lang == "en" for _, seg_lang in mixed_segments):
+                        cleaned, success, msg = self._translate_segments(mixed_segments)
+                    else:
+                        cleaned, success, msg = self.local_ai.run(local_task, final_text, self._speaker_context())
+                    print(f"[LocalAI] {local_task} in {int((time.time() - t_local) * 1000)}ms: "
+                          f"{cleaned!r}" if success else f"[LocalAI] {msg}", file=sys.stderr)
+                if not success and use_gemini:
+                    cleaned, success, msg = self.gemini.format_text(
+                        raw_text=final_text,
+                        style=self.config.prompt_style,
+                        custom_system_instruction=intent.system_instruction,
+                        draft_on_screen=draft_emitted,
+                        speaker_context=self._speaker_context(),
+                    )
                 if success and cleaned:
                     final_text = cleaned
                 else:
@@ -1118,6 +1295,10 @@ class JustTalkApp:
                 )
             except Exception as db_err:
                 print(f"[Database] Failed to record history: {db_err}", file=sys.stderr)
+            try:
+                self._learn_from_dictation(raw_text, final_text, action_name)
+            except Exception as learn_err:
+                print(f"[Learner] {learn_err}", file=sys.stderr)
 
             # Refresh home recent items if visible (must dispatch to main thread)
             if self.main_window and self.main_window.isVisible():

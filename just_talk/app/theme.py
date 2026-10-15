@@ -156,7 +156,8 @@ class ThemeManager:
             f_name = cls._mono_font_family
         else:
             f_name = cls._ui_font_family
-        f = QFont(f_name, size)
+        f = QFont(f_name)
+        f.setPixelSize(size)  # pixels, like the stylesheet, so sizes match on macOS and Windows
         f.setWeight(weight)
         if size >= 28:
             f.setLetterSpacing(QFont.SpacingType.PercentageSpacing, 98.0)  # Subtle negative tracking
@@ -256,7 +257,6 @@ class ThemeManager:
     def get_stylesheet(cls, is_dark: bool) -> str:
         """Generate central QSS stylesheet — Typeless-inspired dark minimal aesthetic."""
         t = cls.get_tokens(is_dark)
-        ui_font = cls._ui_font_family
 
         # Pre-compute solid color equivalents
         if is_dark:
@@ -278,9 +278,9 @@ class ThemeManager:
 
         return f"""
         /* ===== Global Reset ===== */
+        /* No font-family/font-size here: a "*" font rule overrides every setFont() call, which
+           flattened all headings to body size. The base font is set with QApplication.setFont(). */
         * {{
-            font-family: "{ui_font}", "Lato", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
-            font-size: 13px;
             color: {t.text};
             outline: none;
         }}
@@ -861,12 +861,121 @@ class ThemeManager:
         QMessageBox QPushButton {{
             min-width: 72px;
         }}
+
+        /* ===== Type roles (onboarding and anywhere a clear hierarchy is needed) ===== */
+        QLabel#h1 {{
+            font-size: 30px;
+            font-weight: 700;
+            color: {t.text};
+        }}
+
+        QLabel#lead {{
+            font-size: 15px;
+            color: {text_secondary_solid};
+        }}
+
+        QLabel#eyebrow {{
+            font-size: 11px;
+            font-weight: 700;
+            color: {text_muted_solid};
+        }}
+
+        QLabel#caption {{
+            font-size: 12px;
+            color: {text_muted_solid};
+        }}
+
+        QLabel#rowTitle {{
+            font-size: 14px;
+            font-weight: 600;
+            color: {t.text};
+        }}
+
+        QLabel#statusOk {{
+            font-size: 12px;
+            font-weight: 600;
+            color: {t.success};
+        }}
+
+        QLabel#statusWarn {{
+            font-size: 12px;
+            font-weight: 600;
+            color: {t.warning};
+        }}
+
+        QLabel#bigNumber {{
+            font-size: 34px;
+            font-weight: 700;
+            color: {t.text};
+        }}
+
+        /* ===== Onboarding controls ===== */
+        QFrame#hairRow {{
+            background: transparent;
+            border: none;
+            border-bottom: 1px solid {border_solid};
+        }}
+
+        QFrame#choiceCard {{
+            background-color: {surface_solid};
+            border: 1px solid {border_solid};
+            border-radius: 12px;
+        }}
+
+        QFrame#choiceCard:hover {{
+            border-color: {"#3A3A3A" if is_dark else "rgba(0, 0, 0, 0.16)"};
+        }}
+
+        QFrame#choiceCard[checked="true"] {{
+            background-color: {t.accent_soft};
+            border: 1px solid {t.accent};
+        }}
+
+        QPushButton#chip {{
+            background-color: {surface_solid};
+            color: {t.text};
+            border: 1px solid {border_solid};
+            border-radius: 15px;
+            padding: 6px 14px;
+            font-size: 13px;
+            font-weight: 500;
+            min-height: 18px;
+        }}
+
+        QPushButton#chip:hover {{
+            border-color: {"#3A3A3A" if is_dark else "rgba(0, 0, 0, 0.16)"};
+        }}
+
+        QPushButton#chip:checked {{
+            background-color: {t.accent_soft};
+            border-color: {t.accent};
+            color: {t.accent};
+        }}
+
+        QPushButton#linkBtn {{
+            background: transparent;
+            border: none;
+            color: {text_secondary_solid};
+            padding: 4px 2px;
+            font-weight: 500;
+        }}
+
+        QPushButton#linkBtn:hover {{
+            color: {t.text};
+        }}
+
+        QPushButton#primaryBtn[size="large"], QPushButton#secondaryBtn[size="large"] {{
+            padding: 9px 22px;
+            border-radius: 9px;
+            font-size: 14px;
+        }}
         """
 
     @classmethod
     def apply_theme(cls, app: QApplication, appearance_setting: str = "system") -> bool:
         """Apply active theme and palette across the entire application."""
         is_dark = cls.is_dark(appearance_setting)
+        app.setFont(cls.font(13))
         app.setPalette(cls.get_palette(is_dark))
         app.setStyleSheet(cls.get_stylesheet(is_dark))
         return is_dark

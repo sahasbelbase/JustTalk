@@ -24,6 +24,7 @@ dependencies = [
     "pyobjc-framework-cocoa>=12.2.2; sys_platform == 'darwin'",
     "pyobjc-framework-quartz>=12.2.2; sys_platform == 'darwin'",
     "pyobjc-framework-speech>=12.2.2; sys_platform == 'darwin'",
+    "llama-cpp-python>=0.3.36 ; sys_platform == 'darwin'",
 ]
 
 [project.scripts]
