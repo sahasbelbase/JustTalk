@@ -34,8 +34,28 @@ _DEVANAGARI = re.compile(r"[ऀ-ॿ]")
 _PROMPT_LEAKS = ("output only", "keep every detail", "this dictation", "<think", "</think", "translate this")
 
 SYSTEM = {
-    "translate": "Translate this Nepali or Nepali-English dictation into fluent English. Keep every detail. Output only the translation.",
-    "cleanup": "Clean up this dictation: fix punctuation, capitalisation and grammar, drop filler words, keep the meaning and every detail. Output only the cleaned text.",
+    "translate": (
+        "Translate this Nepali or Nepali-English dictation into fluent, natural English. "
+        "Strictly remove all verbal filler sounds and hesitations (um, umm, uh, ah, ahh, na, nah, err). "
+        "Format any spoken lists or steps into clean bullet points. "
+        "Keep proper names and exact meaning. Output only the final translation."
+    ),
+    "cleanup": (
+        "Clean up this dictation into a polished finished article: fix punctuation, capitalisation, and grammar. "
+        "Strictly cut off all verbal fillers and hesitations (um, umm, uh, ah, ahh, na, nah, err, like, you know). "
+        "If the speaker dictates a list or separate points, format them into clean bullet points. "
+        "Keep the meaning and every detail. Output only the cleaned text."
+    ),
+    "generate": (
+        "Execute this spoken instruction directly and produce the final, polished content. "
+        "If a list is requested, format as clean bullet points. "
+        "Do not include conversational preamble or filler. Output only the requested text."
+    ),
+    "edit": (
+        "Edit the selected text according to the user's spoken instruction. "
+        "Fix grammar, punctuation, and wording. Preserve the core meaning. "
+        "Output only the edited text."
+    ),
 }
 
 
@@ -121,6 +141,12 @@ def check_output(task: str, source: str, output: str) -> Optional[str]:
         return "repeated its instructions"
     if task == "translate" and _DEVANAGARI.search(out):
         return "left Devanagari untranslated"
+    if task in ("generate", "edit", "action"):
+        words = [w.lower().strip(".,!?") for w in out.split()]
+        for i in range(len(words) - 3):
+            if words[i] and words[i] == words[i + 1] == words[i + 2] == words[i + 3] and source.lower().count(words[i]) < 4:
+                return "repeated itself"
+        return None
     src_words, out_words = len(source.split()), len(out.split())
     low, high = (0.4, 2.2) if task == "translate" else (0.5, 1.6)
     if src_words >= 4 and not (low <= out_words / src_words <= high):
@@ -179,7 +205,7 @@ class LocalModel:
             self._llm = None
 
     def run(self, task: str, text: str, speaker_context: str = "") -> Tuple[str, bool, str]:
-        """task: "translate" (to English) or "cleanup". Returns (text, ok, message)."""
+        """task: "translate", "cleanup", "generate", or "edit". Returns (text, ok, message)."""
         if not text.strip():
             return "", True, ""
         if not self.load():
@@ -190,10 +216,12 @@ class LocalModel:
                 return text, False, "On-device model was unloaded."
             try:
                 n_in = len(llm.tokenize(text.encode("utf-8"), add_bos=False))
+                max_tokens = min(512, max(128, int(1.8 * n_in) + 32)) if task in ("generate", "edit", "action") else min(512, int(1.6 * n_in) + 24)
+                temp = 0.2 if task in ("generate", "edit", "action") else 0.0
                 result = llm.create_completion(
                     build_prompt(task, text, speaker_context),
-                    max_tokens=min(512, int(1.6 * n_in) + 24),
-                    temperature=0.0,
+                    max_tokens=max_tokens,
+                    temperature=temp,
                     repeat_penalty=1.1,
                     stop=["<|im_end|>"],
                 )

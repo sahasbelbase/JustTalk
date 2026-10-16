@@ -238,3 +238,26 @@ def test_pipeline_passes_editor_context_to_prompt():
     assert "SQL editor" in captured["custom_system_instruction"]
     assert captured["edit_instruction"] == "fix this query"
     assert inserted == ["SELECT * FROM users"]
+
+
+def test_pipeline_action_mode_falls_back_to_local_ai_when_cloud_fails():
+    app, inserted, saved = _fake_app(("We should meet at around 10.", False, "Timeout"))
+    app.local_ai = types.SimpleNamespace(
+        is_available=lambda: True,
+        run=lambda task, text, ctx="": ("Meet at 10 AM.", True, ""),
+    )
+    app._edit_selected_text("We should meet at around 10.", "make this shorter", None, 0.0, "text", None)
+    assert inserted == ["Meet at 10 AM."]
+    assert saved[0]["processed_text"] == "Meet at 10 AM."
+
+
+def test_pipeline_generate_mode_falls_back_to_local_ai_when_cloud_fails():
+    app, inserted, saved = _fake_app(("", False, "Quota exceeded"))
+    app.local_ai = types.SimpleNamespace(
+        is_available=lambda: True,
+        run=lambda task, text, ctx="": ("• Task 1\n• Task 2\n• Task 3", True, ""),
+    )
+    app._edit_selected_text("", "write a three point list", None, 0.0, "text", None, generate=True)
+    assert inserted == ["• Task 1\n• Task 2\n• Task 3"]
+    assert saved[0]["processed_text"] == "• Task 1\n• Task 2\n• Task 3"
+
