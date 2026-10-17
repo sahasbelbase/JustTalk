@@ -35,6 +35,17 @@ _PATHS = {
     "pause": '<path d="M9 6v12M15 6v12"/>',
     "play": '<path d="M8 5.5v13l10-6.5z"/>',
     "skip": '<path d="m6 6 7 6-7 6M17 6v12"/>',
+    "keyboard": '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M10 14h4"/>',
+    "memory": '<rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9 9h6v6H9zM9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4"/>',
+    "sparkles": '<path d="m12 3 1.9 4.8L18.7 9.7l-3.8 3.7.9 5.3-4.8-2.5-4.8 2.5.9-5.3-3.8-3.7 4.8-1.9z"/>',
+    "language": '<circle cx="12" cy="12" r="9"/><path d="M3.6 9h16.8M3.6 15h16.8M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+    "copy": '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+    "delete": '<path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M10 11v6M14 11v6"/>',
+    "soundwave": '<path d="M2 10v4M6 7v10M10 4v16M14 8v8M18 5v14M22 10v4"/>',
+    "neurology": '<path d="M12 2a4 4 0 0 0-4 4c0 1.2.5 2.3 1.3 3A4 4 0 0 0 6 12a4 4 0 0 0 2 3.5 4 4 0 0 0 4 6.5 4 4 0 0 0 4-6.5 4 4 0 0 0 2-3.5 4 4 0 0 0-3.3-3A4 4 0 0 0 12 2z"/>',
+    "terminal": '<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>',
+    "volume": '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>',
+    "arrow-down": '<line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>',
 }
 
 

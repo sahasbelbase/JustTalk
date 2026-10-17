@@ -30,7 +30,31 @@ Download the latest version of Just Talk directly for your operating system:
 
 ---
 
-## What's New in Version 2.3.1
+## What's New in Version 5.0 (v5 Local AI & macOS Dark Utility Redesign)
+
+* **Fine-Tuned On-Device v5 Model (`justtalk-qwen3-1.7b-v5-Q4_K_M.gguf`):**
+  * Fully offline on-device 1,107 MB GGUF model accelerated via Apple Silicon Metal / MLX.
+  * Zero cloud data or audio exfiltration: transcript cleanup, loanword transliteration, and action routing run entirely on your CPU/GPU.
+  * **Nepglish Technical & Everyday Loanword Accuracy:** Accurately transcribes technical loanwords (*Developer*, *PR*, *Conflict*, *Deploy*, *Authentication*) and everyday same-sound words (*laptop*, *coffee*, *office*, *meeting*, *ticket*, *mobile*).
+  * **Zero Hallucination Storytelling & Relationships:** Accurate transcription of character arcs (*Aryan*, *Puja*), emotional storytelling, and cultural concepts (*Girl/केटी*, *Flowers/फूल*, *Sweets/मिठाई*).
+  * **Disfluency Stripping:** Instantly removes conversational fillers (*umm*, *ahh*, *na nah nah*) while preserving intended technical terms.
+  * **Dynamic Action Mode:** Automatically produces clean markdown bulleted lists, honors verb tenses across past/present/future, and preserves Nepali honorifics (*हजुर* / *तपाईं*).
+  * **Benchmark Scorecard (`eval_v5_17.txt`):**
+    * Cleanup benchmark: **73.2 chrF++** (<90ms on Apple Silicon).
+    * Held-out voice benchmark: **58.7 chrF++** (<170ms).
+    * FLORES+ Nepali-English translation: **39.3 chrF++** (<300ms).
+
+* **Complete macOS Stitch System UI Redesign:**
+  * **Dark Utility Aesthetic:** Distraction-free palette (`#0F1115` base, `#16181D` surface cards, `#1E2229` raised surfaces, `#2A2E37` borders, `#3B82F6` blue accent, and `#10B981` emerald status indicators).
+  * **Fixed Left Navigation Bar:** 188px navigation rail with Retina monochrome line icons, traffic light spacing, brand badge, and live hardware status card (`Ready · fn`).
+  * **Home Dashboard & Bento Grid:** Time-of-day greeting, engine latency pill (`● Engine Latency: 14ms (Metal Accelerated)`), and 4-metric Bento cards (*Words Spoken*, *Time Saved*, *Current Streak*, *Spoken Today*).
+  * **52-Week Activity Heatmap:** GitHub-style emerald contribution matrix with 5 intensity levels, month/day labels, and interactive hover tooltip inspection.
+  * **Live Dictation Sandbox ("Try It Here"):** Real-time dictation testing playground with live buffer pill and one-click copy button.
+  * **Side-by-Side Expandable Diff History:** Collapsible accordion entries featuring raw unfiltered audio buffer vs formatted high-fidelity output side-by-side, quick-copy, and deletion.
+  * **Two-Column macOS Settings:** macOS System Settings sub-navigation rail with quick category search, active section auto-scrolling, and category icons.
+  * **Interactive Writing Conventions:** Two-column syntax formatting engine with live before/after transformation preview, rule descriptions, rule search filter, and clipboard copy.
+
+## Previous Release: 2.3.1
 
 * **Lighter when idle:** Just Talk frees the speech models from memory after you haven't dictated for a while (Settings › Free Memory, 10 minutes by default, or never) and reloads them while you speak. On our test Mac this dropped memory use from about 2.4 GB to about 0.7 GB with the large Whisper model and Kriti loaded. The window's status refresh also stops while it is hidden.
 * **Action Mode writes for you:** With nothing selected, hold your shortcut + Shift and say *"write me a sick leave email"* or *"write a short poem about rain"*. It needs AI formatting turned on.
