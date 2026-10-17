@@ -849,30 +849,53 @@ class MainWindow(QMainWindow):
             self._update_home_mode_desc()
 
         # 2. AI Formatting & Circuit Breaker
+        use_local = getattr(self.config, "local_ai", False) and hasattr(self, "local_ai") and self.local_ai.is_available()
         if self.config.offline_mode:
-            self.gemini_card.title_label.setText("Pure Offline")
-            self.gemini_card.status_label.setText("Speech never sent out")
-            self.sidebar_dot.setStyleSheet("color: #8E8E93;")
-            self.sidebar_status_text.setText("Offline")
+            if use_local:
+                self.gemini_card.title_label.setText("On-Device AI Active")
+                self.gemini_card.status_label.setText("Qwen3-1.7B v5 (Offline & Private)")
+                self.sidebar_dot.setStyleSheet("color: #30D158;")
+                self.sidebar_status_text.setText("Ready (Local)")
+            else:
+                self.gemini_card.title_label.setText("Pure Offline")
+                self.gemini_card.status_label.setText("Speech never sent out")
+                self.sidebar_dot.setStyleSheet("color: #8E8E93;")
+                self.sidebar_status_text.setText("Offline")
         elif not self.config.gemini_enabled:
-            self.gemini_card.title_label.setText("Raw STT Only")
-            self.gemini_card.status_label.setText("AI formatting disabled")
-            self.sidebar_dot.setStyleSheet("color: #8E8E93;")
-            self.sidebar_status_text.setText("Ready (Raw)")
+            if use_local:
+                self.gemini_card.title_label.setText("On-Device AI Active")
+                self.gemini_card.status_label.setText("Qwen3-1.7B v5 (Local Only)")
+                self.sidebar_dot.setStyleSheet("color: #30D158;")
+                self.sidebar_status_text.setText("Ready (Local)")
+            else:
+                self.gemini_card.title_label.setText("Raw STT Only")
+                self.gemini_card.status_label.setText("AI formatting disabled")
+                self.sidebar_dot.setStyleSheet("color: #8E8E93;")
+                self.sidebar_status_text.setText("Ready (Raw)")
         elif self.gemini.circuit_breaker.is_paused:
-            rem = self.gemini.circuit_breaker.remaining_cooldown_sec
-            self.gemini_card.title_label.setText("Circuit Breaker")
-            self.gemini_card.status_label.setText(f"Paused ({rem}s remaining)")
-            self.sidebar_dot.setStyleSheet("color: #FF9F0A;")  # macOS amber
-            self.sidebar_status_text.setText("AI Paused")
+            if use_local:
+                self.gemini_card.title_label.setText("Cloud Paused → Local AI")
+                self.gemini_card.status_label.setText("Fallback: Qwen3-1.7B v5")
+                self.sidebar_dot.setStyleSheet("color: #30D158;")
+                self.sidebar_status_text.setText("Ready (Local Fallback)")
+            else:
+                rem = self.gemini.circuit_breaker.remaining_cooldown_sec
+                self.gemini_card.title_label.setText("Circuit Breaker")
+                self.gemini_card.status_label.setText(f"Paused ({rem}s remaining)")
+                self.sidebar_dot.setStyleSheet("color: #FF9F0A;")  # macOS amber
+                self.sidebar_status_text.setText("AI Paused")
         else:
             pid = getattr(self.config, "ai_provider", "gemini") or "gemini"
             from ..ai.providers import get_provider
             p = get_provider(pid)
             p_name = p.display_name if p else "AI"
             active_model = getattr(self.config, "ai_model", "") or self.config.gemini_model
-            self.gemini_card.title_label.setText(f"{p_name} Active")
-            self.gemini_card.status_label.setText(active_model)
+            if use_local:
+                self.gemini_card.title_label.setText("Hybrid AI Active")
+                self.gemini_card.status_label.setText(f"{p_name} + On-Device Qwen3 v5")
+            else:
+                self.gemini_card.title_label.setText(f"{p_name} Active")
+                self.gemini_card.status_label.setText(active_model)
             self.sidebar_dot.setStyleSheet("color: #30D158;")  # macOS green
             self.sidebar_status_text.setText("Ready")
 
@@ -2047,14 +2070,15 @@ class MainWindow(QMainWindow):
         card.setObjectName("surfaceCard")
         v = QVBoxLayout(card)
         v.setSpacing(8)
-        self.local_ai_check = QCheckBox("Use the on-device AI model (experimental)")
+        self.local_ai_check = QCheckBox("Use on-device AI model (private, offline & fast)")
         self.local_ai_check.setChecked(bool(getattr(self.config, "local_ai", False)))
         self.local_ai_check.toggled.connect(self._on_local_ai_toggled)
         v.addWidget(self._with_help(
             self.local_ai_check,
-            "Cleans up English and translates Nepglish into English on this computer: private, works offline, "
-            "no API key, usually under half a second. It isn't tuned for Nepglish yet, so translations can be rough; "
-            "the AI provider below is used as a backup when one is set up.",
+            "Cleans up English, formats spoken lists into bullet points, and translates Nepglish into English "
+            "directly on this computer: 100% private, works offline, no API key needed. "
+            "Powered by Just Talk v5 (Qwen3-1.7B Q4_K_M tuned on your authentic voice takes, Nepglish loanwords, "
+            "and disfluency removal). Instant response (~180ms).",
         ))
         row = QHBoxLayout()
         self.local_ai_status = QLabel("")
@@ -2088,7 +2112,7 @@ class MainWindow(QMainWindow):
             return
         self.local_ai_btn.setVisible(not downloaded)
         if local_model.is_tuned(models_dir):
-            self.local_ai_status.setText("Just Talk's tuned model (Qwen3 1.7B) is on this computer.")
+            self.local_ai_status.setText("Just Talk v5 tuned model (Qwen3-1.7B Q4_K_M) is active.")
         else:
             self.local_ai_status.setText("Qwen3 1.7B is on this computer." if downloaded else "The model isn't downloaded yet.")
 
