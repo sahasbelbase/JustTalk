@@ -188,9 +188,9 @@ class GeminiFormatter:
             text = re.sub(r"(\b(?:https?://\S+|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*\.[a-zA-Z]{2,}(?:/[^\s]*)?))\.$", r"\1", text)
             return text.strip()
 
-        # Ensure punctuation at end if missing
-        if text and text[-1] not in ".!?":
-            text += "."
+        # Ensure punctuation at end if missing (a danda for Nepali, never "।.")
+        if text and text[-1] not in ".!?।॥":
+            text += "।" if "ऀ" <= text[-1] <= "ॿ" else "."
         return text.strip()
 
     def get_prompt_for_style(self, style: str) -> str:

@@ -30,6 +30,11 @@ def test_fallback_light_local_cleanup():
     assert GeminiFormatter.light_local_cleanup(sentence_url) == "Please visit github.com"
 
 
+def test_light_cleanup_ends_nepali_with_a_danda():
+    assert GeminiFormatter.light_local_cleanup("मेरो भाइ यहाँ बसिरहेको छ।") == "मेरो भाइ यहाँ बसिरहेको छ।"
+    assert GeminiFormatter.light_local_cleanup("२० वटा शब्द हो") == "२० वटा शब्द हो।"
+
+
 def test_formatting_fallback_inserts_raw_and_saves_history():
     """When Gemini formatting fails, fallback text is used and history records 'inserted (offline)'."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -214,3 +219,60 @@ def test_two_phase_pipeline_emission_and_polish():
             assert call2.kwargs.get("restore_clipboard") is True
             assert call2.kwargs.get("replace_previous") is True
 
+
+
+def _run_pipeline(cfg, heard, app_name="TextEdit", draft_ok=True, local_reply=None):
+    """Run one dictation through the real pipeline with the engines faked; returns (inserter, local runs)."""
+    from contextlib import ExitStack
+    import types
+
+    import numpy as np
+
+    with tempfile.TemporaryDirectory() as tmpdir, ExitStack() as stack:
+        db = HistoryDatabase(db_path=Path(tmpdir) / "h.db")
+        p = lambda name, **kw: stack.enter_context(patch(f"just_talk.app.main.{name}", **kw))  # noqa: E731
+        p("AppConfig.load", return_value=cfg)
+        p("HistoryDatabase", return_value=db)
+        for name in ("PermissionsManager", "VoiceActivityDetector", "AudioRecorder", "ModelManager",
+                     "NoiseFilter", "SpeakerRecognizer"):
+            p(name)
+        stt = p("WhisperSTTEngine").return_value
+        stt.transcribe.return_value = heard
+        p("MultiProviderFormatter").return_value.format_text.return_value = ("", False, "AI is off")
+        inserter = p("TextInserter").return_value
+        inserter.get_active_app_name.return_value = app_name
+        inserter.insert.return_value = (True, "inserted", app_name)
+        inserter.draft_can_be_undone.return_value = draft_ok
+        p("CaretLocator.has_active_text_target", return_value=True)
+
+        from just_talk.app.main import JustTalkApp
+
+        app = JustTalkApp()
+        app.config = cfg
+        runs = []
+        app.local_ai = types.SimpleNamespace(
+            is_available=lambda: True,
+            run=lambda task, text, ctx="": runs.append(task) or (local_reply or text, True, ""),
+        )
+        app._process_audio_pipeline(np.zeros(16000, dtype=np.float32), is_action_mode=False)
+        return inserter, runs
+
+
+def test_no_draft_where_undo_cant_take_it_back():
+    """In a terminal the draft would stay and the polished text would land right after it."""
+    from just_talk.config import AppConfig
+
+    cfg = AppConfig(stt_provider="whisper", two_phase_emission=True, gemini_enabled=False, local_ai=True)
+    inserter, runs = _run_pipeline(cfg, "we are fixing this bug today", app_name="Antigravity IDE",
+                                   draft_ok=False, local_reply="We are fixing this bug today!")
+    assert runs == ["cleanup"]
+    assert [c.args[0] for c in inserter.insert.call_args_list] == ["We are fixing this bug today!"]
+
+
+def test_on_device_ai_stays_off_when_switched_off():
+    from just_talk.config import AppConfig
+
+    cfg = AppConfig(stt_provider="whisper", two_phase_emission=False, gemini_enabled=False, local_ai=False)
+    inserter, runs = _run_pipeline(cfg, "we are fixing this bug today", local_reply="Rewritten!")
+    assert runs == []
+    assert inserter.insert.call_args.args[0] == "We are fixing this bug today."

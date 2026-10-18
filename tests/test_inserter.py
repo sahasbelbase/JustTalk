@@ -93,3 +93,17 @@ def test_text_inserter_cancel_draft():
         assert inserter._has_active_draft is False
         assert ClipboardManager.get_text() == "Initial Clipboard Content"
 
+
+
+def test_no_undoable_draft_in_terminals_and_ide_terminals():
+    """Cmd+Z can't take a paste back in a terminal, so the draft would stay next to the polished text."""
+    inserter = TextInserter()
+    assert inserter.draft_can_be_undone("Brave Browser")
+    assert inserter.draft_can_be_undone("Microsoft Word")
+    assert not inserter.draft_can_be_undone("Terminal")
+    assert not inserter.draft_can_be_undone("iTerm2")
+    assert not inserter.draft_can_be_undone("Windows PowerShell")
+    with patch.object(inserter, "_focus_is_web_text_box", return_value=False):
+        assert not inserter.draft_can_be_undone("Antigravity IDE")  # its terminal, or can't tell
+    with patch.object(inserter, "_focus_is_web_text_box", return_value=True):
+        assert inserter.draft_can_be_undone("Antigravity IDE")  # its chat or editor box

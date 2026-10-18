@@ -11,6 +11,14 @@ from pynput.keyboard import Controller, Key
 
 from .clipboard import ClipboardManager
 
+# A draft is taken back with Cmd/Ctrl+Z before the polished text goes in. Terminals can't undo a
+# paste, so the draft stayed and the polished copy landed right after it. VS Code-style editors
+# and JetBrains IDEs have a built-in terminal, so they count too unless the focus is clearly not one.
+_TERMINAL_APPS = ("terminal", "iterm", "warp", "ghostty", "kitty", "alacritty", "wezterm", "tabby",
+                  "powershell", "command prompt", "cmd.exe")
+_IDE_APPS = ("code", "cursor", "windsurf", "antigravity", "zed", "pycharm", "intellij", "webstorm",
+             "goland", "clion", "rider", "rustrover", "phpstorm", "rubymine", "android studio", "datagrip")
+
 
 class TextInserter:
     """Inserts text into the currently active target application."""
@@ -74,6 +82,42 @@ class TextInserter:
                 pass
 
         return "Active Application"
+
+    def draft_can_be_undone(self, app_name: Optional[str] = None) -> bool:
+        """Whether a quick draft pasted now can be taken back with undo when the polished text is ready."""
+        name = (app_name or self.get_active_app_name()).lower()
+        if any(k in name for k in _TERMINAL_APPS):
+            return False
+        if any(k in name for k in _IDE_APPS):
+            return self._focus_is_web_text_box()
+        return True
+
+    def _focus_is_web_text_box(self) -> bool:
+        """macOS: the focused element is a web text box (an editor or chat box) and not xterm.js,
+        the terminal inside VS Code-style editors. False whenever it can't be told."""
+        if sys.platform != "darwin":
+            return False
+        try:
+            import ApplicationServices as AS
+
+            app = self._target_app
+            if app is None:
+                from AppKit import NSWorkspace
+
+                app = NSWorkspace.sharedWorkspace().frontmostApplication()
+            elem = AS.AXUIElementCreateApplication(app.processIdentifier())
+            AS.AXUIElementSetAttributeValue(elem, "AXManualAccessibility", True)
+            err, focused = AS.AXUIElementCopyAttributeValue(elem, AS.kAXFocusedUIElementAttribute, None)
+            if err != 0 or focused is None:
+                return False
+            err, classes = AS.AXUIElementCopyAttributeValue(focused, "AXDOMClassList", None)
+            if err != 0 or not classes:
+                return False
+            _, desc = AS.AXUIElementCopyAttributeValue(focused, "AXDescription", None)
+            text = " ".join(str(c) for c in classes).lower() + " " + str(desc or "").lower()
+            return "xterm" not in text and "terminal" not in text
+        except Exception:
+            return False
 
     def _reactivate_target_window(self) -> None:
         """Ensure the user's target application and text cursor are in the foreground before pasting."""

@@ -1278,7 +1278,9 @@ class JustTalkApp:
             draft_text = ""
             active_app = self.inserter.get_active_app_name()
 
-            if two_phase and not is_action_mode and action_name != "translate":
+            if two_phase and not is_action_mode and action_name != "translate" and not self.inserter.draft_can_be_undone(active_app):
+                print(f"[TwoPhase] No draft in '{active_app}': undo can't take it back there", file=sys.stderr)
+            elif two_phase and not is_action_mode and action_name != "translate":
                 # Quick clean of obvious stutters/whitespace for the draft
                 draft_text = GeminiFormatter.light_local_cleanup(final_text)
                 if draft_text:
@@ -1298,9 +1300,10 @@ class JustTalkApp:
             # 5. AI Formatting Layer: dynamic user choice with seamless fallback
             prefer_local = getattr(self.config, "local_ai", False) and self.local_ai.is_available()
             can_local = self.local_ai.is_available()
-            local_task = self._local_task(intent, action_name, final_text, is_action_mode) if (prefer_local or can_local) else None
+            local_task = self._local_task(intent, action_name, final_text, is_action_mode) if can_local else None
 
-            if use_gemini or local_task:
+            # The on-device model runs when it's switched on, or as a backup when the cloud fails
+            if use_gemini or (prefer_local and local_task):
                 if not draft_emitted:
                     self.bridge.state_processing.emit(
                         "Translating..." if (action_name == "translate" or intent.action_type == "translate") else "Cleaning..."
@@ -1349,9 +1352,6 @@ class JustTalkApp:
                             cleaned, success, msg = self.local_ai.run(local_task, final_text, self._speaker_context())
                         print(f"[LocalAI Redirect] {local_task} in {int((time.time() - t_local) * 1000)}ms: "
                               f"{cleaned!r}" if success else f"[LocalAI Redirect] {msg}", file=sys.stderr)
-                elif local_task:
-                    # Only local AI available
-                    cleaned, success, msg = self.local_ai.run(local_task, final_text, self._speaker_context())
 
                 if success and cleaned:
                     final_text = cleaned
