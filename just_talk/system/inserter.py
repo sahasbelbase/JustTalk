@@ -209,9 +209,11 @@ class TextInserter:
             err, focused = AS.AXUIElementCopyAttributeValue(elem, AS.kAXFocusedUIElementAttribute, None)
             if err != 0 or focused is None:
                 return None
-            err, n = AS.AXUIElementCopyAttributeValue(focused, "AXNumberOfCharacters", None)
-            if err == 0 and n is not None:
-                return int(n)
+            # only real text boxes that hold the text: a terminal's input box stays empty, which
+            # looked like a missed paste and pasted the same text again
+            err, role = AS.AXUIElementCopyAttributeValue(focused, AS.kAXRoleAttribute, None)
+            if err != 0 or str(role) not in ("AXTextArea", "AXTextField", "AXSearchField", "AXComboBox"):
+                return None
             err, value = AS.AXUIElementCopyAttributeValue(focused, AS.kAXValueAttribute, None)
             return len(value) if err == 0 and isinstance(value, str) else None
         except Exception:
@@ -593,7 +595,9 @@ class TextInserter:
 
         # Step 4: Synthesize simulated paste keystroke
         try:
-            before = None if replacing else self._focused_text_length()
+            # never in terminals or IDEs (their input box doesn't hold the text), nor after an undo
+            checkable = not replacing and self.draft_can_be_undone(active_app)
+            before = self._focused_text_length() if checkable else None
             paste_ok = self._synthesize_paste()
             if not paste_ok:
                 raise RuntimeError("All paste mechanisms failed")

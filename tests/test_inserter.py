@@ -116,10 +116,11 @@ def test_a_dropped_paste_is_pasted_once_more():
     inserter = TextInserter()
     lengths = iter([10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10])
     with patch.object(CaretLocator, "_last_has_text_target", True), \
+         patch.object(inserter, "get_active_app_name", return_value="Brave Browser"), \
          patch.object(TextInserter, "_focused_text_length", staticmethod(lambda: next(lengths, 10))), \
          patch.object(inserter, "_synthesize_paste", return_value=True) as paste, \
          patch("just_talk.system.inserter.time.sleep"):
-        assert inserter.insert("hello") == (True, "inserted", inserter.get_active_app_name())
+        assert inserter.insert("hello") == (True, "inserted", "Brave Browser")
     assert paste.call_count == 2
 
 
@@ -129,6 +130,7 @@ def test_a_paste_that_landed_is_not_repeated():
     inserter = TextInserter()
     lengths = iter([10, 15])
     with patch.object(CaretLocator, "_last_has_text_target", True), \
+         patch.object(inserter, "get_active_app_name", return_value="Brave Browser"), \
          patch.object(TextInserter, "_focused_text_length", staticmethod(lambda: next(lengths, 15))), \
          patch.object(inserter, "_synthesize_paste", return_value=True) as paste, \
          patch("just_talk.system.inserter.time.sleep"):
@@ -146,3 +148,19 @@ def test_no_second_paste_after_replacing_a_draft():
          patch("just_talk.system.inserter.time.sleep"):
         inserter.insert("hello", replace_previous=True)
     assert paste.call_count == 1
+
+
+def test_no_second_paste_in_terminals_or_ide_terminals():
+    """A terminal's input box always reads empty: that looked like a miss and pasted 4 copies."""
+    from just_talk.system.caret_locator import CaretLocator
+
+    for app in ("Antigravity IDE", "Terminal", "iTerm2"):
+        inserter = TextInserter()
+        with patch.object(CaretLocator, "_last_has_text_target", True), \
+             patch.object(inserter, "get_active_app_name", return_value=app), \
+             patch.object(inserter, "_focus_is_web_text_box", return_value=False), \
+             patch.object(TextInserter, "_focused_text_length", staticmethod(lambda: 0)), \
+             patch.object(inserter, "_synthesize_paste", return_value=True) as paste, \
+             patch("just_talk.system.inserter.time.sleep"):
+            inserter.insert("How are you?")
+        assert paste.call_count == 1, app
