@@ -1,4 +1,4 @@
-# Just Talk — System Architecture & Technical Specifications (v5.0)
+# Just Talk — System Architecture & Technical Specifications (v2.3.1)
 
 > **High-performance, privacy-first, on-device voice keyboard for macOS and Windows.**  
 > Think → Speak → Done.
@@ -7,14 +7,14 @@
 
 ## 1. Executive Summary & Design Principles
 
-**Just Talk** is a lightweight desktop productivity utility designed to provide sub-second voice-to-text dictation across any desktop application. Operating unobtrusively in the background via the system menu bar (macOS) or taskbar notification area (Windows), Just Talk captures audio upon a global push-to-talk key press, transcribes it on-device, enhances it via deterministic AI formatting (including on-device fine-tuned Qwen3-1.7B v5 GGUF), and inserts the result directly into the active text field.
+**Just Talk** is a lightweight desktop productivity utility designed to provide sub-second voice-to-text dictation across any desktop application. Operating unobtrusively in the background via the system menu bar (macOS) or taskbar notification area (Windows), Just Talk captures audio upon a global push-to-talk key press, transcribes it on-device, enhances it via deterministic AI formatting, and inserts the result directly into the active text field.
 
 ### Core Architectural Principles:
-1. **Zero Audio & Text Exfiltration (Privacy-First):** Raw speech audio is processed 100% locally on your machine using `faster-whisper` (CTranslate2). For maximum privacy, our custom fine-tuned on-device LLM (`justtalk-qwen3-1.7b-v5-Q4_K_M.gguf`, 1,107 MB) cleans up transcripts, transliterates loanwords, strips disfluencies, and generates action summaries fully offline using Apple Silicon Metal / MLX acceleration.
-2. **Sub-Second Latency:** Streaming 16kHz audio buffer, voice activity detection (VAD), and hardware-accelerated local inference guarantee minimal latency between releasing the key and text insertion (<90ms on Apple Silicon).
-3. **Deterministic & Resilient AI Formatting:** If cloud enhancement is chosen, plain-text transcripts can also route to external providers (Gemini, OpenAI, Claude, Grok, Groq, OpenRouter, DeepSeek, or local Ollama) with length-scaled time budgets and immediate local fallbacks.
+1. **Zero Audio Exfiltration (Privacy-First):** Raw speech audio is processed 100% locally on your machine using `faster-whisper` (CTranslate2). No audio bytes ever leave the device.
+2. **Sub-Second Latency:** Streaming 16kHz audio buffer, voice activity detection (VAD), and hardware-accelerated local inference guarantee minimal latency between releasing the key and text insertion.
+3. **Deterministic & Resilient AI Formatting:** If enabled, only the plain-text transcript is sent to the user's chosen provider (Gemini, OpenAI, Claude, Grok, Groq, OpenRouter, DeepSeek, any OpenAI-compatible API, or local Ollama) for punctuation, grammar, filler removal and self-correction resolution. The time budget scales with length (~2 s for short phrases, up to ~8 s for long dictation); on timeout or error the locally cleaned transcript is inserted instead.
 4. **Non-Intrusive Desktop Integration:** True clipboard preservation restores prior clipboard contents after simulated paste; active window detection ensures text lands where the user expects or falls back safely to the system clipboard.
-5. **Modern Native Aesthetics (Stitch Design System):** Adheres strictly to macOS dark utility aesthetics (`#0F1115` base, `#16181D` surface cards, `#1E2229` raised surfaces, `#2A2E37` borders, `#3B82F6` blue accent, and `#10B981` emerald status indicators), two-column sub-navigation settings, and side-by-side expandable diff history.
+5. **Modern Native Aesthetics:** Adheres strictly to macOS Big Sur/Sonoma/Sequoia visual standards (frosted glass acrylics, SF Pro / Lato typography, smooth state animations) while fully supporting Windows 10/11 taskbar conventions.
 
 ---
 
@@ -65,28 +65,26 @@ graph TD
 * **`AppBridge`:** Qt `QObject` signal bridge that decouples background worker threads (audio streaming, neural inference, API calls) from the Qt main GUI thread. Signals include `level_changed`, `state_listening`, `state_processing`, `state_inserted`, and `state_inserted_offline`.
 
 ### 3.2 UI & Design System (`just_talk/app/`)
-* **Stitch macOS System Design Language:**
-  * **Palette & Tokens (`theme.py`):** Precise dark utility palette (`#0F1115` base canvas, `#16181D` surface cards, `#1E2229` raised surfaces, `#2A2E37` borders, `#21252E` subtle borders, `#3B82F6` primary accent, `#10B981` emerald status indicators, and `#F9FAFB` high-contrast typography).
-  * **Line Icons (`icons.py`):** Crisp Retina SVG monochrome line icons (`home`, `history`, `conventions`, `settings`, `keyboard`, `memory`, `sparkles`, `language`, `copy`, `delete`, `soundwave`, `neurology`, `terminal`, `volume`, `arrow-down`).
-  * **Left Sidebar Navigation:** 188px fixed navigation rail with macOS traffic light spacing, brand header, active route states, and persistent hardware status capsule (`Ready · fn`).
-  * **Home View (`home_view.py`):**
-    * *Hero Greeting & Latency:* Time-of-day greeting with real-time engine latency indicator (`● Engine Latency: 14ms (Metal Accelerated)`).
-    * *4-Metric Bento Grid:* Cards for *Words Spoken*, *Time Saved* (~3.5x typing calculation), *Current Streak*, and *Spoken Today* (WPM tracking).
-    * *Activity Heatmap:* 52-week GitHub-style contribution matrix with 5 emerald intensity buckets, Month and Day labels (Mon, Wed, Fri), and interactive mouse-hover tooltips showing date, words, duration, and top application.
-    * *Dictation Shortcut Hero Card:* Mechanical keycap `<kbd>fn</kbd>` visualizer, active global hook badge, and "Test Dictation" trigger.
-    * *Live Dictation Sandbox ("Try It Here"):* Real-time practice testing playground with Live Buffer pill and copy button.
-    * *Footer Bento Trio:* Live status tiles for *Speech Engine* (`memory`), *AI Formatting* (`sparkles`), and *Input Device* (`mic`).
-  * **History View (`history_view.py`):**
-    * *Collapsible Accordion Diffs:* Expandable side-by-side comparison panels featuring the raw unfiltered speech transcript on the left (`diffRawPanel`) and polished formatted output on the right (`diffFormattedPanel`).
-    * Monospace timestamps, app badges, context chips, word counts, quick-copy, and deletion.
-  * **Settings Sub-Navigation:**
-    * Two-column macOS System Settings architecture: 212px fixed left category sub-nav rail with quick search filter, match counter, and 8 category destinations (`Shortcut & Triggers`, `Speech Model`, `Nepali & Kriti`, `Languages`, `Speaking Speed`, `Voice & Audio`, `AI Formatting`, `Application`).
-    * Right scrollable content container with smooth section targeting and automated settings persistence.
-  * **Writing Conventions View (`conventions_view.py`):**
-    * Two-column syntax rule configuration panel with live before/after transformation preview.
-    * Dynamic sample output reflecting keyword capitalization (`upper`/`lower`), naming styles (`PascalCase`/`snake_case`/`camelCase`), indentation width, schema prefixes, semicolons, and disfluency stripping.
-    * Rule search filter and one-click clipboard copy with temporary feedback.
-* **`wheel_guard.py`:** App-wide event filter ensuring mouse wheel scrolling over dropdowns and spin boxes scrolls the parent view instead of inadvertently altering values.
+* **Visual language (v2.1):** no emoji in the UI. `icons.py` renders a single set of 1.5 px line icons from inline SVG, tinted with the theme accent. `theme.py` owns all colours; use `ThemeManager.qcolor()` (not `QColor()`) for token colours, because `QColor` cannot parse CSS `rgba()` strings and silently returns black.
+* **`wheel_guard.py`:** app-wide event filter — the mouse wheel over a closed dropdown/spin box scrolls the page instead of changing the value (unless the control was tabbed into).
+* **Settings** save automatically; collapsible sections share one label column and compact headers.
+* **`theme.py`:** Comprehensive macOS-inspired design system:
+  * **Typography:** Embedded bundled fonts (`Lato` family, `JetBrains Mono` variable monospace) with fallback to native system fonts (`SF Pro` / `Segoe UI`).
+  * **Palette:** Semantic dark/light tokens with translucent surfaces, acrylic borders, smooth hover states, and dynamic status badges.
+  * **Custom Controls:** Frosted-glass styled push buttons, custom slider bars, segmented tabs, and rounded combo boxes.
+* **`overlay.py` (`FloatingPillOverlay`):** Unobtrusive, borderless floating pill HUD displayed on the user's active screen during speech capture:
+  * **Idle:** Hidden or docked.
+  * **Listening:** Dynamic multi-bar audio waveform visualizing mic input levels in real time.
+  * **Processing:** Smooth pulsing status indicator.
+  * **Inserted:** Subtle emerald badge confirmating successful text dispatch.
+* **`main_window.py`:** macOS split-view preferences and control center:
+  * *Dictation & Status:* Live audio meter, push-to-talk shortcut trigger configuration, mic selector, active Whisper model tier.
+  * *History:* Searchable, filterable dictation logs with one-click copy and deletion.
+  * *AI Formatting:* Temperature sliders, formatting mode presets (Subtle, Formal, Concise, Code), custom instructions, and offline toggle.
+  * *Audio Settings:* VAD sensitivity sliders, input device testing, audio buffer diagnostics.
+  * *Diagnostics:* System permissions monitor, RAM footprint, and local model integrity.
+* **`onboarding_window.py`:** First-run onboarding wizard guiding users through macOS Accessibility permissions (`AXIsProcessTrusted`), Microphone authorizations, Google AI Studio key setup, and hotkey calibration.
+* **`tray.py`:** Native system menu bar (macOS) / system tray (Windows) integration providing quick access to Settings, Dictation History, Mute, Force Offline mode, and Exit.
 
 ### 3.3 Audio Pipeline (`just_talk/audio/`)
 * **`recorder.py`:** Low-latency streaming audio input using `sounddevice` / PortAudio. Captures 16kHz mono 16-bit PCM audio in a ring buffer. Calculates real-time Root-Mean-Square (RMS) amplitude emitted at 60Hz for smooth HUD animation.
@@ -107,22 +105,15 @@ graph TD
   * **Quality / Multilingual (`large-v3-turbo`):** ~800 MB, ~650ms latency. Supports 99+ languages.
 
 ### 3.5 AI Formatting & Intent Routing (`just_talk/ai/`)
-* **v5 On-Device Local Model (`justtalk-qwen3-1.7b-v5-Q4_K_M.gguf`):**
-  * Fine-tuned LoRA adapters merged into Qwen3-1.7B and exported to 4-bit Medium GGUF (1,107 MB).
-  * Deployed locally in `Application Support/JustTalk/models/local-ai/`.
-  * Specialized on Nepglish technical vocabulary, loanword preservation, disfluency stripping, and emotional storytelling without hallucination.
-  * **Benchmark Scorecard (`results/eval_v5_17.txt`):**
-    * Raw transcript cleanup: **73.2 chrF++** (<90ms on Apple Silicon Metal).
-    * Held-out personal voice test: **58.7 chrF++** (<170ms).
-    * FLORES+ Nepali-English translation: **39.3 chrF++** (<300ms).
-* **`providers.py` (`MultiProviderFormatter`):** Unified interface for local and cloud providers (Local v5 GGUF, Gemini, OpenAI, Anthropic, Grok, Groq, OpenRouter, DeepSeek, custom OpenAI-compatible endpoints, Ollama):
-  * **Time budget:** `_time_budget()` allocates ~2 s for short phrases and scales up to ~8 s for extended dictation; two-phase insertion ensures immediate draft display so users experience zero friction.
-  * **Circuit breaker:** API and network errors count towards temporary suspension (3 consecutive failures → 5 minute cooldown).
-  * **Hardened prompt wrapper:** Transcripts are demarcated as pure content, ensuring models never interpret user speech as meta-instructions.
-* **`prompts.py`:** Domain-specific prompt templates enforcing subtle grammatical correction, filler word elimination, punctuation synthesis, and technical casing preservation.
+* **`providers.py` (`MultiProviderFormatter`):** One formatter for every supported provider (Gemini, OpenAI, Anthropic, Grok, Groq, OpenRouter, DeepSeek, custom OpenAI-compatible endpoints, Ollama):
+  * **Time budget:** `_time_budget()` gives short phrases ~2 s and adds time for long dictation (up to ~8 s); with two-phase insertion the raw draft is already typed, so waiting costs nothing visible.
+  * **Circuit breaker:** only connection failures and API errors count toward pausing AI formatting (3 in a row → 5 min pause). Slow replies on long text fall back for that dictation only.
+  * **Hardened prompt wrapper:** the transcript is framed as data, never instructions, so the model doesn't reply to what was said.
+* **`gemini.py` (`GeminiFormatter`):** Gemini client plus `light_local_cleanup()`, the local fallback used whenever AI formatting is off, slow, or unavailable.
+* **`prompts.py`:** System instructions per style. The default (Subtle) edits like a careful human editor: resolves self-corrections ("five, actually four" → "four"), removes fillers and false starts, fixes grammar — and never summarizes or drops details. Formal, Concise, Auto, Nepglish and Devanagari variants build on the same core rules.
 * **`actions.py` (`ActionRouter`):** Action Mode handler triggered via `Fn + Shift`:
-  * Detects spoken transformations (*"summarize in bullet points: ..."*, *"write me a sick leave email"*, *"rewrite professionally: ..."*).
-  * Formats dynamic responses directly into the active cursor position.
+  * Detects spoken action prefixes (e.g., *"translate to French: ..."*, *"summarize this: ..."*, *"reply professionally: ..."*).
+  * Routes prompt to Gemini with specialized transformation parameters before typing.
 
 ### 3.6 System Integration & Text Insertion (`just_talk/system/`)
 * **`inserter.py` (`TextInserter`):**

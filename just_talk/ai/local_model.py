@@ -28,24 +28,18 @@ MODEL_SHA256 = "061b54daade076b5d3362dac252678d17da8c68f07560be70818cace6590cb1a
 MODEL_SIZE = 1834426016
 MODEL_DOWNLOAD_MB = round(MODEL_SIZE / 1e6)
 # A Just Talk fine-tune placed next to it (not downloadable yet) is preferred when present.
-TUNED_MODEL_FILE = "justtalk-qwen3-1.7b-v5-Q4_K_M.gguf"
+# v2: v4 and v5 scored lower on the user's real Nepali dictations (36.5 vs 40.1 chrF++) and v5
+# turns sentences negative ("I'll go to the office" -> "I will not come to the office").
+TUNED_MODEL_FILE = "justtalk-qwen3-1.7b-v2-Q4_K_M.gguf"
 
 _DEVANAGARI = re.compile(r"[ऀ-ॿ]")
 _PROMPT_LEAKS = ("output only", "keep every detail", "this dictation", "<think", "</think", "translate this")
 
 SYSTEM = {
-    "translate": (
-        "Translate this Nepali or Nepali-English dictation into fluent, natural English. "
-        "Strictly remove all verbal filler sounds and hesitations (um, umm, uh, ah, ahh, na, nah, err). "
-        "Format any spoken lists or steps into clean bullet points. "
-        "Keep proper names and exact meaning. Output only the final translation."
-    ),
-    "cleanup": (
-        "Clean up this dictation into a polished finished article: fix punctuation, capitalisation, and grammar. "
-        "Strictly cut off all verbal fillers and hesitations (um, umm, uh, ah, ahh, na, nah, err, like, you know). "
-        "If the speaker dictates a list or separate points, format them into clean bullet points. "
-        "Keep the meaning and every detail. Output only the cleaned text."
-    ),
+    # The prompts the tuned model was trained with. Don't list "na" or "like" as fillers: न is
+    # Nepali for "not"/"please", and "like" is often a real word.
+    "translate": "Translate this Nepali or Nepali-English dictation into fluent English. Keep every detail. Output only the translation.",
+    "cleanup": "Clean up this dictation: fix punctuation, capitalisation and grammar, drop filler words, keep the meaning and every detail. Output only the cleaned text.",
     "generate": (
         "Execute this spoken instruction directly and produce the final, polished content. "
         "If a list is requested, format as clean bullet points. "
