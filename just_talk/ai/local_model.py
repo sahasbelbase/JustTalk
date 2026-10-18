@@ -126,7 +126,8 @@ def _spoken(phrase: str, source: str) -> bool:
 
 
 _LIST_CUE = re.compile(
-    r"\b(?:lists?|bullets?|bullet points?|points|items|action items|steps|step one|checklist|to-do|todo|to do list)\b",
+    r"\b(?:lists?|bullets?|bullet points?|points?|items?|action items|steps?|step one|checklist|to-do|todo|"
+    r"to do list|firstly|number one|point one)\b",
     re.IGNORECASE,
 )
 _LIST_LINE = re.compile(r"^(?:- |\d+\. )", re.MULTILINE)
@@ -138,7 +139,7 @@ def asks_for_list(text: str) -> bool:
     return bool(
         _LIST_CUE.search(low)
         or re.search(r"\bfirst\b", low) and re.search(r"\bsecond\b", low)
-        or any(w in text for w in ("लिस्ट", "सूची", "बुँदा", "बुदा"))
+        or any(w in text for w in ("लिस्ट", "सूची", "बुँदा", "बुदा", "बुलेट", "आइटम", "स्टेप", "चेकलिस्ट", "पोइन्ट"))
         or "पहिलो" in text and "दोस्रो" in text
     )
 

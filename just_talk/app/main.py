@@ -727,7 +727,7 @@ class JustTalkApp:
                 print(f"[LocalAI] {run[0]} run kept as heard ({msg}): {run[1][:60]!r}", file=sys.stderr)
                 result = GeminiFormatter.light_local_cleanup(run[1])
             parts.append(result)
-        if failed == len(runs):
+        if runs and failed == len(runs):
             return "", False, msg
         return " ".join(parts), True, ""
 
@@ -1393,7 +1393,8 @@ class JustTalkApp:
                               f"{cleaned!r}" if success else f"[LocalAI Redirect] {msg}", file=sys.stderr)
 
                 if success and cleaned:
-                    final_text = without_fillers(without_ai_dashes(cleaned))
+                    # prose only: in code a variable can be called "um", and dashes can be operators
+                    final_text = without_fillers(without_ai_dashes(cleaned)) if detected_context == "text" else cleaned
                 else:
                     # Circuit breaker triggered or formatting error: instantly insert raw dictation
                     final_text = GeminiFormatter.light_local_cleanup(final_text)
@@ -1536,7 +1537,8 @@ class JustTalkApp:
             self.bridge.state_error.emit("Couldn't write that" if generate else "Couldn't edit selection")
             return
 
-        edited = without_fillers(without_ai_dashes(edited))
+        if detected_context == "text":  # prose only: never rewrite code ("um = 5", "x -- y")
+            edited = without_fillers(without_ai_dashes(edited))
         inserted_ok, status, active_app = self.inserter.insert(
             edited,
             restore_clipboard=self.config.restore_clipboard,

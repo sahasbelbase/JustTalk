@@ -321,3 +321,29 @@ def test_a_spoken_web_address_is_typed_as_is():
     assert runs == [] and inserter.insert.call_args.args[0] == "youtube.com"
     inserter, runs = _run_pipeline(cfg, "the site is youtube.com", local_reply="The site is YouTube.com.")
     assert runs == ["cleanup"]  # a sentence that only mentions an address is still cleaned up
+
+
+def test_text_filters_leave_real_words_and_code_alone():
+    """From a review of today's changes: these used to be changed."""
+    from just_talk.ai.gemini import is_web_address, without_ai_dashes, without_fillers
+
+    assert without_fillers("    x = 1\n    y  = 2") == "    x = 1\n    y  = 2"  # code indentation
+    assert without_fillers("  - sub\n- eggs umm\n- milk") == "  - sub\n- eggs\n- milk"
+    assert without_fillers("she said uh-huh") == "she said uh-huh"
+    assert without_fillers("UM students meet") == "UM students meet"
+    assert without_ai_dashes("Open Mon–Fri, A–Z") == "Open Mon–Fri, A–Z"
+    assert without_ai_dashes("Note: — check this") == "Note: check this"
+    for word in ("Node.js", "U.S.", "i.e.", "3.5", "v2.3", "Mr.Smith"):
+        assert not is_web_address(word), word
+    for address in ("youtube.com", "github.com/sahas", "daraz.com.np", "hello@gmail.com", "https://x.y/z"):
+        assert is_web_address(address), address
+
+
+def test_ai_text_filters_skip_code():
+    """A variable called "um" in Python must survive."""
+    from just_talk.config import AppConfig
+
+    cfg = AppConfig(stt_provider="whisper", two_phase_emission=False, gemini_enabled=False, local_ai=True)
+    with patch("just_talk.app.main.detect_context", return_value=type("C", (), {"context": "python", "app_name": "PyCharm", "recommended_nepali_mode": "english", "file_ext": ".py"})()):
+        inserter, _ = _run_pipeline(cfg, "um equals five", local_reply="um = 5")
+    assert inserter.insert.call_args.args[0] == "um = 5"

@@ -118,9 +118,10 @@ _DASH = re.compile(r"[ \t]*[—–][ \t]*")
 
 
 _FILLER = re.compile(
-    # all-caps AAA, OOO and MM are real words (batteries, out of office, MM/DD), so those forms
-    # only match lowercase or a capital first letter ("Aaah", "Mmm"). Kriti writes "umm" as उम् or उम्म.
-    r"(?:\b(?:um+|uh+m*|erm|ah{2,}|(?-i:[Aa]a+h*)|oh{2,}|(?-i:[Oo]o+h*)|hm+|(?<!\d )(?<!\d)(?-i:[Mm]m+))\b"
+    # Forms that are also real words only match lowercase or a capital first letter: AAA (batteries),
+    # OOO (out of office), MM/DD, UM, HM. Not inside "uh-huh". Kriti writes "umm" as उम् or उम्म.
+    r"(?:(?<![-'’])\b(?:(?-i:[Uu]m+)|(?-i:[Uu]h+m*)|(?-i:[Ee]rm)|ah{2,}|(?-i:[Aa]a+h*)|oh{2,}|(?-i:[Oo]o+h*)"
+    r"|(?-i:[Hh]m+)|(?<!\d )(?<!\d)(?-i:[Mm]m+))\b(?![-'’])"
     r"|\b(?-i:er)\b"
     r"|(?<![\u0900-\u097F])(?:उम्म*|अहह+|हम्म+|अँ)(?![\u0900-\u097F]))[ \t]*,?",
     re.IGNORECASE,
@@ -129,20 +130,35 @@ _FILLER = re.compile(
 
 def without_fillers(text: str) -> str:
     """Stretched hesitation sounds (umm, ahhh, hmm, उम्म) are never wanted in typed text.
-    Plain "oh"/"ah", "5 mm" and the ER stay. Newlines are left alone so bullet lists survive."""
-    first = _FILLER.search(text.lstrip())
-    out = _FILLER.sub("", text)
-    out = re.sub(r"[ \t]{2,}", " ", out)
-    out = re.sub(r"[ \t]+([,.!?;:।]|$)", r"\1", out, flags=re.MULTILINE)
-    out = re.sub(r",[ \t]*,", ",", out)
-    out = re.sub(r"^[ \t]*,[ \t]*", "", out, flags=re.MULTILINE).lstrip(" \t")
-    if first and first.start() == 0:
-        out = out[:1].upper() + out[1:]
-    return out
+    Plain "oh"/"ah", "5 mm" and the ER stay. Only lines with a filler are touched, so code
+    indentation, spacing and bullet lists elsewhere stay exactly as they were."""
+    if not _FILLER.search(text):
+        return text
+    lines = text.split("\n")
+    for i, line in enumerate(lines):
+        if not _FILLER.search(line):
+            continue
+        indent = line[: len(line) - len(line.lstrip(" \t"))]
+        body = line[len(indent):]
+        at_start = bool(_FILLER.match(body))
+        body = _FILLER.sub("", body)
+        body = re.sub(r"[ \t]{2,}", " ", body)
+        body = re.sub(r"[ \t]+([,.!?;:।])", r"\1", body)
+        body = re.sub(r",[ \t]*,", ",", body)
+        body = re.sub(r"^[ \t]*,?[ \t]*", "", body).rstrip(" \t")
+        if at_start:
+            body = body[:1].upper() + body[1:]
+        lines[i] = indent + body
+    return "\n".join(lines)
 
 
+_TLDS = ("com|org|net|io|dev|app|ai|co|np|in|uk|us|edu|gov|me|info|xyz|gg|tv|ly|so|sh|to|it|de|fr|au|ca|"
+         "jp|cn|ru|br|nz|es|nl|se|ch|biz|tech|site|online|store|blog|page|cloud|link|live|news|pro|fm|eu|sg|"
+         "lk|bd|pk|id|my|ph|kr|tw|hk|za|ae|sa|ie|pl|pt|be|dk|fi|no|at|gr|tr|ua|vn|th|mx|ar|cl")
+# A real address: a scheme, www., an email, or a known ending (".com", ".com.np"). "Node.js", "U.S."
+# and "i.e." have dots too and are ordinary words.
 _WEB_ADDRESS = re.compile(
-    r"^(?:https?://\S+|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|(?:www\.)?[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+(?:/[^\s]*)?)\.?$",
+    rf"^(?:https?://\S+|www\.\S+|[\w.%+-]+@[\w-]+(?:\.[\w-]+)+|(?:[a-z0-9-]+\.)+(?:{_TLDS})(?:\.[a-z]{{2}})?(?::\d+)?(?:/\S*)?)\.?$",
     re.IGNORECASE,
 )
 
@@ -156,13 +172,17 @@ def is_web_address(text: str) -> bool:
 def without_ai_dashes(text: str) -> str:
     """Em/en dashes as punctuation read as AI-written; people dictating don't say them.
     "fast — and cheap" -> "fast, and cheap"; a dash starting a line becomes a "- " bullet.
-    Number ranges ("10–20", "10 – 20") stay."""
+    Ranges stay: "10–20", "10 – 20", "Mon–Fri" (an unspaced en dash joins two words)."""
 
     def plain(m: re.Match) -> str:
         before, after = text[m.start() - 1 : m.start()], text[m.end() : m.end() + 1]
         if before.isdigit() and after.isdigit():
             return m.group(0)
-        return "- " if m.start() == 0 or before == "\n" else ", "
+        if m.start() == 0 or before == "\n":
+            return "- "
+        if m.group(0) == "–" and before.isalnum() and after.isalnum():
+            return m.group(0)
+        return " " if before in ":;,(" else ", "  # "Note: — x" -> "Note: x", not "Note:, x"
 
     out = _DASH.sub(plain, text)
     out = re.sub(r",[ \t]*([,.!?;:])", r"\1", out)

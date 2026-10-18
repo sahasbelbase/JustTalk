@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 import threading
 import time
@@ -14,10 +15,14 @@ from .clipboard import ClipboardManager
 # A draft is taken back with Cmd/Ctrl+Z before the polished text goes in. Terminals can't undo a
 # paste, so the draft stayed and the polished copy landed right after it. VS Code-style editors
 # and JetBrains IDEs have a built-in terminal, so they count too unless the focus is clearly not one.
-_TERMINAL_APPS = ("terminal", "iterm", "warp", "ghostty", "kitty", "alacritty", "wezterm", "tabby",
-                  "powershell", "command prompt", "cmd.exe")
-_IDE_APPS = ("code", "cursor", "windsurf", "antigravity", "zed", "pycharm", "intellij", "webstorm",
-             "goland", "clion", "rider", "rustrover", "phpstorm", "rubymine", "android studio", "datagrip")
+# Whole words: "Xcode" and "Barcode Scanner" aren't VS Code.
+_TERMINAL_APPS = re.compile(r"\b(terminal|iterm2?|warp|ghostty|kitty|alacritty|wezterm|tabby|powershell|"
+                            r"command prompt|cmd\.exe)\b", re.IGNORECASE)
+_IDE_APPS = re.compile(r"\b(code|vscodium|cursor|windsurf|antigravity|zed|pycharm|intellij|webstorm|goland|clion|"
+                       r"rider|rustrover|phpstorm|rubymine|android studio|datagrip)\b", re.IGNORECASE)
+# Where a paste was seen to be dropped silently (Chromium browsers). Checked and re-sent there only:
+# slow apps (a long Word document) can report the change late, which would paste twice.
+_PASTE_CHECK_APPS = re.compile(r"\b(brave|chrome|chromium|arc|edge|opera|vivaldi)\b", re.IGNORECASE)
 
 
 class TextInserter:
@@ -108,8 +113,8 @@ class TextInserter:
             else:
                 self._target_app.activateWithOptions_(0)
             time.sleep(0.12)
-            if ours():  # still refused: hiding Just Talk always gives the focus back
-                app.hide_(None)
+            if ours():  # still refused: step back (unlike hiding, the Just Talk window stays where it was)
+                app.deactivate()
             print(f"[TextInserter] Back to '{self._target_app.localizedName()}' after cancel", file=sys.stderr)
         except Exception as e:
             print(f"[TextInserter] couldn't return to the target app: {e}", file=sys.stderr)
@@ -117,9 +122,9 @@ class TextInserter:
     def draft_can_be_undone(self, app_name: Optional[str] = None) -> bool:
         """Whether a quick draft pasted now can be taken back with undo when the polished text is ready."""
         name = (app_name or self.get_active_app_name()).lower()
-        if any(k in name for k in _TERMINAL_APPS):
+        if _TERMINAL_APPS.search(name):
             return False
-        if any(k in name for k in _IDE_APPS):
+        if _IDE_APPS.search(name):
             return self._focus_is_web_text_box()
         return True
 
@@ -214,6 +219,12 @@ class TextInserter:
             err, role = AS.AXUIElementCopyAttributeValue(focused, AS.kAXRoleAttribute, None)
             if err != 0 or str(role) not in ("AXTextArea", "AXTextField", "AXSearchField", "AXComboBox"):
                 return None
+            # replacing a selection can keep the length the same: that's not a miss
+            err, sel = AS.AXUIElementCopyAttributeValue(focused, AS.kAXSelectedTextRangeAttribute, None)
+            if err == 0 and sel is not None:
+                ok, rng = AS.AXValueGetValue(sel, AS.kAXValueTypeCFRange, None)
+                if ok and getattr(rng, "length", 0) > 0:
+                    return None
             err, value = AS.AXUIElementCopyAttributeValue(focused, AS.kAXValueAttribute, None)
             return len(value) if err == 0 and isinstance(value, str) else None
         except Exception:
@@ -595,8 +606,8 @@ class TextInserter:
 
         # Step 4: Synthesize simulated paste keystroke
         try:
-            # never in terminals or IDEs (their input box doesn't hold the text), nor after an undo
-            checkable = not replacing and self.draft_can_be_undone(active_app)
+            # only in the browsers where pastes went missing; never after an undo (a draft swap)
+            checkable = not replacing and bool(_PASTE_CHECK_APPS.search(active_app or ""))
             before = self._focused_text_length() if checkable else None
             paste_ok = self._synthesize_paste()
             if not paste_ok:
