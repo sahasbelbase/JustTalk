@@ -89,12 +89,28 @@ class TextInserter:
         if sys.platform != "darwin" or self._target_app is None:
             return
         try:
-            from AppKit import NSRunningApplication, NSWorkspace
+            from AppKit import NSApplication, NSRunningApplication, NSWorkspace
 
-            front = NSWorkspace.sharedWorkspace().frontmostApplication()
             me = NSRunningApplication.currentApplication()
-            if front is not None and front.processIdentifier() == me.processIdentifier():
-                self._reactivate_target_window()
+            if self._target_app.processIdentifier() == me.processIdentifier():
+                return  # dictating into Just Talk itself
+            ours = lambda: (lambda f: f is not None and f.processIdentifier() == me.processIdentifier())(  # noqa: E731
+                NSWorkspace.sharedWorkspace().frontmostApplication())
+            if not ours():
+                return
+            # macOS 14+ ignores one app pushing another to the front ("activate ignoring other
+            # apps"); the active app has to hand over: yield, then activate the target
+            app = NSApplication.sharedApplication()
+            if hasattr(app, "yieldActivationToApplication_"):
+                app.yieldActivationToApplication_(self._target_app)
+            if hasattr(self._target_app, "activate"):
+                self._target_app.activate()
+            else:
+                self._target_app.activateWithOptions_(0)
+            time.sleep(0.12)
+            if ours():  # still refused: hiding Just Talk always gives the focus back
+                app.hide_(None)
+            print(f"[TextInserter] Back to '{self._target_app.localizedName()}' after cancel", file=sys.stderr)
         except Exception as e:
             print(f"[TextInserter] couldn't return to the target app: {e}", file=sys.stderr)
 

@@ -486,6 +486,10 @@ class JustTalkApp:
             on_paste_last=self.paste_last_dictation,
         )
         self.shortcut_manager.start()
+        # Escape while recording: a hot key needs no Input Monitoring permission (key listening does)
+        from ..shortcuts.mac_escape import EscapeHotKey
+
+        self.escape_key = EscapeHotKey(lambda: self.bridge.cancel_recording_requested.emit())
 
         # 9. Main-thread visualizer timer (50 Hz / 20ms) for rock-solid UI updates without audio thread locking
         self._level_timer = QTimer(self.bridge)
@@ -846,10 +850,14 @@ class JustTalkApp:
             self.audio_ducker.mute()
 
         print(f"[Record] START recording (action_mode={is_action_mode})", file=sys.stderr)
+        if hasattr(self, "escape_key"):
+            self.escape_key.arm()
         self.bridge.state_listening.emit(is_action_mode)
         started = self.recorder.start()
         if not started:
             print("[Record] ERROR: Microphone failed to start!", file=sys.stderr)
+            if hasattr(self, "escape_key"):
+                self.escape_key.disarm()
             if hasattr(self, "audio_ducker"):
                 self.audio_ducker.unmute()
             self.bridge.state_error.emit("Microphone error")
@@ -957,6 +965,8 @@ class JustTalkApp:
     def _on_cancel_recording(self) -> None:
         """User cancelled recording via the overlay [ ✕ ] button or Escape key."""
         self._level_timer.stop()
+        if hasattr(self, "escape_key"):
+            self.escape_key.disarm()
         if hasattr(self, "audio_ducker"):
             self.audio_ducker.unmute()
         if self.overlay:
@@ -974,6 +984,8 @@ class JustTalkApp:
     def on_stop_recording(self) -> None:
         """Triggered on the main Qt thread when push-to-talk shortcut is released or checkmark is clicked."""
         self._level_timer.stop()
+        if hasattr(self, "escape_key"):
+            self.escape_key.disarm()  # Escape belongs to the user's app again
         if hasattr(self, "audio_ducker"):
             self.audio_ducker.unmute()
         if self.overlay:
