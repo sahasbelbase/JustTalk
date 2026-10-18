@@ -3,9 +3,24 @@
 Tests must never touch the real clipboard or send real keystrokes: TextInserter posts
 Cmd/Ctrl+V, Cmd/Ctrl+C and Cmd/Ctrl+Z straight to the OS (CGEventPost / keybd_event), which pastes
 test text into whatever app the developer has focused.
+
+Nor the developer's own app data: AppConfig().save() and CredentialManager write to
+~/Library/Application Support/JustTalk (config.json, .credentials), so a test run reset the
+installed app's settings and deleted its stored API keys.
 """
 
 import pytest
+
+from just_talk.config import get_app_data_dir
+
+# Downloaded speech models are a cache, not settings: the live Whisper test may read them from here
+REAL_MODELS_DIR = get_app_data_dir() / "models"
+
+
+@pytest.fixture(autouse=True)
+def _no_real_app_data(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("APPDATA", str(tmp_path / "AppData"))
 
 
 @pytest.fixture(autouse=True)

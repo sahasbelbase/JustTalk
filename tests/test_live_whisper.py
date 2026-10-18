@@ -8,7 +8,9 @@ from just_talk.stt.whisper_engine import WhisperSTTEngine
 
 def test_real_whisper_engine_loading_and_inference():
     """Verify that faster-whisper loads actual weights and runs inference without mock."""
-    mm = ModelManager()
+    from conftest import REAL_MODELS_DIR
+
+    mm = ModelManager(models_dir=REAL_MODELS_DIR)  # reuse downloaded weights instead of fetching them each run
     engine = WhisperSTTEngine(mm)
 
     # 1. Verify loading the fast tier (base.en)
