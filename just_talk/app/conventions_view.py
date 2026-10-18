@@ -384,10 +384,6 @@ class ConventionsView(QWidget):
         in_lbl.setFont(ThemeManager.get_mono_font(10, weight=QFont.Weight.Bold))
         in_hdr.addWidget(in_lbl)
         in_hdr.addStretch()
-        in_tag = QLabel("Audio stream 1.4s")
-        in_tag.setObjectName("mutedLabel")
-        in_tag.setFont(ThemeManager.get_mono_font(10))
-        in_hdr.addWidget(in_tag)
         preview_layout.addLayout(in_hdr)
 
         self._preview_input = QPlainTextEdit()
@@ -445,7 +441,7 @@ class ConventionsView(QWidget):
         """)
         preview_layout.addWidget(self._preview_output, 1)
 
-        preview_note = QLabel("Preview reflects your current settings. Synchronized across active IDEs & terminal shells.")
+        preview_note = QLabel("An example of how your current settings shape dictated code.")
         preview_note.setObjectName("mutedLabel")
         preview_note.setFont(ThemeManager.get_ui_font(10))
         preview_note.setWordWrap(True)

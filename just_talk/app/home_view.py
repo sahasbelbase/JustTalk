@@ -63,6 +63,14 @@ class ContributionGraphWidget(QWidget):
             
         self.update()
 
+    def _grid(self):
+        """First day (a Sunday) and number of week columns that fit, ending with this week."""
+        step = self.cell_size + self.cell_margin
+        weeks = max(1, min(self.weeks_to_show, (self.width() - 38) // step))
+        today = datetime.now().date()
+        this_sunday = today - timedelta(days=(today.weekday() + 1) % 7)
+        return this_sunday - timedelta(weeks=weeks - 1), weeks
+
     def _get_color_level(self, words: int) -> int:
         if words == 0: return 0
         if words <= self.quartiles[0]: return 1
@@ -85,10 +93,8 @@ class ContributionGraphWidget(QWidget):
             painter.setFont(ThemeManager.get_mono_font(10, weight=QFont.Weight.Medium))
             
             today = datetime.now().date()
-            days_since_sunday = (today.weekday() + 1) % 7
-            end_date = today + timedelta(days=6 - days_since_sunday)
-            start_date = end_date - timedelta(weeks=self.weeks_to_show)
-            
+            start_date, weeks = self._grid()
+
             x_offset = 38
             y_offset = 20
             
@@ -103,7 +109,7 @@ class ContributionGraphWidget(QWidget):
             
             painter.setPen(Qt.PenStyle.NoPen)
             
-            for week in range(self.weeks_to_show):
+            for week in range(weeks):
                 for day in range(7):
                     if curr_date > today:
                         break
@@ -150,13 +156,10 @@ class ContributionGraphWidget(QWidget):
             
         week = x // (self.cell_size + self.cell_margin)
         day = y // (self.cell_size + self.cell_margin)
-        
-        if week >= 0 and week < self.weeks_to_show and day >= 0 and day < 7:
+        start_date, weeks = self._grid()
+
+        if week >= 0 and week < weeks and day >= 0 and day < 7:
             today = datetime.now().date()
-            days_since_sunday = (today.weekday() + 1) % 7
-            end_date = today + timedelta(days=6 - days_since_sunday)
-            start_date = end_date - timedelta(weeks=self.weeks_to_show)
-            
             target = start_date + timedelta(weeks=week, days=day)
             if target <= today:
                 ds = target.strftime("%Y-%m-%d")
@@ -198,15 +201,15 @@ class DashboardWidget(QWidget):
         self.greeting.setFont(ThemeManager.get_display_font(26, weight=QFont.Weight.Bold))
         hdr_left.addWidget(self.greeting)
 
-        subtitle = QLabel("Dictation utility running locally with hardware acceleration.")
+        subtitle = QLabel("Speak in any app. Just Talk types it for you.")
         subtitle.setObjectName("mutedLabel")
         subtitle.setFont(ThemeManager.get_ui_font(12))
         hdr_left.addWidget(subtitle)
         hdr.addLayout(hdr_left)
         hdr.addStretch()
         
-        # Latency / Status Pill
-        self.latency_pill = QLabel("● Engine Latency: 14ms (Metal Accelerated)")
+        # Typical wait after you stop talking, from your recent dictations
+        self.latency_pill = QLabel("")
         self.latency_pill.setObjectName("statusPill")
         self.latency_pill.setFont(ThemeManager.get_ui_font(11, weight=QFont.Weight.Medium))
         hdr.addWidget(self.latency_pill)
@@ -224,10 +227,10 @@ class DashboardWidget(QWidget):
 
         swpm = self.config.speaking_speed_wpm
         twpm = self.config.typing_speed_wpm
-        c1, self._words_val, self._words_sub = self._bento_stat_card("Words Spoken", "", "↑ 18% this week")
-        c2, self._saved_val, self._saved_sub = self._bento_stat_card("Time Saved", "", "~3.5x typing speed", tooltip=f"Based on {swpm} wpm speaking vs {twpm} wpm typing")
-        c3, self._streak_val, self._streak_sub = self._bento_stat_card("Current Streak", "", "Active daily")
-        c4, self._today_val, self._today_sub = self._bento_stat_card("Spoken Today", "", "wpm: 142")
+        c1, self._words_val, self._words_sub = self._bento_stat_card("Words Spoken", "", "")
+        c2, self._saved_val, self._saved_sub = self._bento_stat_card("Time Saved", "", "", tooltip=f"Based on {swpm} wpm speaking vs {twpm} wpm typing")
+        c3, self._streak_val, self._streak_sub = self._bento_stat_card("Current Streak", "", "")
+        c4, self._today_val, self._today_sub = self._bento_stat_card("Spoken Today", "", "")
         self._update_stats()
 
         cards_layout.addWidget(c1)
@@ -295,6 +298,21 @@ class DashboardWidget(QWidget):
         streak = stats["streak_days"]
         self._streak_val.setText(f"{streak} day" if streak == 1 else f"{streak} days")
         self._today_val.setText(f"{stats['today_words']:,}")
+
+        daily = {d["date"]: d for d in self.db.get_daily_stats(7)}
+        week_start = (datetime.now() - timedelta(days=6)).strftime("%Y-%m-%d")
+        week_words = sum(d["word_count"] for k, d in daily.items() if k >= week_start)
+        self._words_sub.setText(f"{week_words:,} this week")
+        self._saved_sub.setText(f"{swpm / twpm:.1f}x faster" if twpm > 0 and swpm > 0 else "")
+        self._streak_sub.setText("in a row" if streak else "Dictate to start")
+        today_min = daily.get(datetime.now().strftime("%Y-%m-%d"), {}).get("duration_min", 0)
+        self._today_sub.setText(f"{today_min:.0f} min speaking" if today_min >= 1 else "")
+
+        waits = sorted(i.duration_ms for i in self.db.get_recent(limit=30) if i.duration_ms > 0)
+        if waits:
+            self.latency_pill.setText(f"● Typical wait {waits[len(waits) // 2] / 1000:.1f} s")
+            self.latency_pill.setToolTip("Median time from when you stop talking to when your text appears (last 30 dictations)")
+        self.latency_pill.setVisible(bool(waits))
 
     def _bento_stat_card(self, label: str, value: str, subtext: str, tooltip: str = "") -> tuple[QFrame, QLabel, QLabel]:
         f = QFrame()

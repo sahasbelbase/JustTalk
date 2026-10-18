@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import List, Optional
 
@@ -64,6 +65,15 @@ class ContextChip(QLabel):
         """)
 
 
+def _change_label(item: HistoryItem) -> str:
+    """"Translated" or "AI Refined" when the typed text differs from what was heard by more than
+    punctuation and capitals; "" otherwise."""
+    if item.action == "translate":
+        return "Translated"
+    words = lambda t: re.sub(r"[^\w\s]", "", t.lower()).split()  # noqa: E731
+    return "AI Refined" if words(item.raw_transcription) != words(item.processed_text) else ""
+
+
 class HistoryEntryWidget(QFrame):
     """A single history entry, expandable to show raw vs formatted side-by-side diff."""
     
@@ -106,14 +116,16 @@ class HistoryEntryWidget(QFrame):
         hdr.addWidget(app_lbl)
         
         # Context Chip
-        chip = ContextChip(item.context, is_dark=config.appearance == "dark")
+        chip = ContextChip(item.context, is_dark=ThemeManager.is_dark(config.appearance))
         hdr.addWidget(chip)
 
-        # AI Refined Pill
-        ai_pill = QLabel("✦ AI Refined")
-        ai_pill.setObjectName("accentPill")
-        ai_pill.setFont(ThemeManager.get_mono_font(10, weight=QFont.Weight.Bold))
-        hdr.addWidget(ai_pill)
+        # Only when the AI actually changed the words (not just a final period)
+        change = _change_label(item)
+        if change:
+            ai_pill = QLabel(f"✦ {change}")
+            ai_pill.setObjectName("accentPill")
+            ai_pill.setFont(ThemeManager.get_mono_font(10, weight=QFont.Weight.Bold))
+            hdr.addWidget(ai_pill)
         
         hdr.addStretch()
         
@@ -163,14 +175,10 @@ class HistoryEntryWidget(QFrame):
         raw_layout.setSpacing(6)
 
         raw_hdr_row = QHBoxLayout()
-        raw_hdr = QLabel("Raw Speech Transcript")
+        raw_hdr = QLabel("What you said")
         raw_hdr.setFont(ThemeManager.get_ui_font(12, weight=QFont.Weight.DemiBold))
         raw_hdr_row.addWidget(raw_hdr)
         raw_hdr_row.addStretch()
-        raw_tag = QLabel("Unfiltered Audio Buffer")
-        raw_tag.setObjectName("secondaryPill")
-        raw_tag.setFont(ThemeManager.get_mono_font(9))
-        raw_hdr_row.addWidget(raw_tag)
         raw_layout.addLayout(raw_hdr_row)
         
         raw_text = QTextEdit()
@@ -180,10 +188,6 @@ class HistoryEntryWidget(QFrame):
         raw_text.setFixedHeight(95)
         raw_layout.addWidget(raw_text)
 
-        raw_footer = QLabel("● Detected pauses & hesitation markers removed")
-        raw_footer.setObjectName("mutedLabel")
-        raw_footer.setFont(ThemeManager.get_mono_font(10))
-        raw_layout.addWidget(raw_footer)
 
         detail_layout.addWidget(raw_panel, 1)
         
@@ -195,14 +199,10 @@ class HistoryEntryWidget(QFrame):
         fmt_layout.setSpacing(6)
 
         fmt_hdr_row = QHBoxLayout()
-        fmt_hdr = QLabel("Formatted Output")
+        fmt_hdr = QLabel("What was typed")
         fmt_hdr.setFont(ThemeManager.get_ui_font(12, weight=QFont.Weight.DemiBold))
         fmt_hdr_row.addWidget(fmt_hdr)
         fmt_hdr_row.addStretch()
-        fmt_tag = QLabel("High Fidelity")
-        fmt_tag.setObjectName("statusPill")
-        fmt_tag.setFont(ThemeManager.get_mono_font(9, weight=QFont.Weight.Bold))
-        fmt_hdr_row.addWidget(fmt_tag)
         fmt_layout.addLayout(fmt_hdr_row)
         
         fmt_text = QTextEdit()
@@ -213,10 +213,6 @@ class HistoryEntryWidget(QFrame):
         fmt_layout.addWidget(fmt_text)
 
         fmt_footer_row = QHBoxLayout()
-        fmt_footer = QLabel("✓ Grammar polished · Punctuation inferred · Local Qwen3 v5")
-        fmt_footer.setStyleSheet("color: #10B981;")
-        fmt_footer.setFont(ThemeManager.get_mono_font(10, weight=QFont.Weight.Medium))
-        fmt_footer_row.addWidget(fmt_footer)
         fmt_footer_row.addStretch()
         
         re_copy_btn = QPushButton("Copy Text")

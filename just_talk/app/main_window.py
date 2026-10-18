@@ -378,7 +378,7 @@ class MainWindow(QMainWindow):
         title_vbox.setSpacing(0)
         title = QLabel("Just Talk")
         title.setFont(ThemeManager.get_ui_font(13, weight=QFont.Weight.Bold))
-        subtitle = QLabel(f"v{__version__} · v5 AI")
+        subtitle = QLabel(f"v{__version__}")
         subtitle.setObjectName("mutedLabel")
         subtitle.setFont(ThemeManager.get_ui_font(10))
         title_vbox.addWidget(title)
@@ -535,11 +535,6 @@ class MainWindow(QMainWindow):
         hero_title = QLabel("Dictation Shortcut")
         hero_title.setFont(ThemeManager.get_ui_font(14, weight=QFont.Weight.DemiBold))
         hero_header.addWidget(hero_title)
-
-        hero_hook_pill = QLabel("Global Hook Active")
-        hero_hook_pill.setObjectName("accentPill")
-        hero_hook_pill.setFont(ThemeManager.get_mono_font(10, weight=QFont.Weight.Bold))
-        hero_header.addWidget(hero_hook_pill)
 
         hero_header.addStretch()
 
@@ -888,11 +883,12 @@ class MainWindow(QMainWindow):
             self._update_home_mode_desc()
 
         # 2. AI Formatting & Circuit Breaker
-        use_local = getattr(self.config, "local_ai", False) and hasattr(self, "local_ai") and self.local_ai.is_available()
+        local_name = self._local_ai_name()
+        use_local = bool(getattr(self.config, "local_ai", False) and local_name)
         if self.config.offline_mode:
             if use_local:
                 self.gemini_card.title_label.setText("On-Device AI Active")
-                self.gemini_card.status_label.setText("Qwen3-1.7B v5 (Offline & Private)")
+                self.gemini_card.status_label.setText(f"{local_name} · offline & private")
                 self.sidebar_dot.setStyleSheet("color: #30D158;")
                 self.sidebar_status_text.setText("Ready (Local)")
             else:
@@ -903,7 +899,7 @@ class MainWindow(QMainWindow):
         elif not self.config.gemini_enabled:
             if use_local:
                 self.gemini_card.title_label.setText("On-Device AI Active")
-                self.gemini_card.status_label.setText("Qwen3-1.7B v5 (Local Only)")
+                self.gemini_card.status_label.setText(f"{local_name} · on this Mac" if sys.platform == "darwin" else f"{local_name} · on this PC")
                 self.sidebar_dot.setStyleSheet("color: #30D158;")
                 self.sidebar_status_text.setText("Ready (Local)")
             else:
@@ -914,7 +910,7 @@ class MainWindow(QMainWindow):
         elif self.gemini.circuit_breaker.is_paused:
             if use_local:
                 self.gemini_card.title_label.setText("Cloud Paused → Local AI")
-                self.gemini_card.status_label.setText("Fallback: Qwen3-1.7B v5")
+                self.gemini_card.status_label.setText(f"Backup: {local_name}")
                 self.sidebar_dot.setStyleSheet("color: #30D158;")
                 self.sidebar_status_text.setText("Ready (Local Fallback)")
             else:
@@ -931,7 +927,7 @@ class MainWindow(QMainWindow):
             active_model = getattr(self.config, "ai_model", "") or self.config.gemini_model
             if use_local:
                 self.gemini_card.title_label.setText("Hybrid AI Active")
-                self.gemini_card.status_label.setText(f"{p_name} + On-Device Qwen3 v5")
+                self.gemini_card.status_label.setText(f"{p_name} + {local_name}")
             else:
                 self.gemini_card.title_label.setText(f"{p_name} Active")
                 self.gemini_card.status_label.setText(active_model)
@@ -949,7 +945,8 @@ class MainWindow(QMainWindow):
         # 4. Update shortcut display
         sc_text = self._get_shortcut_display()
         self.hero_keycap.setText(sc_text)
-        self.sidebar_key_label.setText(f"Shortcut: {sc_text}")
+        self.sidebar_key_label.setText(sc_text)  # a keycap: just the key, so the status beside it fits
+        self.sidebar_key_label.setToolTip("Dictation shortcut")
         if hasattr(self, "hero_desc"):
             self.hero_desc.setText(self._get_trigger_hint(short=False))
         if hasattr(self, "dashboard") and hasattr(self.dashboard, "shortcut_hint"):
@@ -1749,7 +1746,7 @@ class MainWindow(QMainWindow):
         self.custom_browse_btn.clicked.connect(self._on_browse_custom_stt_folder)
         custom_input_row.addWidget(self.custom_browse_btn)
 
-        self.custom_test_btn = QPushButton("Validate & Test")
+        self.custom_test_btn = QPushButton("Validate && Test")
         self.custom_test_btn.setObjectName("primaryBtn")
         self.custom_test_btn.clicked.connect(self._on_validate_custom_stt)
         custom_input_row.addWidget(self.custom_test_btn)
@@ -2096,18 +2093,19 @@ class MainWindow(QMainWindow):
         self.vocab_input.editingFinished.connect(self._autosave_settings)
 
         # Wire up subnav rail categories to sections
+        # Each entry is named after the section it opens (the variable names don't match the titles)
         subnav_categories = [
-            ("Shortcut & Triggers", "keyboard", sec1),
-            ("Speech Model", "memory", sec2),
-            ("Nepali & Kriti", "sparkles", sec_nepali),
-            ("Languages", "language", sec_langs),
-            ("Speaking Speed", "soundwave", sec_spk),
-            ("Voice & Audio", "mic", sec3),
-            ("AI Formatting", "neurology", sec4),
-            ("Application", "settings", sec6),
+            ("Shortcut", "keyboard", sec1),
+            ("Voice & Speech", "mic", sec2),
+            ("Languages", "language", sec_nepali),
+            ("Speech Engine", "memory", sec_langs),
+            ("Voice Isolation", "soundwave", sec_spk),
+            ("AI Formatting", "sparkles", sec3),
+            ("Appearance", "settings", sec4),
+            ("Updates & Startup", "refresh", sec6),
         ]
         for idx, (title, icon_name, sec_target) in enumerate(subnav_categories):
-            btn = QPushButton(f"  {title}")
+            btn = QPushButton("  " + title.replace("&", "&&"))  # a lone & is a keyboard mnemonic in Qt
             btn.setObjectName("subnavBtn")
             btn.setCheckable(True)
             btn.setChecked(idx == 0)
@@ -2134,7 +2132,8 @@ class MainWindow(QMainWindow):
         """Scroll smoothly to the targeted settings section and expand it."""
         section.set_expanded(True)
         if hasattr(self, "settings_scroll"):
-            self.settings_scroll.ensureWidgetVisible(section, 0, 25)
+            # after the expanded section is laid out, so it can scroll to the top
+            QTimer.singleShot(0, lambda: self.settings_scroll.verticalScrollBar().setValue(max(0, section.y() - 12)))
         if btn is not None:
             btn.setChecked(True)
 
@@ -2183,15 +2182,13 @@ class MainWindow(QMainWindow):
         card.setObjectName("surfaceCard")
         v = QVBoxLayout(card)
         v.setSpacing(8)
-        self.local_ai_check = QCheckBox("Use on-device AI model (private, offline & fast)")
+        self.local_ai_check = QCheckBox("Use the on-device AI model (private, works offline)")
         self.local_ai_check.setChecked(bool(getattr(self.config, "local_ai", False)))
         self.local_ai_check.toggled.connect(self._on_local_ai_toggled)
         v.addWidget(self._with_help(
             self.local_ai_check,
-            "Cleans up English, formats spoken lists into bullet points, and translates Nepglish into English "
-            "directly on this computer: 100% private, works offline, no API key needed. "
-            "Powered by Just Talk v5 (Qwen3-1.7B Q4_K_M tuned on your authentic voice takes, Nepglish loanwords, "
-            "and disfluency removal). Instant response (~180ms).",
+            "Cleans up English and translates Nepglish into English on this computer: private, works offline, "
+            "no API key, usually under a second. The AI provider below is used as a backup when one is set up.",
         ))
         row = QHBoxLayout()
         self.local_ai_status = QLabel("")
@@ -2225,15 +2222,25 @@ class MainWindow(QMainWindow):
             return
         self.local_ai_btn.setVisible(not downloaded)
         if local_model.is_tuned(models_dir):
-            self.local_ai_status.setText("Just Talk v5 tuned model (Qwen3-1.7B Q4_K_M) is active.")
+            self.local_ai_status.setText("Just Talk's tuned model (Qwen3 1.7B) is on this computer.")
         else:
             self.local_ai_status.setText("Qwen3 1.7B is on this computer." if downloaded else "The model isn't downloaded yet.")
+
+    def _local_ai_name(self) -> str:
+        """Which on-device model would clean up dictations, or "" when none can run."""
+        from ..ai import local_model
+
+        models_dir = self.model_manager.models_dir
+        if not local_model.runtime_available() or not local_model.model_path(models_dir).exists():
+            return ""
+        return "Tuned Qwen3 1.7B" if local_model.is_tuned(models_dir) else "Qwen3 1.7B"
 
     def _on_local_ai_toggled(self, on: bool) -> None:
         from ..ai import local_model
 
         self.config.local_ai = on
         self.config.save()
+        self._refresh_home_status()
         if on and not local_model.model_path(self.model_manager.models_dir).exists():
             self._download_local_ai()
 
@@ -2719,7 +2726,7 @@ class MainWindow(QMainWindow):
 
             def done():
                 self.custom_test_btn.setEnabled(True)
-                self.custom_test_btn.setText("Validate & Test")
+                self.custom_test_btn.setText("Validate && Test")
                 if is_valid:
                     self.custom_stt_status.setText(reason)
                     self.custom_stt_status.setStyleSheet("color: #30D158; font-size: 12px;")
@@ -3144,7 +3151,9 @@ class MainWindow(QMainWindow):
     def _on_test_dictation_clicked(self) -> None:
         if hasattr(self, "practice_text"):
             self.practice_text.setFocus()
-            self.practice_text.setPlaceholderText("Listening… hold your voice shortcut and speak now")
+            key = self._get_shortcut_display()
+            how = f"Hold {key} while you speak" if getattr(self.config, "push_to_talk", False) else f"Tap {key}, speak, then tap {key} again"
+            self.practice_text.setPlaceholderText(f"{how}. Your words appear here.")
 
     def _copy_practice_text(self) -> None:
         if hasattr(self, "practice_text"):
@@ -3336,7 +3345,7 @@ class MainWindow(QMainWindow):
 
                 def on_download_done():
                     if hasattr(self, "install_update_btn"):
-                        self.install_update_btn.setText("Installing & Restarting...")
+                        self.install_update_btn.setText("Installing && Restarting...")
                     success = UpdateChecker.install_update(target_path)
                     if not success:
                         QMessageBox.information(

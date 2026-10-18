@@ -239,7 +239,7 @@ class HistoryDatabase:
                        application, status, duration_ms, speaker,
                        context, word_count, duration_sec
                 FROM history
-                WHERE DATE(timestamp) = ?
+                WHERE DATE(timestamp, 'localtime') = ?
                 ORDER BY timestamp DESC
                 LIMIT ?
                 """,
@@ -264,14 +264,14 @@ class HistoryDatabase:
             cursor = conn.execute(
                 """
                 SELECT
-                    DATE(timestamp) AS date,
+                    DATE(timestamp, 'localtime') AS date,
                     SUM(word_count) AS total_words,
                     SUM(duration_sec) / 60.0 AS total_min,
                     application AS top_app
                 FROM history
                 WHERE timestamp >= DATE('now', ?)
-                GROUP BY DATE(timestamp), application
-                ORDER BY DATE(timestamp) DESC, total_words DESC
+                GROUP BY DATE(timestamp, 'localtime'), application
+                ORDER BY DATE(timestamp, 'localtime') DESC, total_words DESC
                 """,
                 (f"-{days} days",),
             )
@@ -303,7 +303,7 @@ class HistoryDatabase:
 
             today_str = datetime.now().strftime("%Y-%m-%d")
             today_row = conn.execute(
-                "SELECT SUM(word_count) AS s FROM history WHERE DATE(timestamp)=?",
+                "SELECT SUM(word_count) AS s FROM history WHERE DATE(timestamp, 'localtime')=?",
                 (today_str,),
             ).fetchone()
             today_words = int(today_row["s"] or 0)
@@ -314,7 +314,7 @@ class HistoryDatabase:
             while True:
                 ds = check_date.strftime("%Y-%m-%d")
                 row = conn.execute(
-                    "SELECT COUNT(*) AS c FROM history WHERE DATE(timestamp)=?", (ds,)
+                    "SELECT COUNT(*) AS c FROM history WHERE DATE(timestamp, 'localtime')=?", (ds,)
                 ).fetchone()
                 if row["c"] > 0:
                     streak += 1
