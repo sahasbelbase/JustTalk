@@ -964,6 +964,8 @@ class JustTalkApp:
         self.recorder.stop()
         if hasattr(self, "inserter"):
             self.inserter.cancel_draft()
+            # the click activates Just Talk a moment later; then go back to the browser/editor
+            QTimer.singleShot(150, self.inserter.return_to_target)
         if self.shortcut_manager:
             self.shortcut_manager.reset_state()
         self.bridge.state_error.emit("Cancelled")

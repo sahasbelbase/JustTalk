@@ -83,6 +83,21 @@ class TextInserter:
 
         return "Active Application"
 
+    def return_to_target(self) -> None:
+        """Clicking the pill's ✕ makes Just Talk the active app (its window jumps to the front) on
+        macOS. Give the focus back to the app the user was dictating into, if Just Talk took it."""
+        if sys.platform != "darwin" or self._target_app is None:
+            return
+        try:
+            from AppKit import NSRunningApplication, NSWorkspace
+
+            front = NSWorkspace.sharedWorkspace().frontmostApplication()
+            me = NSRunningApplication.currentApplication()
+            if front is not None and front.processIdentifier() == me.processIdentifier():
+                self._reactivate_target_window()
+        except Exception as e:
+            print(f"[TextInserter] couldn't return to the target app: {e}", file=sys.stderr)
+
     def draft_can_be_undone(self, app_name: Optional[str] = None) -> bool:
         """Whether a quick draft pasted now can be taken back with undo when the polished text is ready."""
         name = (app_name or self.get_active_app_name()).lower()
