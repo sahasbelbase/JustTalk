@@ -294,3 +294,18 @@ def test_dictation_never_types_an_em_dash():
     cfg = AppConfig(stt_provider="whisper", two_phase_emission=False, gemini_enabled=False, local_ai=True)
     inserter, _ = _run_pipeline(cfg, "it is fast and cheap", local_reply="It is fast — and cheap.")
     assert inserter.insert.call_args.args[0] == "It is fast, and cheap."
+
+
+def test_hesitation_sounds_are_removed():
+    from just_talk.ai.gemini import without_fillers
+
+    assert without_fillers("Umm so I was thinking ahhh we ship friday") == "So I was thinking we ship friday"
+    assert without_fillers("I was, um, thinking hmm about it.") == "I was, thinking about it."
+    assert without_fillers("Oh, that's great") == "Oh, that's great"
+    assert without_fillers("5 mm screws") == "5 mm screws"
+    assert without_fillers("go to the ER now") == "go to the ER now"
+    assert without_fillers("buy AAA batteries, I'm OOO, use MM/DD") == "buy AAA batteries, I'm OOO, use MM/DD"
+    assert without_fillers("Aaah I forgot") == "I forgot"
+    assert without_fillers("it was er fine") == "it was fine"
+    assert without_fillers("उम्म म भोलि अहह आउँछु") == "म भोलि आउँछु"
+    assert without_fillers("- eggs umm\n- milk") == "- eggs\n- milk"

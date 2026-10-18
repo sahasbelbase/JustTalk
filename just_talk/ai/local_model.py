@@ -125,6 +125,24 @@ def _spoken(phrase: str, source: str) -> bool:
     return len(sound) >= 3 and sound in key(source)
 
 
+_LIST_CUE = re.compile(
+    r"\b(?:lists?|bullets?|bullet points?|points|items|action items|steps|step one|checklist|to-do|todo|to do list)\b",
+    re.IGNORECASE,
+)
+_LIST_LINE = re.compile(r"^(?:- |\d+\. )", re.MULTILINE)
+
+
+def asks_for_list(text: str) -> bool:
+    """Whether the dictation asks for a list, so a bulleted answer is wanted."""
+    low = text.lower()
+    return bool(
+        _LIST_CUE.search(low)
+        or re.search(r"\bfirst\b", low) and re.search(r"\bsecond\b", low)
+        or any(w in text for w in ("लिस्ट", "सूची", "बुँदा", "बुदा"))
+        or "पहिलो" in text and "दोस्रो" in text
+    )
+
+
 def check_output(task: str, source: str, output: str) -> Optional[str]:
     """Why an answer can't be trusted, or None if it looks like a faithful edit/translation."""
     out = output.strip()
@@ -135,6 +153,8 @@ def check_output(task: str, source: str, output: str) -> Optional[str]:
         return "repeated its instructions"
     if task == "translate" and _DEVANAGARI.search(out):
         return "left Devanagari untranslated"
+    if task in ("translate", "cleanup") and len(_LIST_LINE.findall(out)) >= 2 and not asks_for_list(source):
+        return "made a list nobody asked for"
     if task in ("generate", "edit", "action"):
         words = [w.lower().strip(".,!?") for w in out.split()]
         for i in range(len(words) - 3):

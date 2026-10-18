@@ -34,7 +34,7 @@ from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import QApplication
 
 from ..ai.actions import ActionIntent, ActionRouter
-from ..ai.gemini import GeminiFormatter, without_ai_dashes
+from ..ai.gemini import GeminiFormatter, without_ai_dashes, without_fillers
 from ..ai.prompts import (
     EDIT_SELECTION_STYLE,
     GENERATE_STYLE,
@@ -1213,6 +1213,13 @@ class JustTalkApp:
             # 4. Action Routing & Intent Detection
             conventions = getattr(self.config, "conventions", {})
             can_action = use_gemini or use_local
+            if is_action_mode and can_action and has_devanagari(raw_text) and self.local_ai.is_available():
+                # Kriti writes spoken English commands in Nepali letters ("ट्रान्सलेट डिस टु इङ्ग्लिस"):
+                # read the request as English so commands are recognised and the result is English
+                spoken, ok, _ = self.local_ai.run("translate", raw_text, self._speaker_context())
+                if ok and spoken.strip():
+                    print(f"[Action] request in English: {spoken!r}", file=sys.stderr)
+                    raw_text = spoken.strip()
             if is_action_mode and can_action:
                 selected_text = self.inserter.copy_selection()
                 if selected_text and detected_context != "text" and TextInserter.is_implicit_line_copy(selected_text):
@@ -1354,7 +1361,7 @@ class JustTalkApp:
                               f"{cleaned!r}" if success else f"[LocalAI Redirect] {msg}", file=sys.stderr)
 
                 if success and cleaned:
-                    final_text = without_ai_dashes(cleaned)
+                    final_text = without_fillers(without_ai_dashes(cleaned))
                 else:
                     # Circuit breaker triggered or formatting error: instantly insert raw dictation
                     final_text = GeminiFormatter.light_local_cleanup(final_text)
@@ -1497,7 +1504,7 @@ class JustTalkApp:
             self.bridge.state_error.emit("Couldn't write that" if generate else "Couldn't edit selection")
             return
 
-        edited = without_ai_dashes(edited)
+        edited = without_fillers(without_ai_dashes(edited))
         inserted_ok, status, active_app = self.inserter.insert(
             edited,
             restore_clipboard=self.config.restore_clipboard,

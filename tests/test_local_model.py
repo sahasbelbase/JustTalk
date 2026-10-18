@@ -271,3 +271,24 @@ def test_language_words_tell_kriti_english_from_nepali():
     assert en >= 0.3 and ne == 0
     en, ne = language_words("छ महिना अगाडि म एउटा ताल गएको थिएँ")
     assert en == 0 and ne > 0
+
+
+def test_asks_for_list_in_both_languages():
+    from just_talk.ai.local_model import asks_for_list
+
+    assert asks_for_list("make a list of the bugs")
+    assert asks_for_list("first fix login and second fix logout")
+    assert asks_for_list("मलाई एउटा लिस्ट चाहियो")
+    assert asks_for_list("पहिलो काम र दोस्रो काम")
+    assert not asks_for_list("send the file to the team")
+    assert not asks_for_list("first fix login")
+    assert not asks_for_list("म भोलि आउँछु")
+
+
+def test_unasked_lists_are_rejected_for_translate_and_cleanup_only():
+    bulleted = "- fix login\n- fix logout"
+    for task in ("translate", "cleanup"):
+        assert check_output(task, "fix login and fix logout", bulleted) == "made a list nobody asked for"
+        assert check_output(task, "make a list: fix login, fix logout", bulleted) is None
+    assert check_output("cleanup", "fix login and fix logout", "1. fix login\n2. fix logout") == "made a list nobody asked for"
+    assert check_output("edit", "fix login and fix logout", bulleted) is None

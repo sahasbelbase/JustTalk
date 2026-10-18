@@ -117,6 +117,30 @@ class CircuitBreaker:
 _DASH = re.compile(r"[ \t]*[—–][ \t]*")
 
 
+_FILLER = re.compile(
+    # all-caps AAA, OOO and MM are real words (batteries, out of office, MM/DD), so those forms
+    # only match lowercase or a capital first letter ("Aaah", "Mmm")
+    r"(?:\b(?:um+|uh+m*|erm|ah{2,}|(?-i:[Aa]a+h*)|oh{2,}|(?-i:[Oo]o+h*)|hm+|(?<!\d )(?<!\d)(?-i:[Mm]m+))\b"
+    r"|\b(?-i:er)\b"
+    r"|(?<![\u0900-\u097F])(?:उम्म+|अहह+|हम्म+|अँ)(?![\u0900-\u097F]))[ \t]*,?",
+    re.IGNORECASE,
+)
+
+
+def without_fillers(text: str) -> str:
+    """Stretched hesitation sounds (umm, ahhh, hmm, उम्म) are never wanted in typed text.
+    Plain "oh"/"ah", "5 mm" and the ER stay. Newlines are left alone so bullet lists survive."""
+    first = _FILLER.search(text.lstrip())
+    out = _FILLER.sub("", text)
+    out = re.sub(r"[ \t]{2,}", " ", out)
+    out = re.sub(r"[ \t]+([,.!?;:।]|$)", r"\1", out, flags=re.MULTILINE)
+    out = re.sub(r",[ \t]*,", ",", out)
+    out = re.sub(r"^[ \t]*,[ \t]*", "", out, flags=re.MULTILINE).lstrip(" \t")
+    if first and first.start() == 0:
+        out = out[:1].upper() + out[1:]
+    return out
+
+
 def without_ai_dashes(text: str) -> str:
     """Em/en dashes as punctuation read as AI-written; people dictating don't say them.
     "fast — and cheap" -> "fast, and cheap"; a dash starting a line becomes a "- " bullet.
@@ -180,7 +204,7 @@ class GeminiFormatter:
             text = new_text
 
         # Remove mid-sentence stutter fillers
-        text = re.sub(r"\b(?:um|uh)\b[,\s]*", "", text, flags=re.IGNORECASE)
+        text = without_fillers(text)
 
         # Check if the entire text is a standalone URL, domain, or email
         is_url_or_domain = bool(
