@@ -119,10 +119,10 @@ _DASH = re.compile(r"[ \t]*[—–][ \t]*")
 
 _FILLER = re.compile(
     # all-caps AAA, OOO and MM are real words (batteries, out of office, MM/DD), so those forms
-    # only match lowercase or a capital first letter ("Aaah", "Mmm")
+    # only match lowercase or a capital first letter ("Aaah", "Mmm"). Kriti writes "umm" as उम् or उम्म.
     r"(?:\b(?:um+|uh+m*|erm|ah{2,}|(?-i:[Aa]a+h*)|oh{2,}|(?-i:[Oo]o+h*)|hm+|(?<!\d )(?<!\d)(?-i:[Mm]m+))\b"
     r"|\b(?-i:er)\b"
-    r"|(?<![\u0900-\u097F])(?:उम्म+|अहह+|हम्म+|अँ)(?![\u0900-\u097F]))[ \t]*,?",
+    r"|(?<![\u0900-\u097F])(?:उम्म*|अहह+|हम्म+|अँ)(?![\u0900-\u097F]))[ \t]*,?",
     re.IGNORECASE,
 )
 

@@ -308,4 +308,5 @@ def test_hesitation_sounds_are_removed():
     assert without_fillers("Aaah I forgot") == "I forgot"
     assert without_fillers("it was er fine") == "it was fine"
     assert without_fillers("उम्म म भोलि अहह आउँछु") == "म भोलि आउँछु"
+    assert without_fillers("उम् बाबा अस्पताल जानुभएको छ") == "बाबा अस्पताल जानुभएको छ"  # how Kriti wrote it
     assert without_fillers("- eggs umm\n- milk") == "- eggs\n- milk"
