@@ -28,9 +28,10 @@ MODEL_SHA256 = "061b54daade076b5d3362dac252678d17da8c68f07560be70818cace6590cb1a
 MODEL_SIZE = 1834426016
 MODEL_DOWNLOAD_MB = round(MODEL_SIZE / 1e6)
 # A Just Talk fine-tune placed next to it (not downloadable yet) is preferred when present.
-# v2: v4 and v5 scored lower on the user's real Nepali dictations (36.5 vs 40.1 chrF++) and v5
-# turns sentences negative ("I'll go to the office" -> "I will not come to the office").
-TUNED_MODEL_FILE = "justtalk-qwen3-1.7b-v2-Q4_K_M.gguf"
+# v6.2 (19 Oct), from Qwen3-1.7B with the v2 recipe plus the user's recordings and app dictations.
+# Same tests, chrF++ v2 -> v6.2: his Nepali dictations 40.1 -> 41.1, FLORES+ 40.8 -> 42.1, his voice
+# 48.9 -> 56.1, his app dictations 64.5 -> 77.5; lists 0/6 -> 6/6; cleanup 68.9 -> 67.5.
+TUNED_MODEL_FILE = "justtalk-qwen3-1.7b-v6.2-Q8_0.gguf"
 
 _DEVANAGARI = re.compile(r"[ऀ-ॿ]")
 _PROMPT_LEAKS = ("output only", "keep every detail", "this dictation", "<think", "</think", "translate this")
@@ -144,6 +145,21 @@ def asks_for_list(text: str) -> bool:
     )
 
 
+_LEADING_ANSWERS = {"yes", "no", "yeah", "nope", "okay", "ok", "sure"}
+
+
+def keep_leading_answer(task: str, source: str, output: str) -> str:
+    """v6.2 sometimes treats a leading "Yes," as a filler ("Yes, I think I do" -> "I think I do").
+    An answer word the speaker said first is put back; dropping "No" would flip the meaning."""
+    if task != "cleanup" or not source.strip() or not output:
+        return output
+    first = source.split()[0].strip(",.!?").lower()
+    if first not in _LEADING_ANSWERS or output.lower().lstrip("\"'").startswith(first):
+        return output
+    rest = output if output.startswith("I ") or output.startswith("I'") else output[:1].lower() + output[1:]
+    return f"{first.capitalize() if first != 'ok' else 'OK'}, {rest}"
+
+
 def check_output(task: str, source: str, output: str) -> Optional[str]:
     """Why an answer can't be trusted, or None if it looks like a faithful edit/translation."""
     out = output.strip()
@@ -246,4 +262,4 @@ class LocalModel:
         problem = check_output(task, text, out)
         if problem:
             return text, False, f"On-device answer rejected ({problem})."
-        return out, True, ""
+        return keep_leading_answer(task, text, out), True, ""

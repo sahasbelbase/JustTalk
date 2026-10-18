@@ -324,3 +324,13 @@ def test_unasked_lists_are_rejected_for_translate_and_cleanup_only():
         assert check_output(task, "make a list: fix login, fix logout", bulleted) is None
     assert check_output("cleanup", "fix login and fix logout", "1. fix login\n2. fix logout") == "made a list nobody asked for"
     assert check_output("edit", "fix login and fix logout", bulleted) is None
+
+
+def test_a_leading_yes_or_no_is_never_dropped():
+    from just_talk.ai.local_model import keep_leading_answer
+
+    assert keep_leading_answer("cleanup", "Yes I think I do", "I think I do.") == "Yes, I think I do."
+    assert keep_leading_answer("cleanup", "no we should wait", "We should wait.") == "No, we should wait."
+    assert keep_leading_answer("cleanup", "Yes I think I do", "Yes, I think I do.") == "Yes, I think I do."
+    assert keep_leading_answer("cleanup", "the yes vote", "The yes vote.") == "The yes vote."
+    assert keep_leading_answer("translate", "हो", "Yes.") == "Yes."
