@@ -173,7 +173,7 @@ def sound_overlap(english: str, devanagari: str) -> float:
     return matched / max(len(a), len(b))
 
 
-# English as Kriti spells it in Devanagari, and Nepali grammar words. On 15 Oct dictations every real
+# English as Kriti spells it in Devanagari, and Nepali grammar words. Every real
 # Nepali stretch had none of the first and nearly always some of the second; every English stretch
 # the reverse, even where Apple was unsure of its English.
 _DEV_ENGLISH_WORDS = set(

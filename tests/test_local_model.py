@@ -285,7 +285,7 @@ def test_long_english_is_cleaned_up_a_few_stretches_at_a_time():
 
 
 def test_english_that_apple_was_unsure_of_is_still_english_when_kriti_wrote_english_words():
-    """15 Oct English story: Apple at 0.49-0.74 with repeated words, so these went to Kriti and
+    """Long English story: Apple at 0.49-0.74 with repeated words, so these went to Kriti and
     the model invented sentences. Kriti's own words (द, एन्ड, इज, no Nepali) say it was English."""
     app, _ = _bare_app()
     english_story = ("Although he said and disappeared in the clouds the next morning", 0.49,
@@ -334,3 +334,18 @@ def test_a_leading_yes_or_no_is_never_dropped():
     assert keep_leading_answer("cleanup", "Yes I think I do", "Yes, I think I do.") == "Yes, I think I do."
     assert keep_leading_answer("cleanup", "the yes vote", "The yes vote.") == "The yes vote."
     assert keep_leading_answer("translate", "हो", "Yes.") == "Yes."
+
+
+def test_the_published_model_is_preferred_and_older_ones_keep_working(tmp_path):
+    from just_talk.ai import local_model as lm
+
+    folder = tmp_path / "local-ai"
+    folder.mkdir()
+    assert lm.model_path(tmp_path).name == lm.MODEL_FILE and not lm.is_current(tmp_path) is False
+    (folder / "Qwen3-1.7B-Q8_0.gguf").write_bytes(b"x")
+    assert lm.model_path(tmp_path).name == "Qwen3-1.7B-Q8_0.gguf" and not lm.is_tuned(tmp_path)
+    (folder / "justtalk-qwen3-1.7b-v2-Q4_K_M.gguf").write_bytes(b"x")
+    assert lm.model_path(tmp_path).name == "justtalk-qwen3-1.7b-v2-Q4_K_M.gguf" and not lm.is_current(tmp_path)
+    (folder / lm.MODEL_FILE).write_bytes(b"x")
+    assert lm.is_current(tmp_path) and lm.is_tuned(tmp_path)
+    assert lm.MODEL_URL == f"https://huggingface.co/{lm.MODEL_REPO}/resolve/main/{lm.MODEL_FILE}"

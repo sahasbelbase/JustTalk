@@ -49,7 +49,7 @@ def test_devanagari_spelling_variants_are_not_errors():
 
 
 def test_devanagari_real_mistakes_are_caught():
-    # Whisper's take on the user's own test clip: बोली (speech) is not भोलि (tomorrow)
+    # Whisper's take on a test clip: बोली (speech) is not भोलि (tomorrow)
     s = score_take("म भोलि अफिस जान्छु अनि रिपोर्ट पठाउँछु।", "मा बोली आफिस जान्चू औनि रिपोर्ट पठाऊंचू", NE)
     assert s.words[1].status == MISHEARD
     assert s.words[0].status == MISHEARD  # मा is a different word from म
@@ -253,7 +253,7 @@ def test_compound_words_split_or_joined_by_the_engine_still_count():
 
 
 def test_role_jargon_mishearing_is_learned():
-    # The user's own example: "push to git" heard as "push to gate"
+    # Example: "push to git" heard as "push to gate"
     session = ProfileSession([EN], role="software", current_engine={EN: "apple"})
     _read_all(session, {"apple": lambda p: p.text.replace("git ", "gate ")})
     [s] = session.summary()

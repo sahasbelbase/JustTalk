@@ -240,14 +240,14 @@ class JustTalkApplication(QApplication):
 # sounds Kriti did. Logged on every mixed dictation so these can be tuned from real speech.
 MIXED_APPLE_MIN_CONFIDENCE = 0.6
 MIXED_MIN_SOUND_OVERLAP = 0.55
-MIXED_APPLE_SURE = 0.9  # the user's Nepali never got above 0.54 from Apple
+MIXED_APPLE_SURE = 0.9  # Nepali stretches stay below about 0.55 Apple confidence
 # Kriti itself wrote English ("द", "एन्ड", "इज") and no Nepali grammar words: it was English, even when
-# Apple was unsure (0.5-0.6 on a 15 Oct English story, whose stretches then came out as Devanagari).
+# Apple was unsure (0.5-0.6 on a long English story, whose stretches then came out as Devanagari).
 MIXED_KRITI_ENGLISH_WORDS = 0.1
 MIXED_APPLE_MIN_IF_KRITI_ENGLISH = 0.4
 MIXED_PIECE_SEC = 8.0  # language is decided per stretch of this length at most, cut at pauses
 # The on-device model drops whole sentences from long Nepali (it trained on up to ~80 words), so
-# Mixed mode translates a few stretches at a time: on 15 Oct dictations, 33 -> 57 chrF++.
+# Mixed mode translates a few stretches at a time, which scores much better on long speech.
 MIXED_TRANSLATE_MAX_WORDS = 40
 
 
@@ -1100,7 +1100,7 @@ class JustTalkApp:
 
             # 1. Speaker identification on the raw, speech-only audio: the same signal
             #    enrollment captures. Comparing noise-filtered audio against a raw profile,
-            #    silence included, scored the user's own voice anywhere from 0.23 to 0.76.
+            #    silence included, scored the same voice anywhere from 0.23 to 0.76.
             identified_speaker = None
             if (
                 not force_accept_speaker

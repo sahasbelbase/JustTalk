@@ -200,7 +200,7 @@ def test_tracker_untimed_partials_then_timed_final_do_not_duplicate():
 
 
 def test_mac_merge_treats_reworded_revision_as_same_utterance():
-    # 15 Oct English story: Apple revised "Turn to Daniel…" to "Return to Danielle…" and both were kept
+    # Long English story: Apple revised "Turn to Daniel…" to "Return to Danielle…" and both were kept
     committed = []
     latest = ""
     for partial in ["Turn to Daniel and said never", "Return to Danielle and said never"]:

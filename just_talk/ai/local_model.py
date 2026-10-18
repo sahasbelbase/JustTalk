@@ -1,6 +1,6 @@
 """On-device AI for dictation cleanup and translation to English (llama.cpp, no cloud).
 
-Speed comes from four things measured in the Oct 2026 bake-off on the user's own dictations:
+Speed comes from four things:
 - llama.cpp on the GPU (Metal on Macs): ~6x faster than CTranslate2's CPU path;
 - a short, fixed system prompt, so llama.cpp reuses its KV cache across calls
   (re-reading the full cloud prompt each time cost 2-5 s before the first word);
@@ -8,8 +8,8 @@ Speed comes from four things measured in the Oct 2026 bake-off on the user's own
   which stops small models looping ("all all all ...") — worst case went from 3.3 s to 1.3 s;
 - staying loaded while the user is active (the app's idle unloader frees it later).
 
-The model is untuned Qwen3-1.7B for now. Anything that fails the sanity checks below is
-rejected so the caller keeps the raw draft (or asks the cloud model, if the user has one).
+The model is Just Talk's own fine-tune of Qwen3-1.7B (MODEL_FILE). Anything that fails the
+sanity checks below is rejected so the caller keeps the raw draft (or asks the cloud model).
 """
 
 from __future__ import annotations
@@ -22,16 +22,15 @@ import threading
 from pathlib import Path
 from typing import Callable, Optional, Tuple
 
-MODEL_FILE = "Qwen3-1.7B-Q8_0.gguf"
-MODEL_URL = f"https://huggingface.co/Qwen/Qwen3-1.7B-GGUF/resolve/main/{MODEL_FILE}"
-MODEL_SHA256 = "061b54daade076b5d3362dac252678d17da8c68f07560be70818cace6590cb1a"
-MODEL_SIZE = 1834426016
+# The model the app downloads: Just Talk's fine-tune of Qwen3-1.7B, hosted on Hugging Face.
+MODEL_REPO = "SahasBelbase/justtalk-qwen3-1.7b-gguf"
+MODEL_FILE = "justtalk-qwen3-1.7b-v6.2-Q8_0.gguf"
+MODEL_URL = f"https://huggingface.co/{MODEL_REPO}/resolve/main/{MODEL_FILE}"
+MODEL_SHA256 = "f5cca61f76b4e9a5195f1345f52ae3dd19f05670e82ffa9140b5e6521989980e"
+MODEL_SIZE = 1834426656
 MODEL_DOWNLOAD_MB = round(MODEL_SIZE / 1e6)
-# A Just Talk fine-tune placed next to it (not downloadable yet) is preferred when present.
-# v6.2 (19 Oct), from Qwen3-1.7B with the v2 recipe plus the user's recordings and app dictations.
-# Same tests, chrF++ v2 -> v6.2: his Nepali dictations 40.1 -> 41.1, FLORES+ 40.8 -> 42.1, his voice
-# 48.9 -> 56.1, his app dictations 64.5 -> 77.5; lists 0/6 -> 6/6; cleanup 68.9 -> 67.5.
-TUNED_MODEL_FILE = "justtalk-qwen3-1.7b-v6.2-Q8_0.gguf"
+# Older models already on disk, best first: they keep working until MODEL_FILE has downloaded
+OLDER_MODEL_FILES = ("justtalk-qwen3-1.7b-v2-Q4_K_M.gguf", "Qwen3-1.7B-Q8_0.gguf")
 
 _DEVANAGARI = re.compile(r"[ऀ-ॿ]")
 _PROMPT_LEAKS = ("output only", "keep every detail", "this dictation", "<think", "</think", "translate this")
@@ -55,13 +54,22 @@ SYSTEM = {
 
 
 def model_path(models_dir: Path) -> Path:
+    """The model to load: the current one, else an older one already on disk, else where the
+    current one will be downloaded to."""
     folder = Path(models_dir) / "local-ai"
-    tuned = folder / TUNED_MODEL_FILE
-    return tuned if tuned.exists() else folder / MODEL_FILE
+    for name in (MODEL_FILE,) + OLDER_MODEL_FILES:
+        if (folder / name).exists():
+            return folder / name
+    return folder / MODEL_FILE
 
 
 def is_tuned(models_dir: Path) -> bool:
-    return model_path(models_dir).name == TUNED_MODEL_FILE
+    return model_path(models_dir).name.startswith("justtalk-")
+
+
+def is_current(models_dir: Path) -> bool:
+    """The latest model is on disk (an older one may still be in use until it downloads)."""
+    return model_path(models_dir).name == MODEL_FILE
 
 
 def runtime_available() -> bool:
@@ -149,7 +157,7 @@ _LEADING_ANSWERS = {"yes", "no", "yeah", "nope", "okay", "ok", "sure"}
 
 
 def keep_leading_answer(task: str, source: str, output: str) -> str:
-    """v6.2 sometimes treats a leading "Yes," as a filler ("Yes, I think I do" -> "I think I do").
+    """The model sometimes treats a leading "Yes," as a filler ("Yes, I think I do" -> "I think I do").
     An answer word the speaker said first is put back; dropping "No" would flip the meaning."""
     if task != "cleanup" or not source.strip() or not output:
         return output
@@ -200,7 +208,7 @@ class LocalModel:
 
     def is_downloaded(self) -> bool:
         p = model_path(self.models_dir)
-        return p.exists() and (p.name == TUNED_MODEL_FILE or p.stat().st_size == MODEL_SIZE)
+        return p.exists() and (p.name != MODEL_FILE or p.stat().st_size == MODEL_SIZE)
 
     def is_available(self) -> bool:
         return self.is_downloaded() and runtime_available()

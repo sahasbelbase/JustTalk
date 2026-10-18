@@ -324,7 +324,7 @@ def test_a_spoken_web_address_is_typed_as_is():
 
 
 def test_text_filters_leave_real_words_and_code_alone():
-    """From a review of today's changes: these used to be changed."""
+    """Real words, code and ranges must survive the text filters."""
     from just_talk.ai.gemini import is_web_address, without_ai_dashes, without_fillers
 
     assert without_fillers("    x = 1\n    y  = 2") == "    x = 1\n    y  = 2"  # code indentation

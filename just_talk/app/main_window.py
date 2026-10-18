@@ -2236,11 +2236,17 @@ class MainWindow(QMainWindow):
             return
         if getattr(self, "_local_ai_downloading", False):
             return
-        self.local_ai_btn.setVisible(not downloaded)
-        if local_model.is_tuned(models_dir):
-            self.local_ai_status.setText("Just Talk's tuned model (Qwen3 1.7B) is on this computer.")
+        current = local_model.is_current(models_dir)
+        self.local_ai_btn.setVisible(not current)
+        size = f"{local_model.MODEL_DOWNLOAD_MB / 1000:.1f} GB"
+        if current:
+            self.local_ai_status.setText("Just Talk's on-device model is on this computer.")
+        elif downloaded:  # an older model keeps working until the new one is here
+            self.local_ai_status.setText("A better on-device model is available.")
+            self.local_ai_btn.setText(f"Get it ({size})")
         else:
-            self.local_ai_status.setText("Qwen3 1.7B is on this computer." if downloaded else "The model isn't downloaded yet.")
+            self.local_ai_status.setText("The model isn't downloaded yet.")
+            self.local_ai_btn.setText(f"Download ({size})")
 
     def _local_ai_name(self) -> str:
         """Which on-device model would clean up dictations, or "" when none can run."""
@@ -2249,7 +2255,7 @@ class MainWindow(QMainWindow):
         models_dir = self.model_manager.models_dir
         if not local_model.runtime_available() or not local_model.model_path(models_dir).exists():
             return ""
-        return "Tuned Qwen3 1.7B" if local_model.is_tuned(models_dir) else "Qwen3 1.7B"
+        return "Just Talk model" if local_model.is_tuned(models_dir) else "Qwen3 1.7B"
 
     def _on_local_ai_toggled(self, on: bool) -> None:
         from ..ai import local_model
