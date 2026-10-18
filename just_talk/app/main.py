@@ -712,14 +712,19 @@ class JustTalkApp:
         """Translate the Nepali stretches and clean up the English ones (punctuation, misheard
         words), a few same-language stretches per call: whole sentences for context, short enough
         that the model keeps every detail. `done` has runs already translated while the user talked."""
-        parts = []
-        for run in self._segment_runs(segments):
+        runs, parts, failed, msg = self._segment_runs(segments), [], 0, ""
+        for run in runs:
             result, ok, msg = (done or {}).get(run) or (None, False, "")
             if not ok:
                 result, ok, msg = self._run_local_ai(*run)
             if not ok:
-                return "", False, msg
+                # Keep the rest polished: one rejected run used to send a whole 100-word story out raw
+                failed += 1
+                print(f"[LocalAI] {run[0]} run kept as heard ({msg}): {run[1][:60]!r}", file=sys.stderr)
+                result = GeminiFormatter.light_local_cleanup(run[1])
             parts.append(result)
+        if failed == len(runs):
+            return "", False, msg
         return " ".join(parts), True, ""
 
     @staticmethod

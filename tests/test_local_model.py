@@ -177,6 +177,23 @@ def test_nepali_stretches_are_translated_and_english_ones_cleaned_up():
     assert calls == [("translate", "हेलो के छ हलखबर भोक लागिरहेको छ"), ("cleanup", "So my name is Sahas I push to get")]
 
 
+def test_one_rejected_run_doesnt_send_the_whole_dictation_out_raw():
+    """A 100-word English story lost all its cleanup because one run was rejected."""
+    app, _ = _bare_app()
+
+    class Local:
+        def run(self, task, text, context=""):
+            if task == "translate":
+                return text, False, "length doesn't match what was said"
+            return "So today I found out.", True, ""
+
+    app.local_ai = Local()
+    text, ok, _ = app._translate_segments([("so today i found out", "en"), ("अब यो", "ne")])
+    assert ok and text == "So today I found out. अब यो।"
+    app.local_ai.run = lambda task, text, context="": (text, False, "rejected")
+    assert app._translate_segments([("अब यो", "ne")])[1] is False  # nothing to keep: the caller falls back
+
+
 def test_long_nepali_is_translated_a_few_stretches_at_a_time():
     """The on-device model drops sentences from 200-word Nepali, so runs are capped in words."""
     app, _ = _bare_app()
