@@ -126,6 +126,21 @@ def test_mixed_stretches_recognized_while_talking_are_not_redone():
     assert len(calls) == 2  # only the English stretch was left after the user stopped
 
 
+def test_mixed_live_preview_shows_english_stretches_in_english():
+    """While talking, the HUD used to show only Kriti, so English came out in Nepali letters."""
+    from just_talk.app.main import MIXED_PIECE_SEC, _MixedEarly
+    from just_talk.stt.long_form import EarlyPieces
+
+    app, np = _bare_app()
+    _mixed_engines(app)
+    quiet = np.zeros(8000, np.float32)
+    audio = np.concatenate([np.full(16000 * 5, 0.2, np.float32), quiet, np.full(16000 * 3, 0.1, np.float32)])
+    early = _MixedEarly(EarlyPieces(app._mixed_piece, max_piece_sec=MIXED_PIECE_SEC), translate=False)
+    early.pieces.update(audio)  # the English stretch is finished; the Nepali one is still being spoken
+    shown = app._mixed_preview(early, audio, lambda a: app.kriti.transcribe(a))
+    assert shown == "So my name is Sahas and I am from Kathmandu. हेलो के छ हलखबर भोक लागिरहेको छ"
+
+
 def test_early_pieces_cut_the_same_pieces_as_split_on_pauses():
     import numpy as np
     from just_talk.audio.vad import VoiceActivityDetector

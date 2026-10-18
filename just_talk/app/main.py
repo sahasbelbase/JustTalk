@@ -682,6 +682,16 @@ class JustTalkApp:
                 segments.append((text, "en" if use_english else "ne"))
         return segments
 
+    def _mixed_preview(self, early: _MixedEarly, audio, preview) -> str:
+        """Mixed mode's live text: finished stretches as they will be typed (Apple's English where
+        it heard English, Kriti's Devanagari elsewhere), then Kriti's guess for the stretch still
+        being spoken. Kriti alone showed English words in Nepali letters until the very end."""
+        done = early.pieces.results()
+        tail = audio[done[-1][1]:] if done else audio
+        shown = " ".join(text for text, _ in self._segments_from(done))
+        live = preview(tail) if len(tail) >= int(16000 * 0.35) else ""
+        return f"{shown} {live or ''}".strip()
+
     def _mixed_transcribe(self, audio, early: Optional[EarlyPieces] = None) -> list:
         """People who mix Nepali and English switch language mid-dictation, so the engine is chosen
         per stretch of speech (split at pauses). `early` has the stretches already recognized
@@ -914,7 +924,8 @@ class JustTalkApp:
                 if preview is None:
                     continue
                 started = time.monotonic()
-                partial_text = preview(cur_audio)
+                early = self._early_mixed
+                partial_text = self._mixed_preview(early, cur_audio, preview) if early else preview(cur_audio)
                 # Rest at least as long as the decode took, so the preview never uses more than
                 # about half the CPU however slow the engine is.
                 pause = max(0.18, 1.2 * (time.monotonic() - started))
