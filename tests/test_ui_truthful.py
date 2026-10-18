@@ -33,16 +33,26 @@ def _window():
         on_config_changed=lambda c: None,
     )
 
-
-def test_each_settings_menu_entry_opens_its_own_section(qapp):
+def test_each_settings_menu_entry_opens_its_own_page(qapp):
     w = _window()
     for btn in w.subnav_group.buttons():
         label = btn.text().strip().replace("&&", "&")
-        for sec in w.settings_sections:
-            sec.set_expanded(False)
         btn.click()
-        opened = [s.title for s in w.settings_sections if not s.content_widget.isHidden()]
-        assert len(opened) == 1 and label in opened[0], (label, opened)
+        shown = [s for s in w.settings_sections if not s.isHidden()]
+        assert len(shown) == 1 and label in shown[0].title, (label, [s.title for s in shown])
+        assert not shown[0].content_widget.isHidden()  # a page is always open
+        assert label in w.settings_page_title.text()
+
+
+def test_settings_search_shows_matches_from_every_page_then_returns(qapp):
+    w = _window()
+    voice = next(b for b in w.subnav_group.buttons() if "Voice Isolation" in b.text())
+    voice.click()
+    w.settings_search_input.setText("microphone")
+    shown = [s.title for s in w.settings_sections if not s.isHidden()]
+    assert "Voice & Speech" in shown and w.settings_page_title.text() == "Search results"
+    w.settings_search_input.clear()
+    assert [s.title for s in w.settings_sections if not s.isHidden()] == ["Voice Isolation"]
 
 
 def test_activity_grid_starts_on_sunday_and_ends_this_week(qapp):

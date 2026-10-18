@@ -165,6 +165,13 @@ class CollapsibleSettingsSection(QFrame):
     def toggle_expanded(self) -> None:
         self.set_expanded(not self.content_widget.isVisible())
 
+    def set_page_mode(self, on: bool) -> None:
+        """Shown as a settings page: the page header carries the title, and it's always open."""
+        self.header_btn.setVisible(not on)
+        self.set_expanded(True if on else self.default_expanded)
+        if on:
+            self.header_divider.hide()
+
     def set_expanded(self, expanded: bool) -> None:
         self.content_widget.setVisible(expanded)
         self.header_divider.setVisible(expanded)
@@ -1288,7 +1295,7 @@ class MainWindow(QMainWindow):
         subnav_title.setFont(ThemeManager.get_display_font(18, weight=QFont.Weight.Bold))
         subnav_layout.addWidget(subnav_title)
 
-        subnav_desc = QLabel("Preferences & Options")
+        subnav_desc = QLabel("Changes save automatically.")
         subnav_desc.setObjectName("mutedLabel")
         subnav_desc.setFont(ThemeManager.get_ui_font(11))
         subnav_layout.addWidget(subnav_desc)
@@ -1349,15 +1356,16 @@ class MainWindow(QMainWindow):
         # Top Header Bar
         header_row = QVBoxLayout()
         header_row.setSpacing(2)
-        header = QLabel("System Preferences")
-        header.setFont(ThemeManager.get_display_font(24, weight=QFont.Weight.Bold))
-        header_row.addWidget(header)
+        # The open page's title and description (set by _show_settings_page)
+        self.settings_page_title = QLabel("")
+        self.settings_page_title.setFont(ThemeManager.get_display_font(24, weight=QFont.Weight.Bold))
+        header_row.addWidget(self.settings_page_title)
 
         desc_row = QHBoxLayout()
-        header_desc = QLabel("Changes save automatically to local storage.")
-        header_desc.setObjectName("mutedLabel")
-        header_desc.setFont(ThemeManager.get_ui_font(12))
-        desc_row.addWidget(header_desc)
+        self.settings_page_desc = QLabel("")
+        self.settings_page_desc.setObjectName("mutedLabel")
+        self.settings_page_desc.setFont(ThemeManager.get_ui_font(12))
+        desc_row.addWidget(self.settings_page_desc)
         desc_row.addStretch()
         self.settings_saved_lbl = QLabel("")
         self.settings_saved_lbl.setObjectName("savedIndicator")
@@ -2111,9 +2119,11 @@ class MainWindow(QMainWindow):
             btn.setChecked(idx == 0)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.setIcon(icons.icon(icon_name, size=15))
-            btn.clicked.connect(lambda _, s=sec_target, b=btn: self._scroll_to_settings_section(s, b))
+            btn.clicked.connect(lambda _, s=sec_target, b=btn: self._show_settings_page(s, b))
             self._subnav_layout.addWidget(btn)
             self.subnav_group.addButton(btn, idx)
+            if idx == 0:
+                self._show_settings_page(sec_target, btn)
 
         self._subnav_layout.addStretch()
 
@@ -2128,14 +2138,20 @@ class MainWindow(QMainWindow):
 
         return self._main_settings_widget
 
-    def _scroll_to_settings_section(self, section: CollapsibleSettingsSection, btn: Optional[QPushButton] = None) -> None:
-        """Scroll smoothly to the targeted settings section and expand it."""
-        section.set_expanded(True)
-        if hasattr(self, "settings_scroll"):
-            # after the expanded section is laid out, so it can scroll to the top
-            QTimer.singleShot(0, lambda: self.settings_scroll.verticalScrollBar().setValue(max(0, section.y() - 12)))
+    def _show_settings_page(self, section: CollapsibleSettingsSection, btn: Optional[QPushButton] = None) -> None:
+        """Settings work like System Settings: each menu entry is its own page."""
+        self._settings_page = section
         if btn is not None:
             btn.setChecked(True)
+        if self.settings_search_input.text():
+            self.settings_search_input.clear()  # leaving search results; this calls back here with no query
+            return
+        for sec in self.settings_sections:
+            sec.setVisible(sec is section)
+            sec.set_page_mode(sec is section)
+        self.settings_page_title.setText(section.title.removeprefix("Advanced: "))
+        self.settings_page_desc.setText(section.subtitle)
+        self.settings_scroll.verticalScrollBar().setValue(0)
 
     # ── Learning ─────────────────────────────────────────────────────────────
 
@@ -2371,17 +2387,25 @@ class MainWindow(QMainWindow):
         if hasattr(self, "settings_search_clear_btn"):
             self.settings_search_clear_btn.setVisible(has_query)
 
+        if not has_query:  # back to the page you were on
+            if hasattr(self, "settings_search_count_lbl"):
+                self.settings_search_count_lbl.hide()
+            if getattr(self, "_settings_page", None) is not None:
+                self._show_settings_page(self._settings_page)
+            return
+
+        # Results from every page, each under its own heading
         match_count = 0
         for sec in getattr(self, "settings_sections", []):
-            if not has_query:
-                sec.show()
-                sec.set_expanded(sec.default_expanded)
-            else:
-                matches = sec.matches_search(query)
-                sec.setVisible(matches)
-                if matches:
-                    match_count += 1
-                    sec.set_expanded(True)
+            matches = sec.matches_search(query)
+            sec.setVisible(matches)
+            sec.set_page_mode(False)
+            if matches:
+                match_count += 1
+                sec.set_expanded(True)
+        if hasattr(self, "settings_page_title"):
+            self.settings_page_title.setText("Search results")
+            self.settings_page_desc.setText(f"Settings matching “{text.strip()}”")
 
         if hasattr(self, "settings_search_count_lbl"):
             if has_query:
