@@ -107,3 +107,42 @@ def test_no_undoable_draft_in_terminals_and_ide_terminals():
         assert not inserter.draft_can_be_undone("Antigravity IDE")  # its terminal, or can't tell
     with patch.object(inserter, "_focus_is_web_text_box", return_value=True):
         assert inserter.draft_can_be_undone("Antigravity IDE")  # its chat or editor box
+
+
+def test_a_dropped_paste_is_pasted_once_more():
+    """Brave sometimes dropped the paste while Just Talk showed "Inserted"."""
+    from just_talk.system.caret_locator import CaretLocator
+
+    inserter = TextInserter()
+    lengths = iter([10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10])
+    with patch.object(CaretLocator, "_last_has_text_target", True), \
+         patch.object(TextInserter, "_focused_text_length", staticmethod(lambda: next(lengths, 10))), \
+         patch.object(inserter, "_synthesize_paste", return_value=True) as paste, \
+         patch("just_talk.system.inserter.time.sleep"):
+        assert inserter.insert("hello") == (True, "inserted", inserter.get_active_app_name())
+    assert paste.call_count == 2
+
+
+def test_a_paste_that_landed_is_not_repeated():
+    from just_talk.system.caret_locator import CaretLocator
+
+    inserter = TextInserter()
+    lengths = iter([10, 15])
+    with patch.object(CaretLocator, "_last_has_text_target", True), \
+         patch.object(TextInserter, "_focused_text_length", staticmethod(lambda: next(lengths, 15))), \
+         patch.object(inserter, "_synthesize_paste", return_value=True) as paste, \
+         patch("just_talk.system.inserter.time.sleep"):
+        inserter.insert("hello")
+    assert paste.call_count == 1
+
+
+def test_no_second_paste_after_replacing_a_draft():
+    from just_talk.system.caret_locator import CaretLocator
+
+    inserter = TextInserter()
+    with patch.object(CaretLocator, "_last_has_text_target", True), \
+         patch.object(TextInserter, "_focused_text_length", staticmethod(lambda: 10)), \
+         patch.object(inserter, "_synthesize_paste", return_value=True) as paste, \
+         patch("just_talk.system.inserter.time.sleep"):
+        inserter.insert("hello", replace_previous=True)
+    assert paste.call_count == 1

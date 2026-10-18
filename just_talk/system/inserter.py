@@ -169,6 +169,48 @@ class TextInserter:
             except Exception as e:
                 print(f"[TextInserter] Windows target reactivation error: {e}", file=sys.stderr)
 
+    @staticmethod
+    def _target_is_frontmost(pid: int) -> bool:
+        try:
+            from AppKit import NSWorkspace
+
+            front = NSWorkspace.sharedWorkspace().frontmostApplication()
+            return front is not None and front.processIdentifier() == pid
+        except Exception:
+            return False
+
+    @staticmethod
+    def _focused_text_length() -> Optional[int]:
+        """Characters in the focused text box (macOS accessibility), or None when it can't be read."""
+        if sys.platform != "darwin":
+            return None
+        try:
+            import ApplicationServices as AS
+            from AppKit import NSWorkspace
+
+            app = NSWorkspace.sharedWorkspace().frontmostApplication()
+            elem = AS.AXUIElementCreateApplication(app.processIdentifier())
+            err, focused = AS.AXUIElementCopyAttributeValue(elem, AS.kAXFocusedUIElementAttribute, None)
+            if err != 0 or focused is None:
+                return None
+            err, n = AS.AXUIElementCopyAttributeValue(focused, "AXNumberOfCharacters", None)
+            if err == 0 and n is not None:
+                return int(n)
+            err, value = AS.AXUIElementCopyAttributeValue(focused, AS.kAXValueAttribute, None)
+            return len(value) if err == 0 and isinstance(value, str) else None
+        except Exception:
+            return None
+
+    def _paste_missed(self, before: int) -> bool:
+        """True when the focused text box still has the same length 0.6 s after pasting (well past
+        how long browsers take to report a change, so a slow update isn't mistaken for a miss)."""
+        for _ in range(12):
+            time.sleep(0.05)
+            now = self._focused_text_length()
+            if now is None or now != before:
+                return False
+        return True
+
     def _synthesize_paste(self) -> bool:
         """Synthesize platform-native paste keystroke (Cmd+V on macOS, Ctrl+V on Windows)."""
         if sys.platform == "darwin":
@@ -187,12 +229,17 @@ class TextInserter:
                 Quartz.CGEventSetFlags(v_up, Quartz.kCGEventFlagMaskCommand)
                 cmd_up = Quartz.CGEventCreateKeyboardEvent(source, cmd_code, False)
 
+                Quartz.CGEventSetFlags(cmd_down, Quartz.kCGEventFlagMaskCommand)
+
                 target_pid = None
                 if self._target_app is not None and hasattr(self._target_app, "processIdentifier"):
                     target_pid = self._target_app.processIdentifier()
 
-                if target_pid and hasattr(Quartz, "CGEventPostToPid"):
-                    # Direct PID-addressed event delivery directly into target app queue
+                # When the target is in front, send Cmd+V the way a real key press travels (HID).
+                # Events posted straight to a process were sometimes dropped by Chromium apps
+                # (Brave, VS Code, Antigravity) while Just Talk still showed "Inserted".
+                if target_pid and not self._target_is_frontmost(target_pid) and hasattr(Quartz, "CGEventPostToPid"):
+                    # Focus moved elsewhere: address the paste to the target app only
                     Quartz.CGEventPostToPid(target_pid, cmd_down)
                     time.sleep(0.01)
                     Quartz.CGEventPostToPid(target_pid, v_down)
@@ -523,15 +570,22 @@ class TextInserter:
         self._reactivate_target_window()
 
         # Step 3b: If in-place replacement (Phase 2), undo previous draft first
-        if replace_previous or self._has_active_draft:
+        replacing = replace_previous or self._has_active_draft
+        if replacing:
             self.undo_last_paste()
             time.sleep(0.04)
 
         # Step 4: Synthesize simulated paste keystroke
         try:
+            before = None if replacing else self._focused_text_length()
             paste_ok = self._synthesize_paste()
             if not paste_ok:
                 raise RuntimeError("All paste mechanisms failed")
+            # A paste can be dropped silently; when the text box didn't change, paste once more.
+            # Not after an undo (a draft swap can leave the length the same), so never twice.
+            if before is not None and self._paste_missed(before):
+                print(f"[TextInserter] Paste didn't land in '{active_app}'; pasting again", file=sys.stderr)
+                self._synthesize_paste()
 
             if not restore_clipboard:
                 # Active draft emitted: keep flag set and DO NOT restore clipboard yet

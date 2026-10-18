@@ -41,4 +41,5 @@ def _no_real_clipboard_or_keystrokes(monkeypatch):
     monkeypatch.setattr(TextInserter, "undo_last_paste", lambda self: None)
     monkeypatch.setattr(TextInserter, "_synthesize_copy", lambda self: True)
     monkeypatch.setattr(TextInserter, "_modifiers_down", staticmethod(lambda: False))
+    monkeypatch.setattr(TextInserter, "_focused_text_length", staticmethod(lambda: None))  # don't read the real screen
     yield
