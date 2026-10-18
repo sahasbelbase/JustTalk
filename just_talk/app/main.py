@@ -34,7 +34,7 @@ from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import QApplication
 
 from ..ai.actions import ActionIntent, ActionRouter
-from ..ai.gemini import GeminiFormatter
+from ..ai.gemini import GeminiFormatter, without_ai_dashes
 from ..ai.prompts import (
     EDIT_SELECTION_STYLE,
     GENERATE_STYLE,
@@ -1354,7 +1354,7 @@ class JustTalkApp:
                               f"{cleaned!r}" if success else f"[LocalAI Redirect] {msg}", file=sys.stderr)
 
                 if success and cleaned:
-                    final_text = cleaned
+                    final_text = without_ai_dashes(cleaned)
                 else:
                     # Circuit breaker triggered or formatting error: instantly insert raw dictation
                     final_text = GeminiFormatter.light_local_cleanup(final_text)
@@ -1497,6 +1497,7 @@ class JustTalkApp:
             self.bridge.state_error.emit("Couldn't write that" if generate else "Couldn't edit selection")
             return
 
+        edited = without_ai_dashes(edited)
         inserted_ok, status, active_app = self.inserter.insert(
             edited,
             restore_clipboard=self.config.restore_clipboard,

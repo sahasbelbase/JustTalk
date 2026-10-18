@@ -276,3 +276,21 @@ def test_on_device_ai_stays_off_when_switched_off():
     inserter, runs = _run_pipeline(cfg, "we are fixing this bug today", local_reply="Rewritten!")
     assert runs == []
     assert inserter.insert.call_args.args[0] == "We are fixing this bug today."
+
+
+def test_ai_dashes_become_plain_punctuation():
+    from just_talk.ai.gemini import without_ai_dashes
+
+    assert without_ai_dashes("The plan—if it works—saves time.") == "The plan, if it works, saves time."
+    assert without_ai_dashes("It is fast — and cheap.") == "It is fast, and cheap."
+    assert without_ai_dashes("— first\n— second") == "- first\n- second"
+    assert without_ai_dashes("Pages 10–20 and 10 – 20.") == "Pages 10–20 and 10 – 20."
+    assert without_ai_dashes("A plain - hyphen stays.") == "A plain - hyphen stays."
+
+
+def test_dictation_never_types_an_em_dash():
+    from just_talk.config import AppConfig
+
+    cfg = AppConfig(stt_provider="whisper", two_phase_emission=False, gemini_enabled=False, local_ai=True)
+    inserter, _ = _run_pipeline(cfg, "it is fast and cheap", local_reply="It is fast — and cheap.")
+    assert inserter.insert.call_args.args[0] == "It is fast, and cheap."

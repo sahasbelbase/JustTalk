@@ -114,6 +114,25 @@ class CircuitBreaker:
         self._tripped_at = None
 
 
+_DASH = re.compile(r"[ \t]*[—–][ \t]*")
+
+
+def without_ai_dashes(text: str) -> str:
+    """Em/en dashes as punctuation read as AI-written; people dictating don't say them.
+    "fast — and cheap" -> "fast, and cheap"; a dash starting a line becomes a "- " bullet.
+    Number ranges ("10–20", "10 – 20") stay."""
+
+    def plain(m: re.Match) -> str:
+        before, after = text[m.start() - 1 : m.start()], text[m.end() : m.end() + 1]
+        if before.isdigit() and after.isdigit():
+            return m.group(0)
+        return "- " if m.start() == 0 or before == "\n" else ", "
+
+    out = _DASH.sub(plain, text)
+    out = re.sub(r",[ \t]*([,.!?;:])", r"\1", out)
+    return re.sub(r",[ \t]*$", "", out, flags=re.MULTILINE)
+
+
 class GeminiFormatter:
     """Client for formatting speech via Google AI Studio Gemini API with strict hardening."""
 
