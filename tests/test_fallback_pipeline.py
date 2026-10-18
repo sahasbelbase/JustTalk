@@ -310,3 +310,14 @@ def test_hesitation_sounds_are_removed():
     assert without_fillers("उम्म म भोलि अहह आउँछु") == "म भोलि आउँछु"
     assert without_fillers("उम् बाबा अस्पताल जानुभएको छ") == "बाबा अस्पताल जानुभएको छ"  # how Kriti wrote it
     assert without_fillers("- eggs umm\n- milk") == "- eggs\n- milk"
+
+
+def test_a_spoken_web_address_is_typed_as_is():
+    """"youtube.com" came out as "YouTube.com." which the address bar can't open."""
+    from just_talk.config import AppConfig
+
+    cfg = AppConfig(stt_provider="whisper", two_phase_emission=False, gemini_enabled=False, local_ai=True)
+    inserter, runs = _run_pipeline(cfg, "youtube.com", local_reply="YouTube.com.")
+    assert runs == [] and inserter.insert.call_args.args[0] == "youtube.com"
+    inserter, runs = _run_pipeline(cfg, "the site is youtube.com", local_reply="The site is YouTube.com.")
+    assert runs == ["cleanup"]  # a sentence that only mentions an address is still cleaned up

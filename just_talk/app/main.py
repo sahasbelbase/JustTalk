@@ -34,7 +34,7 @@ from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import QApplication
 
 from ..ai.actions import ActionIntent, ActionRouter
-from ..ai.gemini import GeminiFormatter, without_ai_dashes, without_fillers
+from ..ai.gemini import GeminiFormatter, is_web_address, without_ai_dashes, without_fillers
 from ..ai.prompts import (
     EDIT_SELECTION_STYLE,
     GENERATE_STYLE,
@@ -1340,7 +1340,9 @@ class JustTalkApp:
             local_task = self._local_task(intent, action_name, final_text, is_action_mode) if can_local else None
 
             # The on-device model runs when it's switched on, or as a backup when the cloud fails
-            if use_gemini or (prefer_local and local_task):
+            if is_web_address(final_text):
+                final_text = GeminiFormatter.light_local_cleanup(final_text)  # "youtube.com", as said
+            elif use_gemini or (prefer_local and local_task):
                 if not draft_emitted:
                     self.bridge.state_processing.emit(
                         "Translating..." if (action_name == "translate" or intent.action_type == "translate") else "Cleaning..."

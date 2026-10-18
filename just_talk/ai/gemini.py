@@ -141,6 +141,18 @@ def without_fillers(text: str) -> str:
     return out
 
 
+_WEB_ADDRESS = re.compile(
+    r"^(?:https?://\S+|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|(?:www\.)?[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+(?:/[^\s]*)?)\.?$",
+    re.IGNORECASE,
+)
+
+
+def is_web_address(text: str) -> bool:
+    """The whole dictation is a URL, domain or email ("youtube.com"): type it as is. The AI
+    cleanup made it "YouTube.com." which an address bar can't open."""
+    return bool(_WEB_ADDRESS.match(text.strip()))
+
+
 def without_ai_dashes(text: str) -> str:
     """Em/en dashes as punctuation read as AI-written; people dictating don't say them.
     "fast — and cheap" -> "fast, and cheap"; a dash starting a line becomes a "- " bullet.
@@ -207,15 +219,7 @@ class GeminiFormatter:
         text = without_fillers(text)
 
         # Check if the entire text is a standalone URL, domain, or email
-        is_url_or_domain = bool(
-            re.match(
-                r"^(?:https?://\S+|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|(?:www\.)?[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+(?:/[^\s]*)?)\.?$",
-                text,
-                re.IGNORECASE,
-            )
-        )
-
-        if is_url_or_domain:
+        if is_web_address(text):
             # Strip trailing period and normalize to lowercase
             text = text.rstrip(".")
             if not text.startswith("http"):
