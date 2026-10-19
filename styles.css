@@ -1386,6 +1386,547 @@ a {
 }
 
 /* ==========================================================================
+   On-device AI: training data and benchmarks
+   ========================================================================== */
+.model-section {
+  padding: 80px 0;
+  /* One blue per model across every chart, checked for contrast on the card surface */
+  --viz-base: #394B88;   /* Qwen3 1.7B, untuned */
+  --viz-v2: #6C8EEF;     /* v2, the previous model (the site accent) */
+  --viz-v62: #B4C6FA;    /* v6.2, in the app now */
+  --viz-muted: #52525B;  /* context rows */
+  --viz-track: rgba(180, 198, 250, 0.14);
+  --viz-grid: rgba(255, 255, 255, 0.06);
+  --viz-axis: rgba(255, 255, 255, 0.18);
+}
+
+.model-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.model-kpi {
+  padding: 20px;
+  border-radius: 18px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+}
+
+.model-kpi-value {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  color: #FFFFFF;
+}
+
+.model-kpi-label {
+  margin-top: 6px;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.model-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.model-card {
+  min-width: 0;
+  padding: 28px;
+  border-radius: 24px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+}
+
+.section-container > .model-card {
+  margin-bottom: 24px;
+}
+
+.model-card-title {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #FFFFFF;
+  margin-bottom: 6px;
+}
+
+.model-card-sub {
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+  margin-bottom: 20px;
+}
+
+.hbar-row:focus-visible,
+.gbar:focus-visible,
+.journey-bar:focus-visible {
+  outline: 2px solid var(--viz-v62);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* Horizontal bars, one series: the value sits at the bar's tip */
+.hbar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.hbar-label {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.hbar-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 56px; /* room for the value when a bar is full width */
+  border-left: 1px solid var(--viz-axis);
+}
+
+.hbar-fill {
+  flex-shrink: 0;
+  height: 10px;
+  border-radius: 0 4px 4px 0;
+  background: var(--viz-v62);
+  transition: filter 0.15s ease;
+}
+
+.hbar-value {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.hbar-row:hover .hbar-fill,
+.hbar-row:focus-visible .hbar-fill,
+.gbar:hover .gbar-fill,
+.gbar:focus-visible .gbar-fill,
+.journey-bar:hover .journey-fill,
+.journey-bar:focus-visible .journey-fill {
+  filter: brightness(1.25);
+}
+
+/* Legend */
+.viz-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 18px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.viz-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.viz-swatch {
+  width: 12px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.viz-swatch.base { background: var(--viz-base); }
+.viz-swatch.v2 { background: var(--viz-v2); }
+.viz-swatch.v62 { background: var(--viz-v62); }
+.viz-swatch.muted { background: var(--viz-muted); }
+
+/* Grouped bars on a 0 to 100 scale, with hairline gridlines at every 25 */
+.gbar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.gbar-label {
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.gbar-n {
+  margin-left: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-subtle);
+}
+
+.gbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 10px; /* 8px bar + the 2px gap between bars */
+  padding: 1px 48px 1px 0;
+  border-left: 1px solid var(--viz-axis);
+  background-image: linear-gradient(to right, var(--viz-grid) 1px, transparent 1px);
+  background-size: 25% 100%;
+  background-origin: content-box;
+  background-clip: padding-box;
+}
+
+.gbar-fill {
+  flex-shrink: 0;
+  height: 8px;
+  border-radius: 0 4px 4px 0;
+  transition: filter 0.15s ease;
+}
+
+.gbar-fill.base { background: var(--viz-base); }
+.gbar-fill.v2 { background: var(--viz-v2); }
+.gbar-fill.v62 { background: var(--viz-v62); }
+
+.gbar-value {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.gbar-missing {
+  padding-left: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  line-height: 1;
+  color: var(--text-subtle);
+}
+
+.gbar-axis {
+  position: relative;
+  height: 14px;
+  margin: 8px 48px 0 0;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-subtle);
+}
+
+.gbar-axis span {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+}
+
+/* Behaviour checks */
+.check-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 20px;
+  margin-top: 16px;
+}
+
+.check-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 36px; /* two-line labels keep every meter on one line */
+  margin-bottom: 8px;
+}
+
+.check-label {
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: var(--text-primary);
+}
+
+.check-value {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 700;
+  white-space: nowrap;
+  color: #FFFFFF;
+}
+
+.meter {
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--viz-track);
+  overflow: hidden;
+}
+
+.meter-fill {
+  display: block;
+  height: 100%;
+  border-radius: 9999px;
+  background: var(--viz-v62);
+}
+
+.check-prev {
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-subtle);
+}
+
+.check-note {
+  margin: 20px 0 0;
+}
+
+/* Real outputs */
+.examples-table {
+  width: 100%;
+  margin-top: 12px;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  text-align: left;
+}
+
+.examples-table th {
+  padding: 10px 14px;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-card);
+}
+
+.examples-table td {
+  padding: 12px 14px;
+  vertical-align: top;
+  line-height: 1.5;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.examples-table td:last-child {
+  color: #FFFFFF;
+}
+
+.examples-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* Every version */
+.journey-list {
+  list-style: none;
+}
+
+.journey-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 210px) 1fr minmax(180px, 280px);
+  align-items: center;
+  gap: 20px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.journey-row:last-child {
+  border-bottom: none;
+}
+
+.journey-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #FFFFFF;
+}
+
+.journey-tag {
+  display: block;
+  width: fit-content;
+  margin-top: 6px;
+  padding: 1px 8px;
+  border-radius: 9999px;
+  border: 1px solid var(--border-card);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+.journey-row.is-current .journey-tag {
+  color: #FFFFFF;
+  background: rgba(180, 198, 250, 0.12);
+  border-color: rgba(180, 198, 250, 0.35);
+}
+
+.journey-lesson {
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.journey-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 48px 6px 0;
+  border-left: 1px solid var(--viz-axis);
+}
+
+.journey-fill {
+  flex-shrink: 0;
+  height: 10px;
+  border-radius: 0 4px 4px 0;
+  background: var(--viz-muted);
+  transition: filter 0.15s ease;
+}
+
+.journey-row.is-current .journey-fill {
+  background: var(--viz-v62);
+}
+
+.journey-value {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.journey-row.is-current .journey-value {
+  font-weight: 700;
+  color: #FFFFFF;
+}
+
+/* Table view of a chart */
+.viz-table {
+  margin-top: 18px;
+}
+
+.viz-table summary {
+  cursor: pointer;
+  width: fit-content;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--accent-blue);
+}
+
+.viz-table-scroll {
+  overflow-x: auto;
+}
+
+.viz-table table {
+  width: 100%;
+  margin-top: 12px;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.viz-table th,
+.viz-table td {
+  padding: 8px 10px;
+  text-align: right;
+  white-space: nowrap;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.viz-table thead th {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+}
+
+.viz-table th[scope="row"],
+.viz-table thead th:first-child {
+  text-align: left;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.viz-table-note {
+  margin-top: 10px;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--text-subtle);
+}
+
+/* One tooltip for every chart; it repeats what the labels and tables already show */
+.viz-tip {
+  position: fixed;
+  z-index: 1000;
+  max-width: 280px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #1C1C22;
+  border: 1px solid var(--border-card);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
+.viz-tip[hidden] {
+  display: none;
+}
+
+.viz-tip-value {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #FFFFFF;
+}
+
+.viz-tip-label {
+  margin-top: 2px;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.model-footer {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  padding: 0 4px;
+  font-size: 0.8rem;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.model-footer strong {
+  color: #FFFFFF;
+}
+
+@media (max-width: 900px) {
+  .model-kpis,
+  .check-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .model-grid,
+  .model-footer {
+    grid-template-columns: 1fr;
+  }
+  .journey-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+}
+
+@media (max-width: 600px) {
+  .model-card {
+    padding: 20px 16px;
+  }
+  .model-kpi-value {
+    font-size: 1.6rem;
+  }
+  .check-grid {
+    grid-template-columns: 1fr;
+  }
+  .check-head {
+    min-height: 0;
+  }
+}
+
+/* ==========================================================================
    Architectural Comparison Table
    ========================================================================== */
 .comparison-section {

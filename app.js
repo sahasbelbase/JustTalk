@@ -363,4 +363,43 @@
     }
   });
 
+  // --- Chart tooltips (On-device AI section): one tooltip, on hover and keyboard focus ---
+  const vizTip = document.getElementById('viz-tip');
+  if (vizTip) {
+    const tipValue = vizTip.querySelector('.viz-tip-value');
+    const tipLabel = vizTip.querySelector('.viz-tip-label');
+
+    const placeTip = (x, y) => {
+      const gap = 14;
+      const box = vizTip.getBoundingClientRect();
+      let left = x + gap;
+      let top = y + gap;
+      if (left + box.width > window.innerWidth - 8) left = x - box.width - gap;
+      if (top + box.height > window.innerHeight - 8) top = y - box.height - gap;
+      vizTip.style.left = `${Math.max(8, left)}px`;
+      vizTip.style.top = `${Math.max(8, top)}px`;
+    };
+
+    const showTip = (el, x, y) => {
+      tipValue.textContent = el.dataset.tipValue || '';
+      tipLabel.textContent = el.dataset.tipLabel || '';
+      vizTip.hidden = false;
+      placeTip(x, y);
+    };
+
+    const hideTip = () => { vizTip.hidden = true; };
+
+    document.querySelectorAll('[data-tip-value]').forEach((el) => {
+      el.addEventListener('pointerenter', (e) => showTip(el, e.clientX, e.clientY));
+      el.addEventListener('pointermove', (e) => placeTip(e.clientX, e.clientY));
+      el.addEventListener('pointerleave', hideTip);
+      el.addEventListener('focus', () => {
+        const r = el.getBoundingClientRect();
+        showTip(el, r.left + Math.min(r.width, 240) / 2, r.bottom);
+      });
+      el.addEventListener('blur', hideTip);
+    });
+    window.addEventListener('scroll', hideTip, { passive: true });
+  }
+
 })();
