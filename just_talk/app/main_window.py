@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import shutil
 import sys
 import threading
 from pathlib import Path
@@ -255,6 +256,8 @@ class MainWindow(QMainWindow):
 
         # Check for updates in background after startup
         QTimer.singleShot(3000, self._check_updates_background)
+        # Macs fetch the on-device model on their own
+        QTimer.singleShot(10000, self._auto_setup_local_ai)
 
     # -------------------------------------------------------------------------
     # Window Lifecycle & macOS Activation Policy
@@ -2261,12 +2264,44 @@ class MainWindow(QMainWindow):
         from ..ai import local_model
 
         self.config.local_ai = on
+        self.config.local_ai_auto_done = True  # the user's own choice from now on
         self.config.save()
         self._refresh_home_status()
         if on and not local_model.model_path(self.model_manager.models_dir).exists():
             self._download_local_ai()
 
-    def _download_local_ai(self) -> None:
+    def _auto_setup_local_ai(self) -> None:
+        """Macs get the on-device model without asking: it downloads in the background and switches
+        on when it arrives (local_model.auto_download_plan decides when)."""
+        from ..ai import local_model
+
+        if not self.config.onboarding_completed:  # setup is still downloading what it needs
+            QTimer.singleShot(60000, self._auto_setup_local_ai)
+            return
+        models_dir = Path(self.model_manager.models_dir)
+        plan = local_model.auto_download_plan(models_dir, bool(self.config.local_ai),
+                                              bool(self.config.local_ai_auto_done), bool(self.config.offline_mode))
+        if plan == "switch_on":
+            self._switch_on_local_ai_once()
+        elif plan == "download":
+            folder = models_dir
+            while not folder.exists() and folder.parent != folder:
+                folder = folder.parent
+            if shutil.disk_usage(folder).free > 2 * local_model.MODEL_SIZE:  # not on a nearly full disk
+                self._download_local_ai(on_done=self._switch_on_local_ai_once)
+
+    def _switch_on_local_ai_once(self) -> None:
+        if self.config.local_ai_auto_done:  # the user switched it on or off themselves meanwhile
+            return
+        self.config.local_ai_auto_done = True
+        self.config.local_ai = True
+        self.config.save()
+        self.local_ai_check.blockSignals(True)
+        self.local_ai_check.setChecked(True)
+        self.local_ai_check.blockSignals(False)
+        self._refresh_home_status()
+
+    def _download_local_ai(self, on_done: Optional[Callable[[], None]] = None) -> None:
         from ..ai import local_model
 
         if getattr(self, "_local_ai_downloading", False):
@@ -2292,6 +2327,8 @@ class MainWindow(QMainWindow):
                     self.local_ai_status.setText(msg)
                     self.local_ai_btn.setText("Try again")
                     self.local_ai_btn.show()
+                elif on_done:
+                    on_done()
 
             run_on_ui_thread(done)
 

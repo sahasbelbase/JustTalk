@@ -149,6 +149,9 @@ class AppConfig:
     learn_with_ai: bool = False
     # Clean up and translate dictation with the on-device model (ai/local_model.py) instead of the cloud
     local_ai: bool = False
+    # The on-device model was set up once on its own (downloaded and switched on); after that the
+    # user's own on/off choice stands
+    local_ai_auto_done: bool = False
 
     # Voice Isolation & Speaker Identification
     voice_isolation_enabled: bool = True  # DeepFilterNet v3 noise & laptop audio cancellation

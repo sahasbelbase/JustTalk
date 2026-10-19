@@ -69,7 +69,23 @@ def is_tuned(models_dir: Path) -> bool:
 
 def is_current(models_dir: Path) -> bool:
     """The latest model is on disk (an older one may still be in use until it downloads)."""
-    return model_path(models_dir).name == MODEL_FILE
+    path = model_path(models_dir)
+    return path.name == MODEL_FILE and path.exists()
+
+
+def auto_download_plan(models_dir: Path, enabled: bool, auto_done: bool, offline: bool) -> str:
+    """What to do on its own at start-up: "download", "switch_on" or "" (nothing).
+
+    The first time (after updating to 3.0, or after setup) the model downloads and switches on
+    without asking. From then on the user's choice stands: newer models are fetched only while
+    it's on, and it is never switched back on after being turned off."""
+    if offline or not runtime_available():
+        return ""
+    if is_current(models_dir):
+        return "" if auto_done else "switch_on"
+    if auto_done and not enabled:
+        return ""
+    return "download"
 
 
 def runtime_available() -> bool:

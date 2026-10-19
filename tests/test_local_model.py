@@ -341,7 +341,7 @@ def test_the_published_model_is_preferred_and_older_ones_keep_working(tmp_path):
 
     folder = tmp_path / "local-ai"
     folder.mkdir()
-    assert lm.model_path(tmp_path).name == lm.MODEL_FILE and not lm.is_current(tmp_path) is False
+    assert lm.model_path(tmp_path).name == lm.MODEL_FILE and not lm.is_current(tmp_path)  # nothing downloaded yet
     (folder / "Qwen3-1.7B-Q8_0.gguf").write_bytes(b"x")
     assert lm.model_path(tmp_path).name == "Qwen3-1.7B-Q8_0.gguf" and not lm.is_tuned(tmp_path)
     (folder / "justtalk-qwen3-1.7b-v2-Q4_K_M.gguf").write_bytes(b"x")
@@ -349,3 +349,20 @@ def test_the_published_model_is_preferred_and_older_ones_keep_working(tmp_path):
     (folder / lm.MODEL_FILE).write_bytes(b"x")
     assert lm.is_current(tmp_path) and lm.is_tuned(tmp_path)
     assert lm.MODEL_URL == f"https://huggingface.co/{lm.MODEL_REPO}/resolve/main/{lm.MODEL_FILE}"
+
+
+def test_macs_get_the_model_once_on_their_own_and_turning_it_off_sticks(tmp_path, monkeypatch):
+    from just_talk.ai import local_model as lm
+
+    monkeypatch.setattr(lm, "runtime_available", lambda: True)
+    plan = lambda on=False, done=False, offline=False: lm.auto_download_plan(tmp_path, on, done, offline)  # noqa: E731
+    assert plan() == "download"                     # just updated from 2.3.1, or just set up
+    assert plan(offline=True) == ""                 # Pure Offline Mode: no network
+    assert plan(done=True) == ""                    # turned off after the first time: stays off
+    assert plan(on=True, done=True) == "download"   # a newer model while it's on
+    (tmp_path / "local-ai").mkdir()
+    (tmp_path / "local-ai" / lm.MODEL_FILE).write_bytes(b"x")
+    assert plan() == "switch_on"                    # already here (copied in, or downloaded by hand)
+    assert plan(on=True, done=True) == ""
+    monkeypatch.setattr(lm, "runtime_available", lambda: False)
+    assert plan() == ""                             # Windows: no on-device runtime yet
