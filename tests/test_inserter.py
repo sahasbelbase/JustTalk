@@ -93,3 +93,74 @@ def test_text_inserter_cancel_draft():
         assert inserter._has_active_draft is False
         assert ClipboardManager.get_text() == "Initial Clipboard Content"
 
+
+
+def test_no_undoable_draft_in_terminals_and_ide_terminals():
+    """Cmd+Z can't take a paste back in a terminal, so the draft would stay next to the polished text."""
+    inserter = TextInserter()
+    assert inserter.draft_can_be_undone("Brave Browser")
+    assert inserter.draft_can_be_undone("Microsoft Word")
+    assert not inserter.draft_can_be_undone("Terminal")
+    assert not inserter.draft_can_be_undone("iTerm2")
+    assert not inserter.draft_can_be_undone("Windows PowerShell")
+    with patch.object(inserter, "_focus_is_web_text_box", return_value=False):
+        assert not inserter.draft_can_be_undone("Antigravity IDE")  # its terminal, or can't tell
+    with patch.object(inserter, "_focus_is_web_text_box", return_value=True):
+        assert inserter.draft_can_be_undone("Antigravity IDE")  # its chat or editor box
+
+
+def test_a_dropped_paste_is_pasted_once_more():
+    """Brave sometimes dropped the paste while Just Talk showed "Inserted"."""
+    from just_talk.system.caret_locator import CaretLocator
+
+    inserter = TextInserter()
+    lengths = iter([10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10])
+    with patch.object(CaretLocator, "_last_has_text_target", True), \
+         patch.object(inserter, "get_active_app_name", return_value="Brave Browser"), \
+         patch.object(TextInserter, "_focused_text_length", staticmethod(lambda: next(lengths, 10))), \
+         patch.object(inserter, "_synthesize_paste", return_value=True) as paste, \
+         patch("just_talk.system.inserter.time.sleep"):
+        assert inserter.insert("hello") == (True, "inserted", "Brave Browser")
+    assert paste.call_count == 2
+
+
+def test_a_paste_that_landed_is_not_repeated():
+    from just_talk.system.caret_locator import CaretLocator
+
+    inserter = TextInserter()
+    lengths = iter([10, 15])
+    with patch.object(CaretLocator, "_last_has_text_target", True), \
+         patch.object(inserter, "get_active_app_name", return_value="Brave Browser"), \
+         patch.object(TextInserter, "_focused_text_length", staticmethod(lambda: next(lengths, 15))), \
+         patch.object(inserter, "_synthesize_paste", return_value=True) as paste, \
+         patch("just_talk.system.inserter.time.sleep"):
+        inserter.insert("hello")
+    assert paste.call_count == 1
+
+
+def test_no_second_paste_after_replacing_a_draft():
+    from just_talk.system.caret_locator import CaretLocator
+
+    inserter = TextInserter()
+    with patch.object(CaretLocator, "_last_has_text_target", True), \
+         patch.object(TextInserter, "_focused_text_length", staticmethod(lambda: 10)), \
+         patch.object(inserter, "_synthesize_paste", return_value=True) as paste, \
+         patch("just_talk.system.inserter.time.sleep"):
+        inserter.insert("hello", replace_previous=True)
+    assert paste.call_count == 1
+
+
+def test_no_second_paste_in_terminals_or_ide_terminals():
+    """A terminal's input box always reads empty: that looked like a miss and pasted 4 copies."""
+    from just_talk.system.caret_locator import CaretLocator
+
+    for app in ("Antigravity IDE", "Terminal", "iTerm2"):
+        inserter = TextInserter()
+        with patch.object(CaretLocator, "_last_has_text_target", True), \
+             patch.object(inserter, "get_active_app_name", return_value=app), \
+             patch.object(inserter, "_focus_is_web_text_box", return_value=False), \
+             patch.object(TextInserter, "_focused_text_length", staticmethod(lambda: 0)), \
+             patch.object(inserter, "_synthesize_paste", return_value=True) as paste, \
+             patch("just_talk.system.inserter.time.sleep"):
+            inserter.insert("How are you?")
+        assert paste.call_count == 1, app

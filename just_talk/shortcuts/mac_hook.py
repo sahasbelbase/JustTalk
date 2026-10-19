@@ -166,8 +166,9 @@ class MacHotkeyMonitor:
             def ns_event_callback(event):
                 try:
                     event_type = event.type()
-                    # KeyDown for space shortcuts
+                    # KeyDown: Escape / Fn combinations, paste-last, space shortcuts
                     if event_type == AppKit.NSEventTypeKeyDown:
+                        self._handle_other_key_down(event.keyCode())  # was never called: Esc didn't cancel
                         if event.keyCode() == self.KEYCODE_V and not event.isARepeat():
                             flags = event.modifierFlags()
                             if self._is_paste_last_combo(
@@ -214,9 +215,7 @@ class MacHotkeyMonitor:
                     pass
                 return event
 
-            mask = AppKit.NSEventMaskFlagsChanged
-            if self.on_paste_last or self.trigger_key in ("ctrl_space", "ctrl+space", "alt_space", "alt+space"):
-                mask |= AppKit.NSEventMaskKeyDown
+            mask = AppKit.NSEventMaskFlagsChanged | AppKit.NSEventMaskKeyDown  # key down for Escape too
 
             self._global_monitor = AppKit.NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(
                 mask, ns_event_callback
@@ -484,6 +483,7 @@ class MacHotkeyMonitor:
                 # 2. Check for key down events (only active if trigger is space-based)
                 if event_type == kCGEventKeyDown:
                     keycode = CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode)
+                    self._handle_other_key_down(keycode)  # Escape cancels; only acts while recording
                     if keycode == self.KEYCODE_V:
                         flags = CGEventGetFlags(event)
                         is_repeat = CGEventGetIntegerValueField(event, Quartz.kCGKeyboardEventAutorepeat)

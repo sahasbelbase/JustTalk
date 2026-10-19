@@ -118,16 +118,28 @@ class VoiceActivityDetector:
         if audio is None or len(audio) == 0:
             return []
 
-        max_samples = int(max_chunk_sec * sample_rate)
-        chunks = []
-        start = 0
-        while len(audio) - start > max_samples:
-            window = audio[start : start + max_samples]
-            cut = cls.find_pause_cut(window, sample_rate=sample_rate, min_offset_sec=min_chunk_sec)
-            chunks.append(window[:cut])
-            start += cut
-        chunks.append(audio[start:])
+        chunks = [audio[a:b] for a, b in cls.pause_spans(audio, sample_rate, max_chunk_sec, min_chunk_sec)]
         if len(chunks) == 1:
             return chunks
 
         return [c for c in chunks if len(c) and float(np.max(np.abs(c))) >= silence_peak]
+
+    @classmethod
+    def pause_spans(
+        cls,
+        audio: np.ndarray,
+        sample_rate: int = 16000,
+        max_chunk_sec: float = 15.0,
+        min_chunk_sec: float = 2.0,
+    ) -> list:
+        """(start, end) sample ranges of split_on_pauses' chunks, silent ones included. Every span
+        but the last is final: audio recorded later can't move it."""
+        max_samples = int(max_chunk_sec * sample_rate)
+        spans = []
+        start = 0
+        while len(audio) - start > max_samples:
+            cut = cls.find_pause_cut(audio[start : start + max_samples], sample_rate=sample_rate, min_offset_sec=min_chunk_sec)
+            spans.append((start, start + cut))
+            start += cut
+        spans.append((start, len(audio)))
+        return spans

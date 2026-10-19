@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import difflib
 import os
 import sys
 import tempfile
@@ -15,6 +16,17 @@ from ..audio.vad import VoiceActivityDetector
 from .engine import STTEngine
 from .long_form import IncrementalTranscriber, join_segments
 from .google_web_engine import GoogleWebSTTEngine
+
+
+def _revises(old: str, new: str, share: float = 0.6) -> bool:
+    """Whether `new` is Apple's revision of `old` rather than different words: most of `old`'s words
+    come back in order ("Turn to Daniel and said never" -> "Return to Danielle and said never").
+    Short phrases are left to exact matching, since a word or two can match by chance."""
+    a, b = old.lower().split(), new.lower().split()
+    if len(a) < 3:
+        return False
+    matched = sum(m.size for m in difflib.SequenceMatcher(None, a, b, autojunk=False).get_matching_blocks())
+    return matched / len(a) >= share
 
 
 class UtteranceTracker:
@@ -48,9 +60,10 @@ class UtteranceTracker:
             return
         # Partial results may arrive without timings and the final one with them:
         # the timed result supersedes any untimed text it contains.
-        self._committed = [c for c in self._committed if c.lower() not in lowered]
+        self._committed = [c for c in self._committed if c.lower() not in lowered and not _revises(c, text)]
         if self._latest and (
             self._latest.lower() in lowered or lowered.split()[0] == self._latest.lower().split()[0]
+            or _revises(self._latest, text)
         ):
             self._latest = ""
         start, end = span
@@ -100,6 +113,9 @@ class MacNativeSTTEngine(STTEngine):
         self._supported_locales: Set[str] = set()
         self._lock = threading.Lock()
         self._partial = IncrementalTranscriber(self.transcribe)
+        # Words to expect (names, jargon). Apple ignores Whisper-style prompts but takes these as
+        # contextual strings, which is what keeps "git" from coming out as "gate".
+        self.vocabulary: List[str] = []
 
     def is_available(self) -> bool:
         """Check if native macOS speech recognition is available on this system."""
@@ -197,6 +213,7 @@ class MacNativeSTTEngine(STTEngine):
         task: str = "transcribe",
         initial_prompt: Optional[str] = None,
         partial_callback: Optional[Callable[[str], None]] = None,
+        confidences: Optional[List[float]] = None,
     ) -> str:
         """
         Transcribe 16kHz float32 audio.
@@ -263,7 +280,7 @@ class MacNativeSTTEngine(STTEngine):
                 if partial_callback:
                     partial_callback(join_segments([_prefix, text]))
 
-            text, ok = self._recognize_native_chunk(recognizer, chunk, target_locale, chunk_callback)
+            text, ok = self._recognize_native_chunk(recognizer, chunk, target_locale, chunk_callback, confidences=confidences)
             if not ok and not self.offline_mode:
                 # Native recognition failed or was cut short; prefer the fallback's full
                 # result, but keep whatever native text we got if the fallback has nothing.
@@ -302,7 +319,7 @@ class MacNativeSTTEngine(STTEngine):
             is_new_utterance = len(cur) < len(prev) * 0.5
         else:
             prev_next = prev_words[1:3]
-            is_new_utterance = not prev_next or cur_words[1 : 1 + len(prev_next)] != prev_next
+            is_new_utterance = (not prev_next or cur_words[1 : 1 + len(prev_next)] != prev_next) and not _revises(prev, cur)
         if is_new_utterance:
             committed.append(prev)
         return cur
@@ -328,8 +345,10 @@ class MacNativeSTTEngine(STTEngine):
         audio: np.ndarray,
         target_locale: str,
         partial_callback: Optional[Callable[[str], None]] = None,
+        confidences: Optional[List[float]] = None,
     ) -> Tuple[str, bool]:
-        """Run SFSpeechRecognizer on one chunk. Returns (text, ok)."""
+        """Run SFSpeechRecognizer on one chunk. Returns (text, ok); appends Apple's average word
+        confidence for the chunk to `confidences` when given."""
         import Speech
         from Foundation import NSURL
 
@@ -347,6 +366,16 @@ class MacNativeSTTEngine(STTEngine):
             url = NSURL.fileURLWithPath_(wav_path)
             req = Speech.SFSpeechURLRecognitionRequest.alloc().initWithURL_(url)
             req.setShouldReportPartialResults_(True)
+            if hasattr(req, "setAddsPunctuation_"):
+                try:
+                    req.setAddsPunctuation_(True)  # macOS 13+: commas and full stops from Apple itself
+                except Exception:
+                    pass
+            if self.vocabulary and hasattr(req, "setContextualStrings_"):
+                try:
+                    req.setContextualStrings_(list(self.vocabulary)[:100])  # Apple reads at most 100
+                except Exception as ctx_err:
+                    print(f"[MacNativeSTT] Couldn't set vocabulary: {ctx_err}", file=sys.stderr)
 
             # Enforce on-device recognition if supported by Apple Speech for this locale
             supports_on_device = False
@@ -387,6 +416,13 @@ class MacNativeSTTEngine(STTEngine):
                         except Exception:
                             pass
                     if result.isFinal():
+                        if confidences is not None:
+                            try:
+                                segs = list(best.segments())
+                                if segs:
+                                    confidences.append(sum(float(s.confidence()) for s in segs) / len(segs))
+                            except Exception:
+                                pass
                         done_event.set()
 
             task_obj = recognizer.recognitionTaskWithRequest_resultHandler_(req, handler)

@@ -30,6 +30,11 @@ def test_fallback_light_local_cleanup():
     assert GeminiFormatter.light_local_cleanup(sentence_url) == "Please visit github.com"
 
 
+def test_light_cleanup_ends_nepali_with_a_danda():
+    assert GeminiFormatter.light_local_cleanup("मेरो भाइ यहाँ बसिरहेको छ।") == "मेरो भाइ यहाँ बसिरहेको छ।"
+    assert GeminiFormatter.light_local_cleanup("२० वटा शब्द हो") == "२० वटा शब्द हो।"
+
+
 def test_formatting_fallback_inserts_raw_and_saves_history():
     """When Gemini formatting fails, fallback text is used and history records 'inserted (offline)'."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -214,3 +219,133 @@ def test_two_phase_pipeline_emission_and_polish():
             assert call2.kwargs.get("restore_clipboard") is True
             assert call2.kwargs.get("replace_previous") is True
 
+
+
+def _run_pipeline(cfg, heard, app_name="TextEdit", draft_ok=True, local_reply=None, context="text"):
+    """Run one dictation through the real pipeline with the engines faked; returns (inserter, local runs)."""
+    from contextlib import ExitStack
+    import types
+
+    import numpy as np
+
+    with tempfile.TemporaryDirectory() as tmpdir, ExitStack() as stack:
+        db = HistoryDatabase(db_path=Path(tmpdir) / "h.db")
+        p = lambda name, **kw: stack.enter_context(patch(f"just_talk.app.main.{name}", **kw))  # noqa: E731
+        p("AppConfig.load", return_value=cfg)
+        p("HistoryDatabase", return_value=db)
+        for name in ("PermissionsManager", "VoiceActivityDetector", "AudioRecorder", "ModelManager",
+                     "NoiseFilter", "SpeakerRecognizer"):
+            p(name)
+        stt = p("WhisperSTTEngine").return_value
+        stt.transcribe.return_value = heard
+        p("MultiProviderFormatter").return_value.format_text.return_value = ("", False, "AI is off")
+        inserter = p("TextInserter").return_value
+        inserter.get_active_app_name.return_value = app_name
+        inserter.insert.return_value = (True, "inserted", app_name)
+        inserter.draft_can_be_undone.return_value = draft_ok
+        p("CaretLocator.has_active_text_target", return_value=True)
+        # The given context, whatever app is really in front (a terminal there counts as code)
+        from just_talk.system.context_detector import ContextInfo
+        p("detect_context", return_value=ContextInfo(context=context, app_name=app_name))
+
+        from just_talk.app.main import JustTalkApp
+
+        app = JustTalkApp()
+        app.config = cfg
+        runs = []
+        app.local_ai = types.SimpleNamespace(
+            is_available=lambda: True,
+            run=lambda task, text, ctx="": runs.append(task) or (local_reply or text, True, ""),
+        )
+        app._process_audio_pipeline(np.zeros(16000, dtype=np.float32), is_action_mode=False)
+        return inserter, runs
+
+
+def test_no_draft_where_undo_cant_take_it_back():
+    """In a terminal the draft would stay and the polished text would land right after it."""
+    from just_talk.config import AppConfig
+
+    cfg = AppConfig(stt_provider="whisper", two_phase_emission=True, gemini_enabled=False, local_ai=True)
+    inserter, runs = _run_pipeline(cfg, "we are fixing this bug today", app_name="Antigravity IDE",
+                                   draft_ok=False, local_reply="We are fixing this bug today!")
+    assert runs == ["cleanup"]
+    assert [c.args[0] for c in inserter.insert.call_args_list] == ["We are fixing this bug today!"]
+
+
+def test_on_device_ai_stays_off_when_switched_off():
+    from just_talk.config import AppConfig
+
+    cfg = AppConfig(stt_provider="whisper", two_phase_emission=False, gemini_enabled=False, local_ai=False)
+    inserter, runs = _run_pipeline(cfg, "we are fixing this bug today", local_reply="Rewritten!")
+    assert runs == []
+    assert inserter.insert.call_args.args[0] == "We are fixing this bug today."
+
+
+def test_ai_dashes_become_plain_punctuation():
+    from just_talk.ai.gemini import without_ai_dashes
+
+    assert without_ai_dashes("The plan—if it works—saves time.") == "The plan, if it works, saves time."
+    assert without_ai_dashes("It is fast — and cheap.") == "It is fast, and cheap."
+    assert without_ai_dashes("— first\n— second") == "- first\n- second"
+    assert without_ai_dashes("Pages 10–20 and 10 – 20.") == "Pages 10–20 and 10 – 20."
+    assert without_ai_dashes("A plain - hyphen stays.") == "A plain - hyphen stays."
+
+
+def test_dictation_never_types_an_em_dash():
+    from just_talk.config import AppConfig
+
+    cfg = AppConfig(stt_provider="whisper", two_phase_emission=False, gemini_enabled=False, local_ai=True)
+    inserter, _ = _run_pipeline(cfg, "it is fast and cheap", local_reply="It is fast — and cheap.")
+    assert inserter.insert.call_args.args[0] == "It is fast, and cheap."
+
+
+def test_hesitation_sounds_are_removed():
+    from just_talk.ai.gemini import without_fillers
+
+    assert without_fillers("Umm so I was thinking ahhh we ship friday") == "So I was thinking we ship friday"
+    assert without_fillers("I was, um, thinking hmm about it.") == "I was, thinking about it."
+    assert without_fillers("Oh, that's great") == "Oh, that's great"
+    assert without_fillers("5 mm screws") == "5 mm screws"
+    assert without_fillers("go to the ER now") == "go to the ER now"
+    assert without_fillers("buy AAA batteries, I'm OOO, use MM/DD") == "buy AAA batteries, I'm OOO, use MM/DD"
+    assert without_fillers("Aaah I forgot") == "I forgot"
+    assert without_fillers("it was er fine") == "it was fine"
+    assert without_fillers("उम्म म भोलि अहह आउँछु") == "म भोलि आउँछु"
+    assert without_fillers("उम् बाबा अस्पताल जानुभएको छ") == "बाबा अस्पताल जानुभएको छ"  # how Kriti wrote it
+    assert without_fillers("- eggs umm\n- milk") == "- eggs\n- milk"
+
+
+def test_a_spoken_web_address_is_typed_as_is():
+    """"youtube.com" came out as "YouTube.com." which the address bar can't open."""
+    from just_talk.config import AppConfig
+
+    cfg = AppConfig(stt_provider="whisper", two_phase_emission=False, gemini_enabled=False, local_ai=True)
+    inserter, runs = _run_pipeline(cfg, "youtube.com", local_reply="YouTube.com.")
+    assert runs == [] and inserter.insert.call_args.args[0] == "youtube.com"
+    inserter, runs = _run_pipeline(cfg, "the site is youtube.com", local_reply="The site is YouTube.com.")
+    assert runs == ["cleanup"]  # a sentence that only mentions an address is still cleaned up
+
+
+def test_text_filters_leave_real_words_and_code_alone():
+    """Real words, code and ranges must survive the text filters."""
+    from just_talk.ai.gemini import is_web_address, without_ai_dashes, without_fillers
+
+    assert without_fillers("    x = 1\n    y  = 2") == "    x = 1\n    y  = 2"  # code indentation
+    assert without_fillers("  - sub\n- eggs umm\n- milk") == "  - sub\n- eggs\n- milk"
+    assert without_fillers("she said uh-huh") == "she said uh-huh"
+    assert without_fillers("UM students meet") == "UM students meet"
+    assert without_ai_dashes("Open Mon–Fri, A–Z") == "Open Mon–Fri, A–Z"
+    assert without_ai_dashes("Note: — check this") == "Note: check this"
+    for word in ("Node.js", "U.S.", "i.e.", "3.5", "v2.3", "Mr.Smith"):
+        assert not is_web_address(word), word
+    for address in ("youtube.com", "github.com/sahas", "daraz.com.np", "hello@gmail.com", "https://x.y/z"):
+        assert is_web_address(address), address
+
+
+def test_ai_text_filters_skip_code():
+    """A variable called "um" in Python must survive."""
+    from just_talk.config import AppConfig
+
+    cfg = AppConfig(stt_provider="whisper", two_phase_emission=False, gemini_enabled=False, local_ai=True)
+    inserter, _ = _run_pipeline(cfg, "um equals five", app_name="PyCharm", local_reply="um = 5", context="python")
+    assert inserter.insert.call_args.args[0] == "um = 5"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import shutil
 import sys
 import threading
 from pathlib import Path
@@ -165,6 +166,13 @@ class CollapsibleSettingsSection(QFrame):
     def toggle_expanded(self) -> None:
         self.set_expanded(not self.content_widget.isVisible())
 
+    def set_page_mode(self, on: bool) -> None:
+        """Shown as a settings page: the page header carries the title, and it's always open."""
+        self.header_btn.setVisible(not on)
+        self.set_expanded(True if on else self.default_expanded)
+        if on:
+            self.header_divider.hide()
+
     def set_expanded(self, expanded: bool) -> None:
         self.content_widget.setVisible(expanded)
         self.header_divider.setVisible(expanded)
@@ -204,6 +212,7 @@ class MainWindow(QMainWindow):
 
     config_changed = Signal(AppConfig)
     replay_tutorial_requested = Signal()
+    learn_now_requested = Signal()
     update_available = Signal(object)
 
     def __init__(
@@ -247,6 +256,8 @@ class MainWindow(QMainWindow):
 
         # Check for updates in background after startup
         QTimer.singleShot(3000, self._check_updates_background)
+        # Macs fetch the on-device model on their own
+        QTimer.singleShot(10000, self._auto_setup_local_ai)
 
     # -------------------------------------------------------------------------
     # Window Lifecycle & macOS Activation Policy
@@ -351,16 +362,16 @@ class MainWindow(QMainWindow):
 
     def _create_sidebar(self) -> QWidget:
         sidebar = QWidget()
-        sidebar.setFixedWidth(172)
+        sidebar.setFixedWidth(188)
         sidebar.setObjectName("sidebar")
 
         layout = QVBoxLayout(sidebar)
-        layout.setContentsMargins(10, 18, 10, 12)
-        layout.setSpacing(2)
+        layout.setContentsMargins(12, 20, 12, 14)
+        layout.setSpacing(4)
 
         # App Brand
         brand_layout = QHBoxLayout()
-        brand_layout.setContentsMargins(0, 0, 0, 0)
+        brand_layout.setContentsMargins(2, 0, 0, 0)
         brand_layout.setSpacing(8)
 
         icon_label = QLabel()
@@ -386,7 +397,7 @@ class MainWindow(QMainWindow):
         brand_layout.addStretch()
 
         layout.addLayout(brand_layout)
-        layout.addSpacing(18)
+        layout.addSpacing(16)
 
         # Navigation Buttons
         self.nav_group = QButtonGroup(self)
@@ -426,27 +437,28 @@ class MainWindow(QMainWindow):
 
         layout.addStretch()
 
-        # Bottom Status
-        status_row = QHBoxLayout()
-        status_row.setSpacing(5)
-        status_row.setContentsMargins(2, 0, 2, 0)
+        # Bottom Status Card
+        status_box = QFrame()
+        status_box.setObjectName("surfaceRaised")
+        sb_layout = QHBoxLayout(status_box)
+        sb_layout.setContentsMargins(10, 8, 10, 8)
+        sb_layout.setSpacing(6)
 
         self.sidebar_dot = QLabel("●")
-        self.sidebar_dot.setFont(ThemeManager.get_ui_font(7))
-        self.sidebar_dot.setStyleSheet("color: #30D158;")
-        status_row.addWidget(self.sidebar_dot)
+        self.sidebar_dot.setFont(ThemeManager.get_ui_font(8))
+        self.sidebar_dot.setStyleSheet("color: #10B981;")
+        sb_layout.addWidget(self.sidebar_dot)
 
         self.sidebar_status_text = QLabel("Ready")
-        self.sidebar_status_text.setFont(ThemeManager.get_ui_font(11))
-        status_row.addWidget(self.sidebar_status_text)
-        status_row.addStretch()
-        layout.addLayout(status_row)
+        self.sidebar_status_text.setFont(ThemeManager.get_ui_font(11, weight=QFont.Weight.Medium))
+        sb_layout.addWidget(self.sidebar_status_text)
+        sb_layout.addStretch()
 
-        self.sidebar_key_label = QLabel(f"Shortcut: {self._get_shortcut_display()}")
-        self.sidebar_key_label.setObjectName("mutedLabel")
-        self.sidebar_key_label.setFont(ThemeManager.get_mono_font(10))
-        self.sidebar_key_label.setContentsMargins(2, 2, 0, 4)
-        layout.addWidget(self.sidebar_key_label)
+        self.sidebar_key_label = QLabel(self._get_shortcut_display())
+        self.sidebar_key_label.setObjectName("keycap")
+        self.sidebar_key_label.setFont(ThemeManager.get_mono_font(10, weight=QFont.Weight.Bold))
+        sb_layout.addWidget(self.sidebar_key_label)
+        layout.addWidget(status_box)
 
         return sidebar
 
@@ -522,25 +534,34 @@ class MainWindow(QMainWindow):
         ub_layout.addWidget(self.update_banner_btn)
         layout.addWidget(self.update_banner)
 
-        # Push-to-Talk Hero Keycap Card
+        # Push-to-Talk Hero Action Card
         hero_card = QFrame()
         hero_card.setObjectName("card")
         hero_layout = QVBoxLayout(hero_card)
         hero_layout.setContentsMargins(18, 16, 18, 16)
-        hero_layout.setSpacing(10)
+        hero_layout.setSpacing(12)
 
         hero_header = QHBoxLayout()
         hero_title = QLabel("Dictation Shortcut")
-        hero_title.setFont(ThemeManager.get_ui_font(13, weight=QFont.Weight.DemiBold))
+        hero_title.setFont(ThemeManager.get_ui_font(14, weight=QFont.Weight.DemiBold))
         hero_header.addWidget(hero_title)
+
         hero_header.addStretch()
+
+        self.test_dict_btn = QPushButton("Test Dictation")
+        self.test_dict_btn.setObjectName("primaryBtn")
+        self.test_dict_btn.setIcon(icons.icon("soundwave", active_color="#FFFFFF", size=13))
+        self.test_dict_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.test_dict_btn.clicked.connect(self._on_test_dictation_clicked)
+        hero_header.addWidget(self.test_dict_btn)
+
         hero_layout.addLayout(hero_header)
 
         keycap_row = QHBoxLayout()
-        keycap_row.setSpacing(12)
+        keycap_row.setSpacing(14)
 
         self.hero_keycap = QLabel(self._get_shortcut_display())
-        self.hero_keycap.setObjectName("keycap")
+        self.hero_keycap.setObjectName("heroKeycap")
         self.hero_keycap.setFont(ThemeManager.get_mono_font(14, weight=QFont.Weight.Bold))
         keycap_row.addWidget(self.hero_keycap)
 
@@ -638,9 +659,9 @@ class MainWindow(QMainWindow):
         status_row = QHBoxLayout()
         status_row.setSpacing(10)
 
-        self.model_card = self._create_mini_status_card("SPEECH ENGINE", "Whisper", "Ready")
-        self.gemini_card = self._create_mini_status_card("AI FORMATTING", "Gemini", "Active")
-        self.audio_card = self._create_mini_status_card("INPUT DEVICE", "Microphone", "Default")
+        self.model_card = self._create_mini_status_card("SPEECH ENGINE", "Whisper", "Ready", icon_name="memory")
+        self.gemini_card = self._create_mini_status_card("AI FORMATTING", "Gemini", "Active", icon_name="sparkles")
+        self.audio_card = self._create_mini_status_card("INPUT DEVICE", "Microphone", "Default", icon_name="mic")
 
         status_row.addWidget(self.model_card)
         status_row.addWidget(self.gemini_card)
@@ -721,9 +742,24 @@ class MainWindow(QMainWindow):
         p_title.setFont(ThemeManager.get_ui_font(13, weight=QFont.Weight.DemiBold))
         practice_header.addWidget(p_title)
 
+        p_live_tag = QLabel("Live Buffer")
+        p_live_tag.setObjectName("secondaryPill")
+        p_live_tag.setFont(ThemeManager.get_mono_font(9))
+        practice_header.addWidget(p_live_tag)
+
         practice_header.addStretch()
+
+        self.copy_test_btn = QPushButton("Copy")
+        self.copy_test_btn.setObjectName("secondaryBtn")
+        self.copy_test_btn.setIcon(icons.icon("copy", size=12))
+        self.copy_test_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.copy_test_btn.clicked.connect(self._copy_practice_text)
+        practice_header.addWidget(self.copy_test_btn)
+
         clear_test_btn = QPushButton("Clear")
         clear_test_btn.setObjectName("secondaryBtn")
+        clear_test_btn.setIcon(icons.icon("close", size=11))
+        clear_test_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         clear_test_btn.clicked.connect(lambda: self.practice_text.clear())
         practice_header.addWidget(clear_test_btn)
         practice_layout.addLayout(practice_header)
@@ -770,17 +806,26 @@ class MainWindow(QMainWindow):
         scroll.setWidget(container)
         return scroll
 
-    def _create_mini_status_card(self, tag: str, title: str, status: str) -> QFrame:
+    def _create_mini_status_card(self, tag: str, title: str, status: str, icon_name: str = "") -> QFrame:
         card = QFrame()
-        card.setObjectName("surfaceCard")
+        card.setObjectName("bentoCard")
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(3)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(4)
 
+        tag_row = QHBoxLayout()
         tag_lbl = QLabel(tag)
         tag_lbl.setObjectName("mutedLabel")
-        tag_lbl.setFont(ThemeManager.get_ui_font(10, weight=QFont.Weight.Medium))
-        layout.addWidget(tag_lbl)
+        tag_lbl.setFont(ThemeManager.get_mono_font(10, weight=QFont.Weight.Bold))
+        tag_row.addWidget(tag_lbl)
+        tag_row.addStretch()
+
+        if icon_name:
+            ic_lbl = QLabel()
+            color = "#10B981" if icon_name == "memory" else ("#3B82F6" if icon_name in ("sparkles", "neurology") else "#9CA3AF")
+            ic_lbl.setPixmap(icons.pixmap(icon_name, color=color, size=14))
+            tag_row.addWidget(ic_lbl)
+        layout.addLayout(tag_row)
 
         title_lbl = QLabel(title)
         title_lbl.setObjectName("cardTitle")
@@ -848,30 +893,54 @@ class MainWindow(QMainWindow):
             self._update_home_mode_desc()
 
         # 2. AI Formatting & Circuit Breaker
+        local_name = self._local_ai_name()
+        use_local = bool(getattr(self.config, "local_ai", False) and local_name)
         if self.config.offline_mode:
-            self.gemini_card.title_label.setText("Pure Offline")
-            self.gemini_card.status_label.setText("Speech never sent out")
-            self.sidebar_dot.setStyleSheet("color: #8E8E93;")
-            self.sidebar_status_text.setText("Offline")
+            if use_local:
+                self.gemini_card.title_label.setText("On-Device AI Active")
+                self.gemini_card.status_label.setText(f"{local_name} · offline & private")
+                self.sidebar_dot.setStyleSheet("color: #30D158;")
+                self.sidebar_status_text.setText("Ready (Local)")
+            else:
+                self.gemini_card.title_label.setText("Pure Offline")
+                self.gemini_card.status_label.setText("Speech never sent out")
+                self.sidebar_dot.setStyleSheet("color: #8E8E93;")
+                self.sidebar_status_text.setText("Offline")
         elif not self.config.gemini_enabled:
-            self.gemini_card.title_label.setText("Raw STT Only")
-            self.gemini_card.status_label.setText("AI formatting disabled")
-            self.sidebar_dot.setStyleSheet("color: #8E8E93;")
-            self.sidebar_status_text.setText("Ready (Raw)")
+            if use_local:
+                self.gemini_card.title_label.setText("On-Device AI Active")
+                self.gemini_card.status_label.setText(f"{local_name} · on this Mac" if sys.platform == "darwin" else f"{local_name} · on this PC")
+                self.sidebar_dot.setStyleSheet("color: #30D158;")
+                self.sidebar_status_text.setText("Ready (Local)")
+            else:
+                self.gemini_card.title_label.setText("Raw STT Only")
+                self.gemini_card.status_label.setText("AI formatting disabled")
+                self.sidebar_dot.setStyleSheet("color: #8E8E93;")
+                self.sidebar_status_text.setText("Ready (Raw)")
         elif self.gemini.circuit_breaker.is_paused:
-            rem = self.gemini.circuit_breaker.remaining_cooldown_sec
-            self.gemini_card.title_label.setText("Circuit Breaker")
-            self.gemini_card.status_label.setText(f"Paused ({rem}s remaining)")
-            self.sidebar_dot.setStyleSheet("color: #FF9F0A;")  # macOS amber
-            self.sidebar_status_text.setText("AI Paused")
+            if use_local:
+                self.gemini_card.title_label.setText("Cloud Paused → Local AI")
+                self.gemini_card.status_label.setText(f"Backup: {local_name}")
+                self.sidebar_dot.setStyleSheet("color: #30D158;")
+                self.sidebar_status_text.setText("Ready (Local Fallback)")
+            else:
+                rem = self.gemini.circuit_breaker.remaining_cooldown_sec
+                self.gemini_card.title_label.setText("Circuit Breaker")
+                self.gemini_card.status_label.setText(f"Paused ({rem}s remaining)")
+                self.sidebar_dot.setStyleSheet("color: #FF9F0A;")  # macOS amber
+                self.sidebar_status_text.setText("AI Paused")
         else:
             pid = getattr(self.config, "ai_provider", "gemini") or "gemini"
             from ..ai.providers import get_provider
             p = get_provider(pid)
             p_name = p.display_name if p else "AI"
             active_model = getattr(self.config, "ai_model", "") or self.config.gemini_model
-            self.gemini_card.title_label.setText(f"{p_name} Active")
-            self.gemini_card.status_label.setText(active_model)
+            if use_local:
+                self.gemini_card.title_label.setText("Hybrid AI Active")
+                self.gemini_card.status_label.setText(f"{p_name} + {local_name}")
+            else:
+                self.gemini_card.title_label.setText(f"{p_name} Active")
+                self.gemini_card.status_label.setText(active_model)
             self.sidebar_dot.setStyleSheet("color: #30D158;")  # macOS green
             self.sidebar_status_text.setText("Ready")
 
@@ -886,7 +955,8 @@ class MainWindow(QMainWindow):
         # 4. Update shortcut display
         sc_text = self._get_shortcut_display()
         self.hero_keycap.setText(sc_text)
-        self.sidebar_key_label.setText(f"Shortcut: {sc_text}")
+        self.sidebar_key_label.setText(sc_text)  # a keycap: just the key, so the status beside it fits
+        self.sidebar_key_label.setToolTip("Dictation shortcut")
         if hasattr(self, "hero_desc"):
             self.hero_desc.setText(self._get_trigger_hint(short=False))
         if hasattr(self, "dashboard") and hasattr(self.dashboard, "shortcut_hint"):
@@ -1211,29 +1281,94 @@ class MainWindow(QMainWindow):
     # -------------------------------------------------------------------------
 
     def _create_settings_view(self) -> QWidget:
+        main_settings = QWidget()
+        main_layout = QHBoxLayout(main_settings)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        # 1. Left Sub-Navigation Rail (macOS System Settings Rail)
+        self.subnav_rail = QWidget()
+        self.subnav_rail.setFixedWidth(212)
+        self.subnav_rail.setObjectName("sidebar")
+        subnav_layout = QVBoxLayout(self.subnav_rail)
+        subnav_layout.setContentsMargins(10, 16, 10, 14)
+        subnav_layout.setSpacing(4)
+
+        subnav_title = QLabel("Settings")
+        subnav_title.setFont(ThemeManager.get_display_font(18, weight=QFont.Weight.Bold))
+        subnav_layout.addWidget(subnav_title)
+
+        subnav_desc = QLabel("Changes save automatically.")
+        subnav_desc.setObjectName("mutedLabel")
+        subnav_desc.setFont(ThemeManager.get_ui_font(11))
+        subnav_layout.addWidget(subnav_desc)
+        subnav_layout.addSpacing(6)
+
+        # Search field inside sub-nav
+        search_card = QFrame()
+        search_card.setObjectName("searchField")
+        search_box = QHBoxLayout(search_card)
+        search_box.setContentsMargins(8, 2, 6, 2)
+        search_box.setSpacing(6)
+
+        search_icon = QLabel()
+        search_icon.setPixmap(icons.pixmap("search", icons.ICON_MUTED, 14))
+        search_box.addWidget(search_icon)
+
+        self.settings_search_input = QLineEdit()
+        self.settings_search_input.setPlaceholderText("Search settings…")
+        self.settings_search_input.textChanged.connect(self._on_settings_search_changed)
+        search_box.addWidget(self.settings_search_input, 1)
+
+        self.settings_search_clear_btn = QPushButton()
+        self.settings_search_clear_btn.setIcon(icons.icon("close", size=11))
+        self.settings_search_clear_btn.setObjectName("searchClear")
+        self.settings_search_clear_btn.setFixedSize(18, 18)
+        self.settings_search_clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.settings_search_clear_btn.hide()
+        self.settings_search_clear_btn.clicked.connect(self.settings_search_input.clear)
+        search_box.addWidget(self.settings_search_clear_btn)
+
+        subnav_layout.addWidget(search_card)
+
+        # Search match counter
+        self.settings_search_count_lbl = QLabel("")
+        self.settings_search_count_lbl.setObjectName("mutedLabel")
+        self.settings_search_count_lbl.setFont(ThemeManager.get_ui_font(10))
+        self.settings_search_count_lbl.hide()
+        subnav_layout.addWidget(self.settings_search_count_lbl)
+        subnav_layout.addSpacing(4)
+
+        self.subnav_group = QButtonGroup(self)
+        self.subnav_group.setExclusive(True)
+        self._subnav_layout = subnav_layout
+
+        # 2. Right Content Area (Scrollable Sections)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.settings_scroll = scroll
 
         container = QWidget()
         layout = QVBoxLayout(container)
-        layout.setContentsMargins(36, 26, 36, 32)
+        layout.setContentsMargins(32, 22, 32, 32)
         layout.setSpacing(14)
 
         self.settings_sections: list[CollapsibleSettingsSection] = []
 
         # Top Header Bar
         header_row = QVBoxLayout()
-        header_row.setSpacing(4)
-        header = QLabel("Settings")
-        header.setFont(ThemeManager.get_display_font(28, weight=QFont.Weight.Bold))
-        header_row.addWidget(header)
+        header_row.setSpacing(2)
+        # The open page's title and description (set by _show_settings_page)
+        self.settings_page_title = QLabel("")
+        self.settings_page_title.setFont(ThemeManager.get_display_font(24, weight=QFont.Weight.Bold))
+        header_row.addWidget(self.settings_page_title)
 
         desc_row = QHBoxLayout()
-        header_desc = QLabel("Changes save automatically.")
-        header_desc.setObjectName("mutedLabel")
-        header_desc.setFont(ThemeManager.get_ui_font(13))
-        desc_row.addWidget(header_desc)
+        self.settings_page_desc = QLabel("")
+        self.settings_page_desc.setObjectName("mutedLabel")
+        self.settings_page_desc.setFont(ThemeManager.get_ui_font(12))
+        desc_row.addWidget(self.settings_page_desc)
         desc_row.addStretch()
         self.settings_saved_lbl = QLabel("")
         self.settings_saved_lbl.setObjectName("savedIndicator")
@@ -1241,41 +1376,9 @@ class MainWindow(QMainWindow):
         header_row.addLayout(desc_row)
         layout.addLayout(header_row)
 
-        # ---------------------------------------------------------------------
-        # Top Search Bar for Quick Navigation
-        # ---------------------------------------------------------------------
-        search_card = QFrame()
-        search_card.setObjectName("searchField")
-        search_box = QHBoxLayout(search_card)
-        search_box.setContentsMargins(12, 2, 8, 2)
-        search_box.setSpacing(8)
-
-        search_icon = QLabel()
-        search_icon.setPixmap(icons.pixmap("search", icons.ICON_MUTED, 16))
-        search_box.addWidget(search_icon)
-
-        self.settings_search_input = QLineEdit()
-        self.settings_search_input.setPlaceholderText("Search settings")
-        self.settings_search_input.textChanged.connect(self._on_settings_search_changed)
-        search_box.addWidget(self.settings_search_input, 1)
-
-        self.settings_search_clear_btn = QPushButton()
-        self.settings_search_clear_btn.setIcon(icons.icon("close", size=12))
-        self.settings_search_clear_btn.setObjectName("searchClear")
-        self.settings_search_clear_btn.setFixedSize(20, 20)
-        self.settings_search_clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.settings_search_clear_btn.hide()
-        self.settings_search_clear_btn.clicked.connect(self.settings_search_input.clear)
-        search_box.addWidget(self.settings_search_clear_btn)
-
-        layout.addWidget(search_card)
-
-        # Search match counter
-        self.settings_search_count_lbl = QLabel("")
-        self.settings_search_count_lbl.setObjectName("mutedLabel")
-        self.settings_search_count_lbl.setFont(ThemeManager.get_ui_font(11))
-        self.settings_search_count_lbl.hide()
-        layout.addWidget(self.settings_search_count_lbl)
+        self._main_settings_widget = main_settings
+        self._main_settings_layout = main_layout
+        self._settings_container_layout = layout
 
         # ---------------------------------------------------------------------
         # Section 1: Trigger & Keyboard Shortcuts
@@ -1654,7 +1757,7 @@ class MainWindow(QMainWindow):
         self.custom_browse_btn.clicked.connect(self._on_browse_custom_stt_folder)
         custom_input_row.addWidget(self.custom_browse_btn)
 
-        self.custom_test_btn = QPushButton("Validate & Test")
+        self.custom_test_btn = QPushButton("Validate && Test")
         self.custom_test_btn.setObjectName("primaryBtn")
         self.custom_test_btn.clicked.connect(self._on_validate_custom_stt)
         custom_input_row.addWidget(self.custom_test_btn)
@@ -1825,6 +1928,7 @@ class MainWindow(QMainWindow):
             default_expanded=False,
         )
 
+        sec3_layout.addWidget(self._build_local_ai_card())
         self.ai_view = AIFormattingView(self.config, self.gemini, parent=self)
         self.ai_view.config_changed.connect(self._on_ai_config_changed)
         sec3_layout.addWidget(self.ai_view)
@@ -1896,16 +2000,42 @@ class MainWindow(QMainWindow):
 
         replay_box = QVBoxLayout()
         replay_box.setSpacing(4)
-        replay_desc = QLabel("Walk through microphone, permissions and shortcut setup again.")
+        replay_desc = QLabel("Permissions, languages, your work, and the voice profile that teaches Just Talk your accent.")
         replay_desc.setObjectName("mutedLabel")
         replay_desc.setFont(ThemeManager.get_ui_font(11))
         replay_box.addWidget(replay_desc)
 
-        replay_btn = QPushButton("Replay walkthrough")
+        replay_btn = QPushButton("Run setup again")
         replay_btn.setObjectName("secondaryBtn")
         replay_btn.clicked.connect(lambda: self.replay_tutorial_requested.emit())
         replay_box.addWidget(replay_btn)
-        s6_form.addRow("Tutorial:", replay_box)
+        s6_form.addRow("Setup:", replay_box)
+
+        learn_box = QVBoxLayout()
+        learn_box.setSpacing(6)
+        self.learning_status = QLabel("")
+        self.learning_status.setObjectName("helpText")
+        self.learning_status.setWordWrap(True)
+        learn_box.addWidget(self.learning_status)
+        self.learn_ai_check = QCheckBox("Let AI review my past dictations to learn faster")
+        self.learn_ai_check.setChecked(bool(getattr(self.config, "learn_with_ai", False)))
+        self.learn_ai_check.toggled.connect(self._on_learn_ai_toggled)
+        learn_box.addWidget(self._with_help(
+            self.learn_ai_check,
+            "Sends the text of recent dictations (never audio) to your AI provider to find your words and mix-ups, like “gate” when you said “git”.",
+        ))
+        learn_row = QHBoxLayout()
+        self.learn_now_btn = QPushButton("Learn now")
+        self.learn_now_btn.setObjectName("secondaryBtn")
+        self.learn_now_btn.clicked.connect(self._on_learn_now)
+        learned_btn = QPushButton("See what it learned")
+        learned_btn.setObjectName("secondaryBtn")
+        learned_btn.clicked.connect(self._show_learned)
+        learn_row.addWidget(self.learn_now_btn)
+        learn_row.addWidget(learned_btn)
+        learn_row.addStretch()
+        learn_box.addLayout(learn_row)
+        s6_form.addRow("Learning:", learn_box)
 
         u_row = QHBoxLayout()
         self.update_status_label = QLabel(f"Current version: v{__version__}")
@@ -1972,7 +2102,237 @@ class MainWindow(QMainWindow):
         self.startup_check.toggled.connect(self._autosave_settings)
         self.minimized_check.toggled.connect(self._autosave_settings)
         self.vocab_input.editingFinished.connect(self._autosave_settings)
-        return scroll
+
+        # Wire up subnav rail categories to sections
+        # Each entry is named after the section it opens (the variable names don't match the titles)
+        subnav_categories = [
+            ("Shortcut", "keyboard", sec1),
+            ("Voice & Speech", "mic", sec2),
+            ("Languages", "language", sec_nepali),
+            ("Speech Engine", "memory", sec_langs),
+            ("Voice Isolation", "soundwave", sec_spk),
+            ("AI Formatting", "sparkles", sec3),
+            ("Appearance", "settings", sec4),
+            ("Updates & Startup", "refresh", sec6),
+        ]
+        for idx, (title, icon_name, sec_target) in enumerate(subnav_categories):
+            btn = QPushButton("  " + title.replace("&", "&&"))  # a lone & is a keyboard mnemonic in Qt
+            btn.setObjectName("subnavBtn")
+            btn.setCheckable(True)
+            btn.setChecked(idx == 0)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setIcon(icons.icon(icon_name, size=15))
+            btn.clicked.connect(lambda _, s=sec_target, b=btn: self._show_settings_page(s, b))
+            self._subnav_layout.addWidget(btn)
+            self.subnav_group.addButton(btn, idx)
+            if idx == 0:
+                self._show_settings_page(sec_target, btn)
+
+        self._subnav_layout.addStretch()
+
+        divider = QFrame()
+        divider.setFrameShape(QFrame.Shape.VLine)
+        divider.setObjectName("hairline")
+        divider.setFixedWidth(1)
+
+        self._main_settings_layout.addWidget(self.subnav_rail)
+        self._main_settings_layout.addWidget(divider)
+        self._main_settings_layout.addWidget(scroll, 1)
+
+        return self._main_settings_widget
+
+    def _show_settings_page(self, section: CollapsibleSettingsSection, btn: Optional[QPushButton] = None) -> None:
+        """Settings work like System Settings: each menu entry is its own page."""
+        self._settings_page = section
+        if btn is not None:
+            btn.setChecked(True)
+        if self.settings_search_input.text():
+            self.settings_search_input.clear()  # leaving search results; this calls back here with no query
+            return
+        for sec in self.settings_sections:
+            sec.setVisible(sec is section)
+            sec.set_page_mode(sec is section)
+        self.settings_page_title.setText(section.title.removeprefix("Advanced: "))
+        self.settings_page_desc.setText(section.subtitle)
+        self.settings_scroll.verticalScrollBar().setValue(0)
+
+    # ── Learning ─────────────────────────────────────────────────────────────
+
+    def refresh_learning(self) -> None:
+        learner = getattr(self, "learner", None)
+        if learner is None or not hasattr(self, "learning_status"):
+            return
+        words, mixups = len(learner.known_terms()), len(learner.known_mixups())
+        text = f"Knows {words} of your words and {mixups} mix-up{'s' if mixups != 1 else ''}."
+        if learner.last_review:
+            text += f" Last AI review {learner.last_review[:10]}."
+        self.learning_status.setText(text)
+
+    def _on_learn_ai_toggled(self, on: bool) -> None:
+        self.config.learn_with_ai = on
+        self.config.save()
+        if on:
+            self._on_learn_now()
+
+    def _on_learn_now(self) -> None:
+        self.learn_now_btn.setEnabled(False)
+        self.learning_status.setText("Learning from your dictations…")
+        self.learn_now_requested.emit()
+
+    def on_learning_done(self, message: str) -> None:
+        self.learn_now_btn.setEnabled(True)
+        self.refresh_learning()
+        self.learning_status.setText(f"{message} {self.learning_status.text()}")
+
+    def _show_learned(self) -> None:
+        if getattr(self, "learner", None) is None:
+            return
+        from .learned_dialog import LearnedDialog
+
+        LearnedDialog(self.learner, self).exec()
+        self.refresh_learning()
+
+    # ── On-device AI ─────────────────────────────────────────────────────────
+
+    def _build_local_ai_card(self) -> QWidget:
+        from ..ai import local_model
+
+        card = QFrame()
+        card.setObjectName("surfaceCard")
+        v = QVBoxLayout(card)
+        v.setSpacing(8)
+        self.local_ai_check = QCheckBox("Use the on-device AI model (private, works offline)")
+        self.local_ai_check.setChecked(bool(getattr(self.config, "local_ai", False)))
+        self.local_ai_check.toggled.connect(self._on_local_ai_toggled)
+        v.addWidget(self._with_help(
+            self.local_ai_check,
+            "Cleans up English and translates Nepglish into English on this computer: private, works offline, "
+            "no API key, usually under a second. The AI provider below is used as a backup when one is set up.",
+        ))
+        row = QHBoxLayout()
+        self.local_ai_status = QLabel("")
+        self.local_ai_status.setObjectName("helpText")
+        row.addWidget(self.local_ai_status, 1)
+        self.local_ai_btn = QPushButton(f"Download ({local_model.MODEL_DOWNLOAD_MB / 1000:.1f} GB)")
+        self.local_ai_btn.setObjectName("secondaryBtn")
+        self.local_ai_btn.clicked.connect(self._download_local_ai)
+        row.addWidget(self.local_ai_btn)
+        v.addLayout(row)
+        self.local_ai_bar = QProgressBar()
+        self.local_ai_bar.setRange(0, 100)
+        self.local_ai_bar.setFixedHeight(4)
+        self.local_ai_bar.setTextVisible(False)
+        self.local_ai_bar.hide()
+        v.addWidget(self.local_ai_bar)
+        self._refresh_local_ai()
+        return card
+
+    def _refresh_local_ai(self) -> None:
+        from ..ai import local_model
+
+        models_dir = self.model_manager.models_dir
+        downloaded = local_model.model_path(models_dir).exists()
+        if not local_model.runtime_available():
+            self.local_ai_check.setEnabled(False)
+            self.local_ai_status.setText("Not available on this computer yet.")
+            self.local_ai_btn.hide()
+            return
+        if getattr(self, "_local_ai_downloading", False):
+            return
+        current = local_model.is_current(models_dir)
+        self.local_ai_btn.setVisible(not current)
+        size = f"{local_model.MODEL_DOWNLOAD_MB / 1000:.1f} GB"
+        if current:
+            self.local_ai_status.setText("Just Talk's on-device model is on this computer.")
+        elif downloaded:  # an older model keeps working until the new one is here
+            self.local_ai_status.setText("A better on-device model is available.")
+            self.local_ai_btn.setText(f"Get it ({size})")
+        else:
+            self.local_ai_status.setText("The model isn't downloaded yet.")
+            self.local_ai_btn.setText(f"Download ({size})")
+
+    def _local_ai_name(self) -> str:
+        """Which on-device model would clean up dictations, or "" when none can run."""
+        from ..ai import local_model
+
+        models_dir = self.model_manager.models_dir
+        if not local_model.runtime_available() or not local_model.model_path(models_dir).exists():
+            return ""
+        return "Just Talk model" if local_model.is_tuned(models_dir) else "Qwen3 1.7B"
+
+    def _on_local_ai_toggled(self, on: bool) -> None:
+        from ..ai import local_model
+
+        self.config.local_ai = on
+        self.config.local_ai_auto_done = True  # the user's own choice from now on
+        self.config.save()
+        self._refresh_home_status()
+        if on and not local_model.model_path(self.model_manager.models_dir).exists():
+            self._download_local_ai()
+
+    def _auto_setup_local_ai(self) -> None:
+        """Macs get the on-device model without asking: it downloads in the background and switches
+        on when it arrives (local_model.auto_download_plan decides when)."""
+        from ..ai import local_model
+
+        if not self.config.onboarding_completed:  # setup is still downloading what it needs
+            QTimer.singleShot(60000, self._auto_setup_local_ai)
+            return
+        models_dir = Path(self.model_manager.models_dir)
+        plan = local_model.auto_download_plan(models_dir, bool(self.config.local_ai),
+                                              bool(self.config.local_ai_auto_done), bool(self.config.offline_mode))
+        if plan == "switch_on":
+            self._switch_on_local_ai_once()
+        elif plan == "download":
+            folder = models_dir
+            while not folder.exists() and folder.parent != folder:
+                folder = folder.parent
+            if shutil.disk_usage(folder).free > 2 * local_model.MODEL_SIZE:  # not on a nearly full disk
+                self._download_local_ai(on_done=self._switch_on_local_ai_once)
+
+    def _switch_on_local_ai_once(self) -> None:
+        if self.config.local_ai_auto_done:  # the user switched it on or off themselves meanwhile
+            return
+        self.config.local_ai_auto_done = True
+        self.config.local_ai = True
+        self.config.save()
+        self.local_ai_check.blockSignals(True)
+        self.local_ai_check.setChecked(True)
+        self.local_ai_check.blockSignals(False)
+        self._refresh_home_status()
+
+    def _download_local_ai(self, on_done: Optional[Callable[[], None]] = None) -> None:
+        from ..ai import local_model
+
+        if getattr(self, "_local_ai_downloading", False):
+            return
+        self._local_ai_downloading = True
+        self.local_ai_btn.hide()
+        self.local_ai_bar.setValue(0)
+        self.local_ai_bar.show()
+        self.local_ai_status.setText("Downloading…")
+
+        def progress(frac: float) -> None:
+            run_on_ui_thread(lambda: (self.local_ai_bar.setValue(int(frac * 100)),
+                                      self.local_ai_status.setText(f"Downloading… {frac * 100:.0f}%")))
+
+        def worker() -> None:
+            ok, msg = local_model.download_model(self.model_manager.models_dir, progress)
+
+            def done() -> None:
+                self._local_ai_downloading = False
+                self.local_ai_bar.hide()
+                self._refresh_local_ai()
+                if not ok:
+                    self.local_ai_status.setText(msg)
+                    self.local_ai_btn.setText("Try again")
+                    self.local_ai_btn.show()
+                elif on_done:
+                    on_done()
+
+            run_on_ui_thread(done)
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _with_help(self, field: QWidget, help_text: str = "") -> QWidget:
         """Stack a short muted explanation under a settings control."""
@@ -2070,17 +2430,25 @@ class MainWindow(QMainWindow):
         if hasattr(self, "settings_search_clear_btn"):
             self.settings_search_clear_btn.setVisible(has_query)
 
+        if not has_query:  # back to the page you were on
+            if hasattr(self, "settings_search_count_lbl"):
+                self.settings_search_count_lbl.hide()
+            if getattr(self, "_settings_page", None) is not None:
+                self._show_settings_page(self._settings_page)
+            return
+
+        # Results from every page, each under its own heading
         match_count = 0
         for sec in getattr(self, "settings_sections", []):
-            if not has_query:
-                sec.show()
-                sec.set_expanded(sec.default_expanded)
-            else:
-                matches = sec.matches_search(query)
-                sec.setVisible(matches)
-                if matches:
-                    match_count += 1
-                    sec.set_expanded(True)
+            matches = sec.matches_search(query)
+            sec.setVisible(matches)
+            sec.set_page_mode(False)
+            if matches:
+                match_count += 1
+                sec.set_expanded(True)
+        if hasattr(self, "settings_page_title"):
+            self.settings_page_title.setText("Search results")
+            self.settings_page_desc.setText(f"Settings matching “{text.strip()}”")
 
         if hasattr(self, "settings_search_count_lbl"):
             if has_query:
@@ -2425,7 +2793,7 @@ class MainWindow(QMainWindow):
 
             def done():
                 self.custom_test_btn.setEnabled(True)
-                self.custom_test_btn.setText("Validate & Test")
+                self.custom_test_btn.setText("Validate && Test")
                 if is_valid:
                     self.custom_stt_status.setText(reason)
                     self.custom_stt_status.setStyleSheet("color: #30D158; font-size: 12px;")
@@ -2847,6 +3215,22 @@ class MainWindow(QMainWindow):
             self.fn_fix_status.setStyleSheet("color: #30D158;")
             self.fn_fix_btn.hide()
 
+    def _on_test_dictation_clicked(self) -> None:
+        if hasattr(self, "practice_text"):
+            self.practice_text.setFocus()
+            key = self._get_shortcut_display()
+            how = f"Hold {key} while you speak" if getattr(self.config, "push_to_talk", False) else f"Tap {key}, speak, then tap {key} again"
+            self.practice_text.setPlaceholderText(f"{how}. Your words appear here.")
+
+    def _copy_practice_text(self) -> None:
+        if hasattr(self, "practice_text"):
+            txt = self.practice_text.toPlainText()
+            if txt:
+                QApplication.clipboard().setText(txt)
+                if hasattr(self, "copy_test_btn"):
+                    self.copy_test_btn.setText("Copied!")
+                    QTimer.singleShot(1500, lambda: self.copy_test_btn.setText("Copy"))
+
     def _on_save_settings(self, quiet: bool = False) -> None:
         self.config.shortcut = self.shortcut_combo.currentData()
         self.config.push_to_talk = self.ptt_check.isChecked()
@@ -3028,7 +3412,7 @@ class MainWindow(QMainWindow):
 
                 def on_download_done():
                     if hasattr(self, "install_update_btn"):
-                        self.install_update_btn.setText("Installing & Restarting...")
+                        self.install_update_btn.setText("Installing && Restarting...")
                     success = UpdateChecker.install_update(target_path)
                     if not success:
                         QMessageBox.information(

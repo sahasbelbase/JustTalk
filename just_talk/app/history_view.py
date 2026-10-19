@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import List, Optional
 
@@ -64,8 +65,17 @@ class ContextChip(QLabel):
         """)
 
 
+def _change_label(item: HistoryItem) -> str:
+    """"Translated" or "AI Refined" when the typed text differs from what was heard by more than
+    punctuation and capitals; "" otherwise."""
+    if item.action == "translate":
+        return "Translated"
+    words = lambda t: re.sub(r"[^\w\s]", "", t.lower()).split()  # noqa: E731
+    return "AI Refined" if words(item.raw_transcription) != words(item.processed_text) else ""
+
+
 class HistoryEntryWidget(QFrame):
-    """A single history entry, expandable to show raw vs formatted."""
+    """A single history entry, expandable to show raw vs formatted side-by-side diff."""
     
     deleted = Signal(str)
     
@@ -76,107 +86,161 @@ class HistoryEntryWidget(QFrame):
         self.is_expanded = False
         
         self.setObjectName("historyCard")
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         
         self._layout = QVBoxLayout(self)
-        self._layout.setContentsMargins(16, 12, 16, 12)
+        self._layout.setContentsMargins(14, 12, 14, 12)
         self._layout.setSpacing(8)
         
         # Header row (always visible)
-        hdr = QHBoxLayout()
-        hdr.setSpacing(12)
+        self.hdr_frame = QWidget()
+        self.hdr_frame.setCursor(Qt.CursorShape.PointingHandCursor)
+        hdr = QHBoxLayout(self.hdr_frame)
+        hdr.setContentsMargins(0, 0, 0, 0)
+        hdr.setSpacing(10)
         
+        # Expand/collapse chevron
+        self.chevron = QLabel()
+        self.chevron.setPixmap(icons.pixmap("chevron-right", icons.ICON_MUTED, 14))
+        hdr.addWidget(self.chevron)
+
         time_lbl = QLabel(item.formatted_time)
         time_lbl.setObjectName("mutedLabel")
-        time_lbl.setFont(ThemeManager.get_mono_font(12))
+        time_lbl.setFont(ThemeManager.get_mono_font(11))
         hdr.addWidget(time_lbl)
         
+        # App Badge
         app_lbl = QLabel(item.application)
-        app_lbl.setFont(ThemeManager.get_ui_font(12, weight=QFont.Weight.Medium))
+        app_lbl.setObjectName("badge")
+        app_lbl.setFont(ThemeManager.get_ui_font(11, weight=QFont.Weight.Medium))
         hdr.addWidget(app_lbl)
         
-        chip = ContextChip(item.context, is_dark=config.appearance == "dark")
+        # Context Chip
+        chip = ContextChip(item.context, is_dark=ThemeManager.is_dark(config.appearance))
         hdr.addWidget(chip)
+
+        # Only when the AI actually changed the words (not just a final period)
+        change = _change_label(item)
+        if change:
+            ai_pill = QLabel(f"✦ {change}")
+            ai_pill.setObjectName("accentPill")
+            ai_pill.setFont(ThemeManager.get_mono_font(10, weight=QFont.Weight.Bold))
+            hdr.addWidget(ai_pill)
         
         hdr.addStretch()
         
         word_lbl = QLabel(f"{item.word_count} words")
         word_lbl.setObjectName("mutedLabel")
-        word_lbl.setFont(ThemeManager.get_ui_font(11))
+        word_lbl.setFont(ThemeManager.get_mono_font(11))
         hdr.addWidget(word_lbl)
         
-        # Copy short button
+        # Copy button
         self.copy_btn = QPushButton("Copy")
         self.copy_btn.setObjectName("secondaryBtn")
-        self.copy_btn.setStyleSheet("padding: 2px 8px; font-size: 11px;")
+        self.copy_btn.setIcon(icons.icon("copy", size=12))
+        self.copy_btn.setStyleSheet("padding: 3px 8px; font-size: 11px;")
+        self.copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.copy_btn.clicked.connect(self._copy_formatted)
         hdr.addWidget(self.copy_btn)
         
         # Delete button
         del_btn = QPushButton()
         del_btn.setObjectName("deleteBtn")
-        del_btn.setIcon(icons.icon("close", size=14))
-        del_btn.setToolTip("Delete")
+        del_btn.setIcon(icons.icon("close", size=13))
+        del_btn.setToolTip("Delete Entry")
         del_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         del_btn.clicked.connect(lambda: self.deleted.emit(self.item.id))
         hdr.addWidget(del_btn)
         
-        self._layout.addLayout(hdr)
+        self._layout.addWidget(self.hdr_frame)
         
-        # Preview (collapsed)
-        self.preview_lbl = QLabel(item.processed_text.replace("\n", " ")[:150] + ("..." if len(item.processed_text) > 150 else ""))
-        self.preview_lbl.setFont(ThemeManager.get_ui_font(12))
+        # Collapsed Preview
+        self.preview_lbl = QLabel(item.processed_text.replace("\n", " ")[:160] + ("…" if len(item.processed_text) > 160 else ""))
+        self.preview_lbl.setFont(ThemeManager.get_ui_font(13))
         self.preview_lbl.setWordWrap(True)
+        self.preview_lbl.setCursor(Qt.CursorShape.PointingHandCursor)
         self._layout.addWidget(self.preview_lbl)
         
-        # Expanded detail area (hidden by default)
+        # Expanded Side-by-Side Diff Comparison Panel
         self.detail_area = QWidget()
         detail_layout = QHBoxLayout(self.detail_area)
-        detail_layout.setContentsMargins(0, 8, 0, 0)
-        detail_layout.setSpacing(16)
+        detail_layout.setContentsMargins(0, 6, 0, 0)
+        detail_layout.setSpacing(12)
         
-        # Raw side
-        raw_layout = QVBoxLayout()
-        raw_layout.setSpacing(4)
-        raw_hdr = QLabel("Raw Transcript")
-        raw_hdr.setObjectName("mutedLabel")
-        raw_hdr.setFont(ThemeManager.get_ui_font(11))
-        raw_layout.addWidget(raw_hdr)
+        # LEFT: Raw Speech Transcript Panel
+        raw_panel = QFrame()
+        raw_panel.setObjectName("diffRawPanel")
+        raw_layout = QVBoxLayout(raw_panel)
+        raw_layout.setContentsMargins(12, 10, 12, 10)
+        raw_layout.setSpacing(6)
+
+        raw_hdr_row = QHBoxLayout()
+        raw_hdr = QLabel("What you said")
+        raw_hdr.setFont(ThemeManager.get_ui_font(12, weight=QFont.Weight.DemiBold))
+        raw_hdr_row.addWidget(raw_hdr)
+        raw_hdr_row.addStretch()
+        raw_layout.addLayout(raw_hdr_row)
         
         raw_text = QTextEdit()
         raw_text.setReadOnly(True)
         raw_text.setPlainText(item.raw_transcription)
-        raw_text.setFont(ThemeManager.get_ui_font(12))
-        raw_text.setFixedHeight(80)
+        raw_text.setFont(ThemeManager.get_mono_font(12))
+        raw_text.setFixedHeight(95)
         raw_layout.addWidget(raw_text)
-        detail_layout.addLayout(raw_layout)
+
+
+        detail_layout.addWidget(raw_panel, 1)
         
-        # Formatted side
-        fmt_layout = QVBoxLayout()
-        fmt_layout.setSpacing(4)
-        fmt_hdr = QLabel("Formatted Output")
-        fmt_hdr.setObjectName("mutedLabel")
-        fmt_hdr.setFont(ThemeManager.get_ui_font(11))
-        fmt_layout.addWidget(fmt_hdr)
+        # RIGHT: Formatted Output Panel
+        fmt_panel = QFrame()
+        fmt_panel.setObjectName("diffFormattedPanel")
+        fmt_layout = QVBoxLayout(fmt_panel)
+        fmt_layout.setContentsMargins(12, 10, 12, 10)
+        fmt_layout.setSpacing(6)
+
+        fmt_hdr_row = QHBoxLayout()
+        fmt_hdr = QLabel("What was typed")
+        fmt_hdr.setFont(ThemeManager.get_ui_font(12, weight=QFont.Weight.DemiBold))
+        fmt_hdr_row.addWidget(fmt_hdr)
+        fmt_hdr_row.addStretch()
+        fmt_layout.addLayout(fmt_hdr_row)
         
         fmt_text = QTextEdit()
         fmt_text.setReadOnly(True)
         fmt_text.setPlainText(item.processed_text)
-        fmt_text.setFont(ThemeManager.get_mono_font(11) if item.context != "text" else ThemeManager.get_ui_font(12))
-        fmt_text.setFixedHeight(80)
+        fmt_text.setFont(ThemeManager.get_mono_font(12) if item.context != "text" else ThemeManager.get_ui_font(13))
+        fmt_text.setFixedHeight(95)
         fmt_layout.addWidget(fmt_text)
-        detail_layout.addLayout(fmt_layout)
+
+        fmt_footer_row = QHBoxLayout()
+        fmt_footer_row.addStretch()
+        
+        re_copy_btn = QPushButton("Copy Text")
+        re_copy_btn.setObjectName("primaryBtn")
+        re_copy_btn.setIcon(icons.icon("copy", active_color="#FFFFFF", size=11))
+        re_copy_btn.setStyleSheet("padding: 2px 10px; font-size: 11px;")
+        re_copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        re_copy_btn.clicked.connect(self._copy_formatted)
+        fmt_footer_row.addWidget(re_copy_btn)
+
+        fmt_layout.addLayout(fmt_footer_row)
+        detail_layout.addWidget(fmt_panel, 1)
         
         self.detail_area.hide()
         self._layout.addWidget(self.detail_area)
         
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            self.is_expanded = not self.is_expanded
-            self.detail_area.setVisible(self.is_expanded)
-            self.preview_lbl.setVisible(not self.is_expanded)
+            self._toggle_expand()
         super().mousePressEvent(event)
+
+    def _toggle_expand(self):
+        self.is_expanded = not self.is_expanded
+        self.detail_area.setVisible(self.is_expanded)
+        self.preview_lbl.setVisible(not self.is_expanded)
+        self.chevron.setPixmap(
+            icons.pixmap("chevron-down" if self.is_expanded else "chevron-right", icons.ICON_MUTED, 14)
+        )
         
     def _copy_formatted(self):
         from PySide6.QtWidgets import QApplication
@@ -187,7 +251,7 @@ class HistoryEntryWidget(QFrame):
 
 
 class HistoryView(QWidget):
-    """The main History screen."""
+    """The main History screen with interactive diff cards and filters."""
 
     def __init__(self, db: HistoryDatabase, config: AppConfig, parent=None):
         super().__init__(parent)
@@ -199,10 +263,10 @@ class HistoryView(QWidget):
         
     def _build_ui(self):
         root = QVBoxLayout(self)
-        root.setContentsMargins(36, 30, 36, 28)
+        root.setContentsMargins(36, 28, 36, 28)
         root.setSpacing(16)
         
-        # Header
+        # 1. Header Row
         hdr = QHBoxLayout()
         title = QLabel("Dictation History")
         title.setFont(ThemeManager.get_display_font(26, weight=QFont.Weight.Bold))
@@ -210,19 +274,20 @@ class HistoryView(QWidget):
         hdr.addStretch()
         
         clear_btn = QPushButton("Clear History")
-        clear_btn.setObjectName("secondaryBtn")
-        clear_btn.setStyleSheet("color: #FF3B30;")
+        clear_btn.setObjectName("dangerBtn")
+        clear_btn.setIcon(icons.icon("delete", color="#EF4444", active_color="#EF4444", size=14))
+        clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         clear_btn.clicked.connect(self._clear_history)
         hdr.addWidget(clear_btn)
         root.addLayout(hdr)
         
-        # Filters
+        # 2. Filter Toolbar
         filter_bar = QHBoxLayout()
-        filter_bar.setSpacing(12)
+        filter_bar.setSpacing(10)
         
         self.search_box = QLineEdit()
-        self.search_box.setPlaceholderText("Search transcriptions...")
-        self.search_box.setFixedWidth(250)
+        self.search_box.setPlaceholderText("Search transcriptions…")
+        self.search_box.setFixedWidth(260)
         self.search_box.textChanged.connect(self.refresh)
         filter_bar.addWidget(self.search_box)
         
@@ -239,17 +304,23 @@ class HistoryView(QWidget):
         filter_bar.addWidget(self.app_combo)
         
         filter_bar.addStretch()
+
+        auto_save_lbl = QLabel("Auto-saves in local database")
+        auto_save_lbl.setObjectName("mutedLabel")
+        auto_save_lbl.setFont(ThemeManager.get_mono_font(10))
+        filter_bar.addWidget(auto_save_lbl)
+
         root.addLayout(filter_bar)
         
-        # Scroll Area
+        # 3. Scroll Area
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
         self.scroll.setFrameShape(QFrame.Shape.NoFrame)
         
         self.list_container = QWidget()
         self.list_layout = QVBoxLayout(self.list_container)
-        self.list_layout.setContentsMargins(0,0,0,0)
-        self.list_layout.setSpacing(12)
+        self.list_layout.setContentsMargins(0, 4, 0, 0)
+        self.list_layout.setSpacing(10)
         self.list_layout.addStretch()
         self.scroll.setWidget(self.list_container)
         
@@ -310,10 +381,12 @@ class HistoryView(QWidget):
         today_str = datetime.now().strftime("%Y-%m-%d")
         
         for ds, day_items in by_day.items():
-            # Day header
-            hdr = QLabel("Today" if ds == today_str else ds)
-            hdr.setFont(ThemeManager.get_ui_font(14, weight=QFont.Weight.Bold))
-            hdr.setContentsMargins(0, 16, 0, 4)
+            # Day header with count
+            day_title = "Today" if ds == today_str else ds
+            hdr_text = f"{day_title} · {len(day_items)} transcription{'s' if len(day_items) != 1 else ''}"
+            hdr = QLabel(hdr_text)
+            hdr.setFont(ThemeManager.get_ui_font(13, weight=QFont.Weight.Bold))
+            hdr.setContentsMargins(0, 14, 0, 4)
             self.list_layout.insertWidget(self.list_layout.count() - 1, hdr)
             
             for it in day_items:

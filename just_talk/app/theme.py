@@ -44,49 +44,49 @@ class ColorTokens:
 
 
 LIGHT_TOKENS = ColorTokens(
-    bg="#FFFFFF",
-    surface="#F5F5F7",
-    surface_raised="#EBEBED",
-    border="rgba(0, 0, 0, 0.06)",
+    bg="#F8F9FA",
+    surface="#FFFFFF",
+    surface_raised="#F0F2F5",
+    border="rgba(0, 0, 0, 0.08)",
     border_subtle="rgba(0, 0, 0, 0.04)",
-    text="#1D1D1F",
-    text_secondary="#48484A",
-    text_muted="rgba(60, 60, 67, 0.55)",
-    accent="#007AFF",
-    accent_hover="#0066D6",
-    accent_soft="rgba(0, 122, 255, 0.10)",
+    text="#111318",
+    text_secondary="#5F6368",
+    text_muted="#80868B",
+    accent="#3B82F6",
+    accent_hover="#2563EB",
+    accent_soft="rgba(59, 130, 246, 0.12)",
     on_accent="#FFFFFF",
-    sidebar_bg="#F2F1F6",
+    sidebar_bg="#F0F2F5",
     sidebar_separator="rgba(0, 0, 0, 0.06)",
-    listening="#FF3B30",
-    action="#AF52DE",
-    processing="#5AC8FA",
-    success="#34C759",
-    warning="#FF9500",
-    clipboard="#007AFF",
+    listening="#EF4444",
+    action="#8B5CF6",
+    processing="#3B82F6",
+    success="#10B981",
+    warning="#F59E0B",
+    clipboard="#3B82F6",
 )
 
 DARK_TOKENS = ColorTokens(
-    bg="#161616",
-    surface="#1F1F1F",
-    surface_raised="#282828",
-    border="rgba(255, 255, 255, 0.07)",
-    border_subtle="rgba(255, 255, 255, 0.04)",
-    text="rgba(255, 255, 255, 0.88)",
-    text_secondary="rgba(255, 255, 255, 0.55)",
-    text_muted="rgba(255, 255, 255, 0.32)",
-    accent="#6C8EEF",
-    accent_hover="#8BA4F4",
-    accent_soft="rgba(108, 142, 239, 0.14)",
+    bg="#0F1115",
+    surface="#16181D",
+    surface_raised="#1E2229",
+    border="#2A2E37",
+    border_subtle="#21252E",
+    text="#F9FAFB",
+    text_secondary="#9CA3AF",
+    text_muted="#6B7280",
+    accent="#3B82F6",
+    accent_hover="#60A5FA",
+    accent_soft="rgba(59, 130, 246, 0.15)",
     on_accent="#FFFFFF",
-    sidebar_bg="#1B1B1B",
-    sidebar_separator="rgba(255, 255, 255, 0.05)",
-    listening="#FF453A",
-    action="#BF5AF2",
-    processing="#64D2FF",
-    success="#30D158",
-    warning="#FF9F0A",
-    clipboard="#6C8EEF",
+    sidebar_bg="#0C0E13",
+    sidebar_separator="#21252E",
+    listening="#EF4444",
+    action="#A855F7",
+    processing="#38BDF8",
+    success="#10B981",
+    warning="#F59E0B",
+    clipboard="#3B82F6",
 )
 
 
@@ -156,7 +156,8 @@ class ThemeManager:
             f_name = cls._mono_font_family
         else:
             f_name = cls._ui_font_family
-        f = QFont(f_name, size)
+        f = QFont(f_name)
+        f.setPixelSize(size)  # pixels, like the stylesheet, so sizes match on macOS and Windows
         f.setWeight(weight)
         if size >= 28:
             f.setLetterSpacing(QFont.SpacingType.PercentageSpacing, 98.0)  # Subtle negative tracking
@@ -256,31 +257,30 @@ class ThemeManager:
     def get_stylesheet(cls, is_dark: bool) -> str:
         """Generate central QSS stylesheet — Typeless-inspired dark minimal aesthetic."""
         t = cls.get_tokens(is_dark)
-        ui_font = cls._ui_font_family
 
         # Pre-compute solid color equivalents
         if is_dark:
-            surface_solid = "#1F1F1F"
-            surface_raised_solid = "#282828"
-            border_solid = "#2D2D2D"
-            border_subtle_solid = "#232323"
-            text_secondary_solid = "#8C8C8C"
-            text_muted_solid = "#5C5C5C"
+            surface_solid = "#16181D"
+            surface_raised_solid = "#1E2229"
+            border_solid = "#2A2E37"
+            border_subtle_solid = "#21252E"
+            text_secondary_solid = "#9CA3AF"
+            text_muted_solid = "#6B7280"
         else:
-            surface_solid = "#F5F5F7"
-            surface_raised_solid = "#EBEBED"
-            border_solid = "rgba(0, 0, 0, 0.06)"
+            surface_solid = "#FFFFFF"
+            surface_raised_solid = "#F0F2F5"
+            border_solid = "rgba(0, 0, 0, 0.08)"
             border_subtle_solid = "rgba(0, 0, 0, 0.04)"
-            text_secondary_solid = "#48484A"
-            text_muted_solid = "rgba(60, 60, 67, 0.55)"
+            text_secondary_solid = "#5F6368"
+            text_muted_solid = "#80868B"
 
         check_icon = (Path(__file__).resolve().parent.parent / "assets" / "check.svg").as_posix()
 
         return f"""
         /* ===== Global Reset ===== */
+        /* No font-family/font-size here: a "*" font rule overrides every setFont() call, which
+           flattened all headings to body size. The base font is set with QApplication.setFont(). */
         * {{
-            font-family: "{ui_font}", "Lato", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
-            font-size: 13px;
             color: {t.text};
             outline: none;
         }}
@@ -321,6 +321,30 @@ class ThemeManager:
             border-radius: 8px;
         }}
 
+        /* Bento Stat Cards */
+        QFrame#bentoCard {{
+            background-color: {surface_solid};
+            border: 1px solid {border_solid};
+            border-radius: 12px;
+            padding: 14px 16px;
+        }}
+
+        QFrame#bentoCard:hover {{
+            border-color: {"#3E4452" if is_dark else "#C4C8D0"};
+        }}
+
+        QLabel#statMetric {{
+            color: {t.text};
+            font-size: 24px;
+            font-weight: 700;
+        }}
+
+        QLabel#statTrend {{
+            color: {t.success};
+            font-size: 11px;
+            font-weight: 600;
+        }}
+
         /* ===== Labels ===== */
         QLabel {{
             background: transparent;
@@ -341,18 +365,63 @@ class ThemeManager:
             color: {text_secondary_solid};
         }}
 
-        /* ===== Keycap Badge ===== */
+        /* ===== Keycap Badges (Physical Mechanical Look) ===== */
         QLabel#keycap {{
             background-color: {surface_raised_solid};
             border: 1px solid {border_solid};
+            border-bottom: 2px solid {"#323843" if is_dark else "#D1D5DB"};
             border-radius: 6px;
-            padding: 5px 12px;
+            padding: 3px 8px;
             color: {t.text};
-            min-width: 20px;
+            font-weight: 600;
+            min-width: 18px;
             qproperty-alignment: AlignCenter;
         }}
 
-        /* ===== Shortcut Badge ===== */
+        QLabel#heroKeycap {{
+            background-color: {surface_raised_solid};
+            border: 1px solid {border_solid};
+            border-bottom: 3px solid {"#373D49" if is_dark else "#C8CCD0"};
+            border-radius: 8px;
+            padding: 6px 14px;
+            color: {t.text};
+            font-weight: 700;
+            font-size: 15px;
+            min-width: 28px;
+            qproperty-alignment: AlignCenter;
+        }}
+
+        /* ===== Status Pills & Badges ===== */
+        QLabel#statusPill {{
+            background-color: {"rgba(16, 185, 129, 0.12)" if is_dark else "rgba(16, 185, 129, 0.10)"};
+            color: {t.success};
+            border: 1px solid {"rgba(16, 185, 129, 0.25)" if is_dark else "rgba(16, 185, 129, 0.20)"};
+            border-radius: 10px;
+            padding: 2px 8px;
+            font-size: 10px;
+            font-weight: 600;
+        }}
+
+        QLabel#accentPill {{
+            background-color: {t.accent_soft};
+            color: {t.accent};
+            border: 1px solid {"rgba(59, 130, 246, 0.25)" if is_dark else "rgba(59, 130, 246, 0.20)"};
+            border-radius: 10px;
+            padding: 2px 8px;
+            font-size: 10px;
+            font-weight: 600;
+        }}
+
+        QLabel#secondaryPill {{
+            background-color: {"rgba(255, 255, 255, 0.06)" if is_dark else "rgba(0, 0, 0, 0.05)"};
+            color: {text_secondary_solid};
+            border: 1px solid {border_solid};
+            border-radius: 10px;
+            padding: 2px 8px;
+            font-size: 10px;
+            font-weight: 500;
+        }}
+
         QLabel#shortcutBadge {{
             color: {text_muted_solid};
             background: transparent;
@@ -444,6 +513,18 @@ class ThemeManager:
             border-radius: 12px;
         }}
 
+        QFrame#diffRawPanel {{
+            background-color: {"#0D0E12" if is_dark else "#F9FAFB"};
+            border: 1px solid {"rgba(239, 68, 68, 0.3)" if is_dark else "rgba(239, 68, 68, 0.2)"};
+            border-radius: 8px;
+        }}
+
+        QFrame#diffFormattedPanel {{
+            background-color: {surface_raised_solid};
+            border: 1px solid {"rgba(59, 130, 246, 0.35)" if is_dark else "rgba(59, 130, 246, 0.25)"};
+            border-radius: 8px;
+        }}
+
         QPushButton#deleteBtn {{
             background: transparent;
             border: none;
@@ -496,21 +577,46 @@ class ThemeManager:
             color: {text_secondary_solid};
             border: none;
             border-radius: 7px;
-            padding: 6px 10px;
+            padding: 8px 12px;
             text-align: left;
             font-size: 13px;
-            font-weight: 400;
+            font-weight: 500;
         }}
 
         QPushButton#navBtn:hover {{
-            background-color: {"rgba(255,255,255,0.04)" if is_dark else "rgba(0,0,0,0.04)"};
+            background-color: {"rgba(255,255,255,0.05)" if is_dark else "rgba(0,0,0,0.04)"};
             color: {t.text};
         }}
 
         QPushButton#navBtn:checked, QPushButton#navBtn[active="true"] {{
-            background-color: {t.accent_soft};
+            background-color: {surface_raised_solid};
             color: {t.accent};
+            font-weight: 600;
+            border: 1px solid {border_solid};
+        }}
+
+        /* ===== Settings Sub-Navigation Rail Buttons ===== */
+        QPushButton#subnavBtn {{
+            background-color: transparent;
+            color: {text_secondary_solid};
+            border: none;
+            border-radius: 7px;
+            padding: 7px 10px;
+            text-align: left;
+            font-size: 12px;
             font-weight: 500;
+        }}
+
+        QPushButton#subnavBtn:hover {{
+            background-color: {"rgba(255,255,255,0.04)" if is_dark else "rgba(0,0,0,0.04)"};
+            color: {t.text};
+        }}
+
+        QPushButton#subnavBtn:checked {{
+            background-color: {surface_raised_solid};
+            color: {t.accent};
+            font-weight: 600;
+            border: 1px solid {border_subtle_solid};
         }}
 
         /* ===== Inputs & Text Edits ===== */
@@ -861,12 +967,121 @@ class ThemeManager:
         QMessageBox QPushButton {{
             min-width: 72px;
         }}
+
+        /* ===== Type roles (onboarding and anywhere a clear hierarchy is needed) ===== */
+        QLabel#h1 {{
+            font-size: 30px;
+            font-weight: 700;
+            color: {t.text};
+        }}
+
+        QLabel#lead {{
+            font-size: 15px;
+            color: {text_secondary_solid};
+        }}
+
+        QLabel#eyebrow {{
+            font-size: 11px;
+            font-weight: 700;
+            color: {text_muted_solid};
+        }}
+
+        QLabel#caption {{
+            font-size: 12px;
+            color: {text_muted_solid};
+        }}
+
+        QLabel#rowTitle {{
+            font-size: 14px;
+            font-weight: 600;
+            color: {t.text};
+        }}
+
+        QLabel#statusOk {{
+            font-size: 12px;
+            font-weight: 600;
+            color: {t.success};
+        }}
+
+        QLabel#statusWarn {{
+            font-size: 12px;
+            font-weight: 600;
+            color: {t.warning};
+        }}
+
+        QLabel#bigNumber {{
+            font-size: 34px;
+            font-weight: 700;
+            color: {t.text};
+        }}
+
+        /* ===== Onboarding controls ===== */
+        QFrame#hairRow {{
+            background: transparent;
+            border: none;
+            border-bottom: 1px solid {border_solid};
+        }}
+
+        QFrame#choiceCard {{
+            background-color: {surface_solid};
+            border: 1px solid {border_solid};
+            border-radius: 12px;
+        }}
+
+        QFrame#choiceCard:hover {{
+            border-color: {"#3A3A3A" if is_dark else "rgba(0, 0, 0, 0.16)"};
+        }}
+
+        QFrame#choiceCard[checked="true"] {{
+            background-color: {t.accent_soft};
+            border: 1px solid {t.accent};
+        }}
+
+        QPushButton#chip {{
+            background-color: {surface_solid};
+            color: {t.text};
+            border: 1px solid {border_solid};
+            border-radius: 15px;
+            padding: 6px 14px;
+            font-size: 13px;
+            font-weight: 500;
+            min-height: 18px;
+        }}
+
+        QPushButton#chip:hover {{
+            border-color: {"#3A3A3A" if is_dark else "rgba(0, 0, 0, 0.16)"};
+        }}
+
+        QPushButton#chip:checked {{
+            background-color: {t.accent_soft};
+            border-color: {t.accent};
+            color: {t.accent};
+        }}
+
+        QPushButton#linkBtn {{
+            background: transparent;
+            border: none;
+            color: {text_secondary_solid};
+            padding: 4px 2px;
+            font-weight: 500;
+        }}
+
+        QPushButton#linkBtn:hover {{
+            color: {t.text};
+        }}
+
+        QPushButton#primaryBtn[size="large"], QPushButton#secondaryBtn[size="large"] {{
+            padding: 9px 22px;
+            border-radius: 9px;
+            font-size: 14px;
+        }}
         """
 
     @classmethod
     def apply_theme(cls, app: QApplication, appearance_setting: str = "system") -> bool:
         """Apply active theme and palette across the entire application."""
         is_dark = cls.is_dark(appearance_setting)
+        app.setFont(cls.font(13))
         app.setPalette(cls.get_palette(is_dark))
         app.setStyleSheet(cls.get_stylesheet(is_dark))
         return is_dark

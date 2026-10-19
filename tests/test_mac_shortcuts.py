@@ -161,3 +161,50 @@ def test_mac_hotkey_monitor_toggle_mode():
 
     monitor.stop()
 
+
+
+def test_escape_cancels_a_toggle_recording():
+    """Escape was handled by a method nothing called, so it never cancelled on macOS."""
+    started, stopped, cancelled = [], [], []
+    monitor = MacHotkeyMonitor(
+        on_start_recording=lambda action: started.append(action),
+        on_stop_recording=lambda: stopped.append(True),
+        on_cancel_recording=lambda: cancelled.append(True),
+        trigger_key="fn",
+        push_to_talk=False,
+    )
+    monitor._running = True
+    monitor._handle_other_key_down(53)  # Escape while idle does nothing
+    assert cancelled == []
+    monitor._handle_trigger_state(is_down=True, is_shift=False)
+    monitor._handle_trigger_state(is_down=False, is_shift=False)
+    assert monitor._is_active is True
+    monitor._handle_other_key_down(53)
+    assert cancelled == [True] and stopped == [] and monitor._is_active is False
+    monitor._handle_other_key_down(53)  # the second listener reporting the same press
+    assert cancelled == [True]
+
+
+def test_both_key_listeners_pass_key_presses_to_the_escape_handler():
+    import inspect
+
+    src = inspect.getsource(MacHotkeyMonitor)
+    assert src.count("self._handle_other_key_down(") >= 2  # AppKit monitor and Quartz tap
+
+
+def test_escape_hot_key_is_only_held_while_recording():
+    """Escape is registered as a hot key (no Input Monitoring needed) and always given back."""
+    from just_talk.shortcuts.mac_escape import EscapeHotKey
+
+    fired = []
+    key = EscapeHotKey(lambda: fired.append(True))
+    if not key.available:
+        return
+    key.arm()
+    assert key._hotkey_ref is not None
+    key._fired(None, None, None)  # Escape pressed
+    assert fired == [True] and key._hotkey_ref is None  # released after one use
+    key._fired(None, None, None)
+    assert fired == [True]
+    key.arm(); key.disarm()
+    assert key._hotkey_ref is None

@@ -1,4 +1,4 @@
-# Just Talk (v2.3.1)
+# Just Talk (v3.0.0)
 
 > **A fast, quiet voice keyboard for macOS and Windows.**  
 > Think → Speak → Done.
@@ -12,6 +12,8 @@
 [![Releases](https://img.shields.io/github/v/release/sahasbelbase/JustTalk?color=blue&label=Latest%20Release)](https://github.com/sahasbelbase/JustTalk/releases/latest)
 
 Just Talk is a lightweight desktop productivity utility that runs quietly in your system tray or menu bar. Tap your hotkey, speak naturally, and your words appear directly in whatever application you are using (Chrome, VS Code, Slack, Notion, Discord, Terminal, etc.)—complete with instant draft streaming and optional AI-powered grammar polishing.
+
+On a Mac, Just Talk's own AI model, trained on real Nepali speech, cleans up English and translates Nepali and Nepglish into English right on your computer, with no internet and no API key.
 
 If no text field is actively focused, the final text is automatically placed on your clipboard and a subtle notification is shown.
 
@@ -30,7 +32,72 @@ Download the latest version of Just Talk directly for your operating system:
 
 ---
 
-## What's New in Version 2.3.1
+## What's New in Version 3.0.0
+
+* **Just Talk's own on-device AI (Mac):** a small language model made for Just Talk cleans up English and translates Nepali and Nepglish into English on your Mac, with no internet and no API key. A typical dictation takes about 0.2 seconds. After you install or update, the model (1.8 GB, from Hugging Face, checked with SHA-256) downloads in the background and switches itself on when it is ready. You can turn it off in **Settings › AI Formatting**, and it stays off. A cloud AI provider, if you set one up, is used as a backup. See [how it was trained and tested](#just-talks-own-on-device-model).
+* **Voice profile setup:** new setup screens walk you through permissions, your languages, your kind of work, and your voice. You read a few short sentences, words light up as they are heard, and every speech engine on your computer is scored on your voice. The result tells you which engine to use and what it tends to mishear.
+* **Learns your words:** names and jargon from your dictations and from voice setup are passed to Apple's recognizer, so "git" stops coming out as "gate". **Settings › Updates & Startup › Learning** shows what it learned and lets you remove anything wrong. An optional AI review of past dictations (text only) can find more.
+* **Faster Mixed mode (Mac):** Apple hears English and Kriti hears Nepali. Just Talk now picks one for each stretch of speech (cut at pauses, 8 seconds at most), and recognizes, translates and cleans each finished stretch while you are still talking. In testing, dictations of 89 to 117 seconds were ready 1.3 to 2.3 seconds after stopping. The live preview shows English stretches in English.
+* **Cleaner text:** hesitation sounds (umm, uhh, hmm, and उम् the way Kriti writes it) are removed everywhere. Lists appear only when you ask for one ("list", "points", "first... second", लिस्ट, बुँदा). AI answers never contain an em dash. A spoken web address such as "youtube.com" is typed as is. A leading "yes", "no" or "okay" is never dropped. Code and indentation are left alone.
+* **Mac fixes:** Escape really cancels a dictation, with no Input Monitoring permission needed. The pill's ✕ returns you to the app you were typing in. Text that said "Inserted" but never appeared in Chromium apps (Brave, Chrome, VS Code) now lands. Terminals no longer get the same text twice.
+* **Settings and Home:** each settings menu entry is its own page, like System Settings, with search across every page. Home and History show real numbers from your own dictations.
+
+---
+
+## Just Talk's Own On-Device Model
+
+The speech engine (Kriti for Nepali, Apple or Whisper for English) turns your voice into words. Just Talk's own model then turns those words into clean English. It is a LoRA fine-tune of [Qwen3-1.7B](https://huggingface.co/Qwen/Qwen3-1.7B), trained on a MacBook's own GPU with MLX, with no cloud GPUs, and it runs with [llama.cpp](https://github.com/ggml-org/llama.cpp) on Metal.
+
+* **Current version:** v6.2, `justtalk-qwen3-1.7b-v6.2-Q8_0.gguf` (1.83 GB), Apache-2.0
+* **Model card, files and every result:** [huggingface.co/SahasBelbase/justtalk-qwen3-1.7b-gguf](https://huggingface.co/SahasBelbase/justtalk-qwen3-1.7b-gguf)
+* **Speed on an Apple M5 laptop:** median 0.24 s for a Nepali dictation and 0.12 s for an English clean-up
+* **Mac only for now.** On Windows, AI formatting uses your cloud provider or Ollama.
+
+### What it learned from
+
+13,742 examples (13,592 for training and 150 kept back for validation), one pass, 8.7 million trainable parameters (about 0.5% of the model).
+
+| Source | Examples |
+| :--- | ---: |
+| Nepali to English sentence pairs from [AI4Bharat BPCC](https://huggingface.co/datasets/ai4bharat/BPCC), some spoken by a Mac voice and written down by Kriti | 6,300 |
+| English said with a Nepali accent and written in Devanagari by Kriti | 2,619 |
+| English dictation clean-ups, including developer words Apple mishears ("push to get", "poll request") | 1,597 |
+| Real voice: 434 recorded sentences (used twice) and 41 lines dictated through the app (used three times) | 991 |
+| Hand-written fixes: negatives paired with positives, "probably" and "might", lists asked for and not, fillers, Action Mode edits | 848 |
+| Everyday Nepglish sentences (174, read by Mac voices and written down by Kriti) | 696 |
+| Long run-on dictations (3 to 6 sentences joined) | 691 |
+
+Every English answer follows the same rules: keep the meaning, never add or drop a detail, never flip a "not", and no em dashes or semicolons.
+
+### Benchmarks
+
+chrF++ (0 to 100, higher is better) against the expected English. Every model ran the same tests with the same prompts, and none of the test sentences were used in training.
+
+| Test (sentences) | Qwen3 1.7B, untuned | v2 (previous model) | **v6.2 (in the app now)** |
+| :--- | ---: | ---: | ---: |
+| Real Nepali dictations (29) | 35.4 | 40.1 | **41.1** |
+| FLORES+ Nepali to English (200) | 40.8 | 40.8 | **42.1** |
+| English clean-up (29) | 60.8 | 68.9 | **67.5** |
+| Recorded voice, held out (91) | | 48.9 | **56.1** |
+| Lines dictated through the app, held out (10) | | 64.5 | **77.5** |
+
+Behaviour checks on 49 sentences it never saw:
+
+| Check | v2 | **v6.2** |
+| :--- | ---: | ---: |
+| Keeps every "not" | 13 / 14 | **13 / 14** |
+| Keeps "probably", "might", "I think" | 4 / 7 | **5 / 7** |
+| Makes a list when you ask | 0 / 6 | **6 / 6** |
+| No list when you didn't | 4 / 4 | **4 / 4** |
+| Drops umm, uhh, hmm | 3 / 5 | **5 / 5** |
+
+**Nine versions to get here.** 0.6B was too small for Nepali. v2 on the 1.7B model was the first real win and stayed in the app for a long time. Training further on top of it (v3) made it memorise the recordings and forget general Nepali, so every later version starts from the base model. v4 and v5 improved English but started flipping meaning ("I'll go to the office tomorrow" became "I will not come") and were pulled. v6.1 leaned towards "not" because its negative examples had no positive twins. v6.2 pairs every negative with its positive and is the first version better than v2 on real Nepali, general Nepali, the recorded voice and app dictation at the same time. Every version's scores are on the [model card](https://huggingface.co/SahasBelbase/justtalk-qwen3-1.7b-gguf).
+
+**Known limits:** it sometimes drops होला (probably), doesn't know a few words such as अबेर (late), and very rarely misses a negative. It can't fix a number the speech engine wrote down wrong. It is a small model made for dictation, not for chat or facts.
+
+---
+
+## Previous Release: 2.3.1
 
 * **Lighter when idle:** Just Talk frees the speech models from memory after you haven't dictated for a while (Settings › Free Memory, 10 minutes by default, or never) and reloads them while you speak. On our test Mac this dropped memory use from about 2.4 GB to about 0.7 GB with the large Whisper model and Kriti loaded. The window's status refresh also stops while it is hidden.
 * **Action Mode writes for you:** With nothing selected, hold your shortcut + Shift and say *"write me a sick leave email"* or *"write a short poem about rain"*. It needs AI formatting turned on.
@@ -38,7 +105,7 @@ Download the latest version of Just Talk directly for your operating system:
 * **Fewer "not recognized" results in noisy rooms:** If the noise-reduced audio gives no text, Just Talk tries the original microphone audio before giving up.
 * **AI polish times out less:** The polish step waits up to 5 seconds when your raw words are already typed, instead of 2.
 
-## Previous Release: 2.3.0
+## Earlier Release: 2.3.0
 
 * **Simpler language setup:** Tell Just Talk once which languages you speak (Settings › Languages), then pick what you're typing in right now from the **Typing in** buttons on Home or the tray menu — English, नेपाली, or Mixed — with a single **Translate to English** switch. Settings that used to contradict each other can no longer get out of step, and English stays the default.
 * **Kriti offline Nepali engine:** Nepali dictation can now run fully on your computer with [Kriti](https://github.com/Naamche-Labs/kriti) by Naamche Labs. On our test recordings it made 0 word errors where the cloud engine made 4, including on low and noisy speech and mixed Nepglish. One-click download (475 MB) from Home.
@@ -46,7 +113,7 @@ Download the latest version of Just Talk directly for your operating system:
 * **More voice edits:** Select text and say "polish this prompt", "fix grammar", "fix this query" (SQL) or "fix this code". Turning a list into a paragraph and back now works reliably, and Action Mode no longer switches itself off when you release Shift.
 * **Fixes:** Nepali speech is no longer sent to an English recogniser; expanded History entries no longer fill the screen.
 
-## Previous Release: 2.2.0
+## Earlier Release: 2.2.0
 
 * **Edit selected text by voice:** Select text in any app, hold your shortcut + **Shift**, and say what to change ("make this shorter", "make it polite", "translate to Nepali", "turn this into bullet points"). Just Talk rewrites the selection in place. With nothing selected, Action Mode works as before.
 * **Paste last dictation:** Press **Ctrl + Cmd + V** (macOS) or **Win + Alt + V** (Windows) to type your last dictation again into whatever app is focused, handy when the cursor was in the wrong place. The tray menu also has **Copy Last Dictation**.
@@ -77,6 +144,8 @@ Download the latest version of Just Talk directly for your operating system:
 
 ## Key Highlights
 
+* **On-Device AI (Mac):** Just Talk's own model cleans up English and translates Nepali and Nepglish offline, in about 0.2 seconds.
+* **Voice Profile:** setup scores every speech engine on your voice and learns the words you use.
 * **Tap or Push-to-Talk:** Tap **Fn** (macOS) or **Right Alt** (Windows) to toggle, or switch to classic hold-to-talk in Settings.
 * **Instant Text Insertion:** Your words are cleaned and typed into your focused app in milliseconds.
 * **Native macOS Aesthetic:** Frosted glass acrylic styling, dynamic dark/light mode, custom typography (`Inter`, `Lato`, `JetBrains Mono`), and fluid status animations.
@@ -99,8 +168,9 @@ Download the latest version of Just Talk directly for your operating system:
 1. **Your choice of speech engine:** With **Pure Offline Mode** or local Whisper, audio never leaves your computer. The built-in macOS engine uses Apple's on-device recognition where your Mac supports it. The Google Web Speech engine (used for Nepali, and first on Windows when online) sends audio to Google to transcribe it.
 2. **Text-only AI formatting:** Only the transcribed text — never audio — is sent to the AI provider you choose (or to Ollama running locally) for punctuation, grammar and cleanup.
 3. **Graceful fallback:** If the AI provider is slow or unreachable, the locally cleaned transcript is inserted instead. Short phrases wait at most ~2 s; long dictations get up to ~8 s. Only real outages (not slow replies) pause AI formatting.
-4. **Pure Offline Mode:** One toggle disables every network request — on-device transcription only, and cloud AI formatting is switched off.
-5. **Local credential storage:** API keys are stored only on your computer, in a private `.credentials` file in Just Talk's app-data folder with owner-only (0600) permissions, and are sent only to the provider you selected.
+4. **Pure Offline Mode:** One toggle disables every network request — on-device transcription only, and cloud AI formatting is switched off. On a Mac, the on-device AI model keeps cleaning up and translating.
+5. **On-device AI sends nothing:** Just Talk's own model runs on your Mac. Your words never leave it, and it works with no account and no API key.
+6. **Local credential storage:** API keys are stored only on your computer, in a private `.credentials` file in Just Talk's app-data folder with owner-only (0600) permissions, and are sent only to the provider you selected.
 
 ---
 
@@ -113,7 +183,10 @@ Just Talk gives you absolute freedom to choose both your **Speech Recognition En
 * **Google Web Speech (Cloud Fallback):** 100% free, zero login, zero API keys required. Excellent for multilingual and low-resource languages.
 * **Local Whisper / BYOM:** Choose standard Whisper models (`base.en`, `small.en`, `large-v3-turbo`) or point to any custom Hugging Face repo or local CTranslate2 folder.
 
-### 2. Local Offline AI Formatting with Ollama (100% On-Device)
+### 2. Just Talk's Own On-Device Model (Mac)
+Nothing to set up: after you install or update, the model downloads once (1.8 GB) in the background from [Hugging Face](https://huggingface.co/SahasBelbase/justtalk-qwen3-1.7b-gguf) and switches itself on. From then on it cleans up English and translates Nepali and Nepglish with no internet. Newer versions of the model download the same way. To stop using it, untick **Use the on-device AI model** in Settings › AI Formatting. See [Just Talk's Own On-Device Model](#just-talks-own-on-device-model) for the training data and benchmarks.
+
+### 3. Local Offline AI Formatting with Ollama (100% On-Device)
 Run powerful open-weight LLMs locally with **zero API keys, zero cloud costs, and 100% offline privacy**:
 * **Supported Models**: `llama3.2:3b`, `qwen2.5-coder:7b`, `mistral:7b`, `deepseek-r1:8b`, etc.
 * **Auto-Scanner**: Detects all models installed in your local Ollama instance (`http://localhost:11434`) automatically.
@@ -133,6 +206,9 @@ Choose the speed and accuracy profile that matches your hardware:
 | **Fast / Small** | `base.en` (Whisper) | ~140 MB | ~200 MB | ~250ms | Ultra-fast offline response |
 | **Balanced** | `small.en` (Whisper) | ~460 MB | ~450 MB | ~400ms | High accuracy & technical terms |
 | **High Quality / Multilingual** | `large-v3-turbo` (Whisper) | ~800 MB | ~850 MB | ~650ms | Dictation across 99+ languages |
+| **Offline Nepali** | Kriti (ONNX) | ~475 MB | Not measured | ~1.5 s for 90 s of speech | Nepali and Nepglish, fully offline |
+
+The on-device AI model (Mac) is separate from the speech engine: 1.83 GB on disk, about 0.2 s per dictation on an Apple M5.
 
 ---
 
@@ -204,7 +280,7 @@ This produces:
 
 ## Running the Test Suite
 
-Just Talk includes comprehensive test coverage for configuration, SQLite history, Voice Activity Detection (VAD), action routing, Gemini offline fallbacks, single-instance enforcement, and native speech engines:
+Just Talk has 351 tests covering configuration, SQLite history, voice activity detection, action routing, AI fallbacks, the on-device model's output checks, text filters, Mixed-mode routing, the voice profile, single-instance enforcement and native speech engines. Tests run in a temporary home folder and never touch your real settings:
 
 ```bash
 # Run all unit tests
@@ -227,52 +303,77 @@ JustTalk/
 ├── just_talk/
 │   ├── config.py               # Dataclass & persistent JSON application configuration
 │   ├── security.py             # Private 0600 credentials file for API keys
+│   ├── language_setup.py       # One source of truth for language settings
+│   ├── model_lifecycle.py      # Frees speech and AI models from memory when idle
 │   │
 │   ├── app/
-│   │   ├── main.py             # Application entrypoint, AppBridge signals, AUMID registration
+│   │   ├── main.py             # Entrypoint, dictation pipeline, Mixed-mode routing per stretch
 │   │   ├── single_instance.py  # IPC socket / mutex single-instance enforcer
-│   │   ├── theme.py            # macOS-inspired design tokens, typography, dark/light styles
-│   │   ├── overlay.py          # Floating animated status pill HUD (waveform, pulse, badges)
-│   │   ├── main_window.py      # Unified Control Center (Home, History, Settings, Conventions)
-│   │   ├── home_view.py        # Dashboard with GitHub-style contribution graph
+│   │   ├── theme.py            # Design tokens, typography, dark/light styles
+│   │   ├── overlay.py          # Floating status pill (waveform, live preview, cancel)
+│   │   ├── main_window.py      # Home, History, Settings (one page per menu entry), Conventions
+│   │   ├── home_view.py        # Dashboard with real stats and a contribution graph
 │   │   ├── history_view.py     # Searchable dictation history with one-click re-copy
 │   │   ├── conventions_view.py # Code and SQL writing conventions manager
-│   │   ├── onboarding_window.py# First-run onboarding & permissions setup wizard
+│   │   ├── onboarding_window.py# Setup: permissions, languages, your work, voice profile, first try
+│   │   ├── onboarding_widgets.py # Reading view with live word highlighting, mic meter, step bar
+│   │   ├── learned_dialog.py   # "See what it learned": review and remove learned words
+│   │   ├── voice_enroll_dialog.py # Voice enrollment and "Test my voice"
 │   │   ├── ai_formatting_view.py# AI provider, API key, model and formatting sandbox
+│   │   ├── language_selector.py# Searchable language dropdown
 │   │   ├── icons.py            # Monochrome SVG line icons (no emoji in the UI)
 │   │   ├── ui_thread.py        # run_on_ui_thread(): safe worker-thread → Qt UI callbacks
-│   │   └── wheel_guard.py      # Stops the mouse wheel changing dropdowns while scrolling
+│   │   ├── wheel_guard.py      # Stops the mouse wheel changing dropdowns while scrolling
 │   │   └── tray.py             # Native system tray / menu bar integration
 │   │
 │   ├── audio/
 │   │   ├── recorder.py         # 16kHz low-latency streaming microphone buffer (sounddevice)
-│   │   └── vad.py              # Voice activity detection, silence trimming, pause-aligned chunking
+│   │   ├── vad.py              # Voice activity detection, silence trimming, pause-aligned chunking
+│   │   ├── noise_filter.py     # Light noise reduction (DeepFilterNet)
+│   │   ├── speaker_recognizer.py # WeSpeaker CAM++ speaker embeddings
+│   │   └── voice_match.py      # Whether a dictation came from an enrolled voice
 │   │
 │   ├── stt/
 │   │   ├── engine.py           # Speech-to-text abstract base class
-│   │   ├── mac_native_engine.py# SFSpeechRecognizer macOS native dictation engine
+│   │   ├── mac_native_engine.py# Apple SFSpeechRecognizer; learned words go in as contextual strings
 │   │   ├── windows_native_engine.py # Windows Media Speech Recognition engine
 │   │   ├── google_web_engine.py# Zero-login, zero-key Google Web Speech API engine
 │   │   ├── whisper_engine.py   # faster-whisper (CTranslate2) local inference engine
+│   │   ├── kriti_engine.py     # Kriti offline Nepali engine
+│   │   ├── kriti_onnx.py       # Kriti on NumPy + ONNX Runtime only (no NeMo, no PyTorch)
 │   │   ├── long_form.py        # Live-partial caching so long dictation keeps earlier speech
 │   │   └── model_manager.py    # Multi-tier model catalog and downloader
 │   │
 │   ├── ai/
-│   │   ├── gemini.py           # Gemini client, local cleanup and circuit breaker
-│   │   ├── prompts.py          # Deterministic system prompts (Subtle, Formal, Concise, Code)
+│   │   ├── local_model.py      # Just Talk's own on-device model: download, prompts, output checks
+│   │   ├── gemini.py           # Gemini client, local cleanup, text filters (fillers, dashes, web addresses)
+│   │   ├── prompts.py          # System prompts (Subtle, Formal, Concise, Code, Nepglish)
 │   │   ├── actions.py          # Speech intent router for Action Mode (Fn + Shift)
-│   │   └── providers.py        # Multi-provider LLM coordinator (Gemini, Ollama, Claude, OpenAI)
+│   │   ├── providers.py        # Multi-provider LLM coordinator (Gemini, Ollama, Claude, OpenAI)
+│   │   └── nvidia_fallback.py  # OpenAI-compatible NVIDIA endpoint
+│   │
+│   ├── profile/                # Voice profile and learning
+│   │   ├── scripts.py          # Sentences read during voice setup, seeded by kind of work
+│   │   ├── scoring.py          # Scores a read-aloud take against the sentence shown
+│   │   ├── session.py          # One voice-setup session: next sentence, what each engine heard
+│   │   ├── engines.py          # Engines compared in setup, and switching to the winner
+│   │   ├── learner.py          # Learns your words and the speech engine's mix-ups
+│   │   └── store.py            # The saved profile, in your own app-data folder
 │   │
 │   ├── system/
 │   │   ├── audio_ducker.py     # Background audio mute/ducking during speech
-│   │   ├── inserter.py         # Two-phase simulated text insertion & clipboard restoration
+│   │   ├── inserter.py         # Paste with clipboard restore, quick draft, paste check
 │   │   ├── clipboard.py        # Multi-format clipboard backup & atomic restoration
 │   │   ├── context_detector.py # Active editor/application context detector
+│   │   ├── caret_locator.py    # Finds the focused text field and caret
+│   │   ├── autostart.py        # Open at login (macOS and Windows)
+│   │   ├── updater.py          # Checks GitHub Releases and updates in place
 │   │   └── permissions.py      # macOS Accessibility & Microphone permission checker
 │   │
 │   ├── shortcuts/
 │   │   ├── manager.py          # Tap-to-toggle & push-to-talk state coordinator
 │   │   ├── mac_hook.py         # Native macOS CGEventTap Function (Fn/Globe) key monitor
+│   │   ├── mac_escape.py       # Escape cancels: a hot key held only while recording
 │   │   └── fallback_hook.py    # Cross-platform hotkey listener (pynput)
 │   │
 │   ├── database/
@@ -311,5 +412,11 @@ Built by Sahas Belbase. Portfolio: [sahas.netlify.app](https://sahas.netlify.app
 
 * **License:** MIT, as released by the Kriti authors and AI4Bharat. Training datasets keep their own licenses and are not distributed.
 * **Changes:** exported from `kriti.nemo` to ONNX and reimplemented feature extraction, RNNT decoding and danda restoration in NumPy, so it runs with ONNX Runtime alone. The conversion, model card and parity results are published at [github.com/sahasbelbase/kriti](https://github.com/sahasbelbase/kriti); the converted model reproduces Kriti's original transcripts exactly on the parity clips.
+
+**On-device AI model: Just Talk's fine-tune of Qwen3-1.7B.** Made by Sahas Belbase and published at [huggingface.co/SahasBelbase/justtalk-qwen3-1.7b-gguf](https://huggingface.co/SahasBelbase/justtalk-qwen3-1.7b-gguf) under Apache-2.0.
+
+* **Base model:** [Qwen3-1.7B](https://huggingface.co/Qwen/Qwen3-1.7B) by the Qwen team (Apache-2.0).
+* **Training data:** Nepali to English pairs from [BPCC](https://huggingface.co/datasets/ai4bharat/BPCC) by AI4Bharat (CC-BY-4.0), plus Just Talk's own recordings and hand-written examples. FLORES+ (CC-BY-SA-4.0) is used for testing only.
+* **Runtime:** [llama.cpp](https://github.com/ggml-org/llama.cpp) through llama-cpp-python (MIT). Trained with [MLX](https://github.com/ml-explore/mlx) (MIT).
 
 **Voice recognition: Wespeaker CAM++.** Speaker recognition uses the [Wespeaker CAM++ VoxCeleb model](https://huggingface.co/Wespeaker/wespeaker-voxceleb-campplus) (Apache-2.0), downloaded on demand and run entirely on device.

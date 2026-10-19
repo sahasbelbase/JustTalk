@@ -13,7 +13,7 @@ if sys.platform == "darwin":
 else:
     app_icon = str(project_root / "just_talk" / "assets" / "icon.ico")
 
-from PyInstaller.utils.hooks import collect_data_files
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
 
 datas = [
     (str(project_root / "just_talk" / "assets"), "just_talk/assets"),
@@ -46,7 +46,12 @@ hidden_imports = [
     "PySide6.QtWidgets",
 ]
 
+binaries = []
+
 if sys.platform == "darwin":
+    # On-device AI (ai/local_model.py): llama.cpp loads these with ctypes from llama_cpp/lib
+    binaries += collect_dynamic_libs("llama_cpp")
+    hidden_imports += ["llama_cpp"]
     hidden_imports += [
         "objc",
         "Foundation",
@@ -64,7 +69,7 @@ elif sys.platform == "win32":
 a = Analysis(
     [str(project_root / "main.py")],
     pathex=[str(project_root)],
-    binaries=[],
+    binaries=binaries,
     datas=datas,
     hiddenimports=hidden_imports,
     hookspath=[],
