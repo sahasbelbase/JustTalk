@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   
   <title>Just Talk — Free Voice Typing &amp; AI Dictation for Mac and Windows</title>
-  <meta name="description" content="Just Talk is a free, open-source voice typing app for macOS and Windows. Tap a key, speak, and clean text appears in any app — with AI grammar cleanup, Nepali &amp; Nepglish support, and a fully offline mode.">
+  <meta name="description" content="Just Talk is a free, open-source voice typing app for macOS and Windows. Tap a key, speak, and clean text appears in any app — with AI grammar cleanup, an on-device AI model trained for Nepali and Nepglish, and a fully offline mode.">
   <meta name="keywords" content="voice typing, dictation app, speech to text, voice to text mac, voice typing windows, AI dictation, Nepali voice typing, Nepglish, offline speech recognition, Whisper, Wispr Flow alternative, free dictation software">
   <meta name="author" content="Sahas Belbase">
   <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
@@ -51,9 +51,9 @@
         "applicationCategory": "ProductivityApplication",
         "applicationSubCategory": "Voice typing and dictation",
         "operatingSystem": "macOS 12+, Windows 10, Windows 11",
-        "softwareVersion": "2.3.1",
-        "datePublished": "2026-10-07",
-        "description": "Free, open-source voice typing for macOS and Windows. Tap a key, speak, and text is typed into any app, with optional AI grammar cleanup, Nepali and Nepglish support, and a fully offline mode.",
+        "softwareVersion": "3.0.0",
+        "datePublished": "2026-10-19",
+        "description": "Free, open-source voice typing for macOS and Windows. Tap a key, speak, and text is typed into any app, with optional AI grammar cleanup, an on-device AI model trained for Nepali and Nepglish, and a fully offline mode.",
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
         "image": "https://sahasbelbase.github.io/JustTalk/assets/og-image.png",
         "downloadUrl": "https://github.com/sahasbelbase/JustTalk/releases/latest",
@@ -78,22 +78,23 @@
           {"@type": "Question", "name": "How do I start dictating?", "acceptedAnswer": {"@type": "Answer", "text": "Tap Fn on macOS or Right Alt on Windows to start, speak, then tap again to type the text into the app you are using. Prefer holding the key while you talk? Turn on “Hold the shortcut while speaking” in Settings › Shortcut. Press Esc to cancel."}},
           {"@type": "Question", "name": "Can I dictate long messages with pauses?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Just Talk records for up to 5 minutes and keeps everything you said across pauses. In tap mode it stops on its own after 8 seconds of silence, so you can stop to think without losing your place."}},
           {"@type": "Question", "name": "What does AI formatting do to my text?", "acceptedAnswer": {"@type": "Answer", "text": "It adds punctuation, fixes grammar and spelling, removes filler words like “um” and “you know”, and resolves self-corrections. Say “can we meet at five, actually four” and Just Talk types “Can we meet at four?”. It never summarizes or changes what you meant, and you can turn it off with one toggle."}},
-          {"@type": "Question", "name": "Which AI providers can I use?", "acceptedAnswer": {"@type": "Answer", "text": "Google Gemini, OpenAI, Anthropic Claude, xAI Grok, Groq, OpenRouter, DeepSeek, any OpenAI-compatible API (for example NVIDIA), or Ollama running locally on your computer for completely private, free cleanup. Bring your own API key — it stays on your device."}},
-          {"@type": "Question", "name": "Does Just Talk work offline?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Turn on Pure Offline Mode in Settings › Voice & Speech. Speech is transcribed by on-device models and nothing is sent over the network. Offline speech needs a one-time model download, sized to the languages you choose."}},
+          {"@type": "Question", "name": "Which AI providers can I use?", "acceptedAnswer": {"@type": "Answer", "text": "Google Gemini, OpenAI, Anthropic Claude, xAI Grok, Groq, OpenRouter, DeepSeek, any OpenAI-compatible API (for example NVIDIA), or Ollama running locally on your computer for completely private, free cleanup. On a Mac you don't need any of them: Just Talk's own on-device model cleans up and translates with no API key. Bring your own API key — it stays on your device."}},
+          {"@type": "Question", "name": "Does Just Talk work offline?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Turn on Pure Offline Mode in Settings › Voice & Speech. Speech is transcribed by on-device models and nothing is sent over the network. On a Mac, the on-device AI model still cleans up and translates your words offline. Offline speech needs a one-time model download, sized to the languages you choose."}},
           {"@type": "Question", "name": "How do I switch between English and Nepali?", "acceptedAnswer": {"@type": "Answer", "text": "Tick the languages you speak once in Settings › Languages. Then choose what you are typing in right now with the Typing in buttons on the Home screen (English, नेपाली or Mixed) or from the tray / menu bar icon. Turn on Translate to English if you want any language typed in English."}},
           {"@type": "Question", "name": "Does it support Nepali and Nepglish?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Speak Nepali, English or a mix of both. Nepali can be recognised fully offline by Kriti, the open Nepali speech model by Naamche Labs. Just Talk can type Romanized Nepali (“k cha”), Devanagari (“के छ”), or translate to English — and in Automatic mode it picks the right one for each app, such as Romanized in chat apps and Devanagari in documents."}},
           {"@type": "Question", "name": "Which apps can I type into?", "acceptedAnswer": {"@type": "Answer", "text": "Any app with a text field: VS Code, Cursor, Slack, Chrome, Word, Notion, Gmail, WhatsApp, terminals and more. If no text field is focused, the text is copied to your clipboard so you can paste it yourself."}},
+          {"@type": "Question", "name": "What is the on-device AI model?", "acceptedAnswer": {"@type": "Answer", "text": "A small language model made for Just Talk: a fine-tune of Qwen3-1.7B trained on 13,592 examples, including Nepali to English sentence pairs and 475 real spoken sentences. It translates Nepali and Nepglish into English and cleans up English dictation on your Mac in about a fifth of a second, with no internet and no API key. Turn it on in Settings › AI Formatting (a one-time 1.8 GB download). It is Mac only for now, and it is open on Hugging Face under Apache-2.0."}},
           {"@type": "Question", "name": "Can I speak one language and get English text?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Choose “Translate to English” on the Home screen. Whatever language you speak is typed as fluent English."}},
           {"@type": "Question", "name": "How does Action Mode work?", "acceptedAnswer": {"@type": "Answer", "text": "Press Shift while dictating to switch to Action Mode. Instead of typing your words verbatim, Just Talk follows them as an instruction — for example translating them into English, rewriting selected text, or writing an email or poem from a spoken request."}},
           {"@type": "Question", "name": "Can I edit text I already wrote by voice?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Select the text in any app, hold your shortcut plus Shift (Fn + Shift on macOS, Right Alt + Shift on Windows) and say what to change, such as “make this shorter”, “make it more polite” or “translate to Nepali”. Just Talk rewrites the selection in place. This needs AI formatting turned on."}},
           {"@type": "Question", "name": "How do I paste my last dictation again?", "acceptedAnswer": {"@type": "Answer", "text": "Press Ctrl + Cmd + V on macOS or Win + Alt + V on Windows. Just Talk types your most recent dictation into the app you are using now — useful when the cursor was in the wrong place. You can also choose Copy Last Dictation from the tray or menu bar icon."}},
           {"@type": "Question", "name": "Why does macOS or Windows show an unidentified developer warning?", "acceptedAnswer": {"@type": "Answer", "text": "Just Talk is an independent open-source project and isn't signed with a paid Apple or Microsoft certificate. On macOS, run xattr -cr /Applications/JustTalk.app once in Terminal (or right-click the app and choose Open). On Windows, click “More info” then “Run anyway”. All source code is public on GitHub."}},
-          {"@type": "Question", "name": "What are the system requirements?", "acceptedAnswer": {"@type": "Answer", "text": "macOS 12 or later on Apple Silicon or Intel, or Windows 10/11 (64-bit), plus a microphone. On-device models need 0.5–1.5 GB of disk space, depending on the languages you choose."}},
+          {"@type": "Question", "name": "What are the system requirements?", "acceptedAnswer": {"@type": "Answer", "text": "macOS 12 or later on Apple Silicon or Intel, or Windows 10/11 (64-bit), plus a microphone. Speech models need 0.5–1.5 GB of disk space, depending on the languages you choose, and the on-device AI model (Mac only) needs 1.8 GB more."}},
           {"@type": "Question", "name": "How do I update Just Talk?", "acceptedAnswer": {"@type": "Answer", "text": "Open Settings › Updates & Startup and click “Check for updates”. When a new version is available, Just Talk downloads and installs it in place and keeps all your settings, history and API keys."}},
           {"@type": "Question", "name": "Where are my API keys and history stored?", "acceptedAnswer": {"@type": "Answer", "text": "Only on your computer, in Just Talk's private app-data folder (~/Library/Application Support/JustTalk on macOS, %APPDATA%\\JustTalk on Windows). Keys are saved with owner-only permissions and sent only to the provider you selected."}},
           {"@type": "Question", "name": "Can I download only the languages I speak?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Pick your languages during setup or in Settings › Languages & Models, and Just Talk downloads only the models those languages need — about 460 MB if you only speak English."}},
           {"@type": "Question", "name": "Can I use my own speech model or a local LLM?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Point Just Talk at any faster-whisper model on Hugging Face or a local folder for speech recognition, and use Ollama (for example Llama, Qwen or DeepSeek) for AI formatting with no internet and no token costs."}},
-          {"@type": "Question", "name": "How is Just Talk different from paid voice typing apps?", "acceptedAnswer": {"@type": "Answer", "text": "It is free and open source, works on both macOS and Windows, lets you choose — or run locally — the AI that cleans up your text, has a fully offline mode, and has first-class Nepali and Nepglish support."}}
+          {"@type": "Question", "name": "How is Just Talk different from paid voice typing apps?", "acceptedAnswer": {"@type": "Answer", "text": "It is free and open source, works on both macOS and Windows, lets you choose — or run locally — the AI that cleans up your text, has a fully offline mode, and has first-class Nepali and Nepglish support, including its own AI model trained on real Nepali speech."}}
         ]
       }
     ]
@@ -122,7 +123,7 @@
         <img src="assets/icon.png" alt="Just Talk Logo" class="brand-icon">
         <div class="brand-text">
           <span class="brand-title">Just Talk</span>
-          <span class="brand-version">v2.3.1</span>
+          <span class="brand-version">v3.0.0</span>
         </div>
       </a>
 
@@ -130,6 +131,7 @@
         <a href="#playground">Playground</a>
         <a href="#features">Features</a>
         <a href="#nepali">Nepali Engine</a>
+        <a href="#on-device-ai">On-device AI</a>
         <a href="#install-help">Install Guide</a>
         <a href="#comparison">Comparison</a>
         <a href="#faq">FAQ</a>
@@ -153,7 +155,7 @@
       <!-- Release Badge -->
       <a href="https://github.com/sahasbelbase/JustTalk/releases/latest" target="_blank" rel="noopener noreferrer" class="release-pill">
         <span class="pulsing-dot" aria-hidden="true"></span>
-        <span class="release-text">v2.3.1 — lighter on memory, Action Mode writes for you, better mixed Nepali</span>
+        <span class="release-text">v3.0: our own on-device AI model, trained on real Nepali speech</span>
         <svg class="chevron-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
       </a>
 
@@ -164,7 +166,7 @@
       </h1>
 
       <p class="hero-subtitle">
-        Tap <kbd>Fn</kbd> on macOS or <kbd>Right Alt</kbd> on Windows in any app, speak naturally, and polished text appears where your cursor is. AI cleanup fixes grammar and self-corrections, and Pure Offline Mode keeps everything on your device.
+        Tap <kbd>Fn</kbd> on macOS or <kbd>Right Alt</kbd> on Windows in any app, speak naturally, and polished text appears where your cursor is. AI cleanup fixes grammar and self-corrections, Just Talk's own on-device model translates Nepali to English on your Mac, and Pure Offline Mode keeps everything on your device.
       </p>
 
       <!-- Smart Download CTA -->
@@ -228,6 +230,8 @@
           <span>Free &amp; open source</span>
           <span class="dot-sep">•</span>
           <span>Offline mode</span>
+          <span class="dot-sep">•</span>
+          <span>On-device AI</span>
           <span class="dot-sep">•</span>
           <span>MIT License</span>
           <span class="dot-sep">•</span>
@@ -556,6 +560,306 @@
     </div>
   </section>
 
+  <!-- Just Talk's own on-device model: training data and benchmarks -->
+  <section class="model-section" id="on-device-ai">
+    <div class="section-container">
+
+      <div class="section-header">
+        <span class="eyebrow">New in v3.0 · On-device AI</span>
+        <h2 class="section-title">Our own AI model, trained on real Nepali speech.</h2>
+        <p class="section-subtitle">
+          The speech engine writes down what it heard. Just Talk's own model then turns that into clean English: it translates Nepali and Nepglish, tidies up English, drops the umms and makes a list only when you ask for one. It runs on your Mac, with no internet and no API key.
+        </p>
+      </div>
+
+      <div class="model-kpis">
+        <div class="model-kpi">
+          <div class="model-kpi-value">13,592</div>
+          <div class="model-kpi-label">training examples</div>
+        </div>
+        <div class="model-kpi">
+          <div class="model-kpi-value">475</div>
+          <div class="model-kpi-label">real spoken sentences: 434 recordings and 41 lines dictated through the app</div>
+        </div>
+        <div class="model-kpi">
+          <div class="model-kpi-value">0.24 s</div>
+          <div class="model-kpi-label">typical time to translate a Nepali dictation on an M5 Mac</div>
+        </div>
+        <div class="model-kpi">
+          <div class="model-kpi-value">9</div>
+          <div class="model-kpi-label">versions trained and tested to get here</div>
+        </div>
+      </div>
+
+      <div class="model-grid">
+
+        <!-- Training data mix -->
+        <figure class="model-card">
+          <figcaption>
+            <h3 class="model-card-title">What it learned from</h3>
+            <p class="model-card-sub">13,742 examples, of which 150 were kept back to check progress. The real recordings count twice and the app dictations three times, so a few hundred real sentences carry weight.</p>
+          </figcaption>
+          <div class="hbar-list">
+            <div class="hbar-row" tabindex="0" data-tip-value="6,300 examples" data-tip-label="Nepali to English sentence pairs from AI4Bharat BPCC. Some were spoken by a Mac voice and written down by Kriti, so the model sees real speech-engine mistakes.">
+              <span class="hbar-label">Nepali to English sentence pairs (AI4Bharat BPCC)</span>
+              <span class="hbar-bar"><span class="hbar-fill" style="width: 100%"></span><span class="hbar-value">6,300</span></span>
+            </div>
+            <div class="hbar-row" tabindex="0" data-tip-value="2,619 examples" data-tip-label="English sentences read out by a Mac voice and written down by Kriti in Devanagari. A Nepali speech engine does exactly this when you switch to English mid-sentence.">
+              <span class="hbar-label">English said with a Nepali accent, written in Devanagari</span>
+              <span class="hbar-bar"><span class="hbar-fill" style="width: 41.6%"></span><span class="hbar-value">2,619</span></span>
+            </div>
+            <div class="hbar-row" tabindex="0" data-tip-value="1,597 examples" data-tip-label="English dictation clean-ups: punctuation, capitals, small grammar fixes, and developer words the speech engine mishears (push to get, poll request).">
+              <span class="hbar-label">English dictation clean-ups</span>
+              <span class="hbar-bar"><span class="hbar-fill" style="width: 25.3%"></span><span class="hbar-value">1,597</span></span>
+            </div>
+            <div class="hbar-row" tabindex="0" data-tip-value="991 examples" data-tip-label="434 recorded sentences (stories, office talk, family, food, travel, money, developer chat), used twice, and 41 lines dictated through the app, used three times.">
+              <span class="hbar-label">Real voice: 434 recordings and 41 app dictations</span>
+              <span class="hbar-bar"><span class="hbar-fill" style="width: 15.7%"></span><span class="hbar-value">991</span></span>
+            </div>
+            <div class="hbar-row" tabindex="0" data-tip-value="848 examples" data-tip-label="Written by hand for things earlier versions got wrong: negatives paired with their positive versions, probably and might, lists asked for and not, hesitation sounds, short replies like हुन्छ, and Action Mode edits.">
+              <span class="hbar-label">Hand-written fixes: negatives, lists, fillers, edits</span>
+              <span class="hbar-bar"><span class="hbar-fill" style="width: 13.5%"></span><span class="hbar-value">848</span></span>
+            </div>
+            <div class="hbar-row" tabindex="0" data-tip-value="696 examples" data-tip-label="174 everyday Nepglish sentences, read out by Mac voices and written down by Kriti three times each, plus the plain text.">
+              <span class="hbar-label">Everyday Nepglish sentences</span>
+              <span class="hbar-bar"><span class="hbar-fill" style="width: 11%"></span><span class="hbar-value">696</span></span>
+            </div>
+            <div class="hbar-row" tabindex="0" data-tip-value="691 examples" data-tip-label="3 to 6 sentences joined into one long stream with no punctuation, the way a long dictation arrives, with the English written as normal sentences.">
+              <span class="hbar-label">Long run-on dictations</span>
+              <span class="hbar-bar"><span class="hbar-fill" style="width: 11%"></span><span class="hbar-value">691</span></span>
+            </div>
+          </div>
+        </figure>
+
+        <!-- Benchmarks -->
+        <figure class="model-card">
+          <figcaption>
+            <h3 class="model-card-title">Scores on tests it never saw</h3>
+            <p class="model-card-sub">chrF++ (0 to 100, higher is better) against the expected English. Every model ran the same tests with the same prompts.</p>
+          </figcaption>
+          <div class="viz-legend" aria-hidden="true">
+            <span class="viz-legend-item"><span class="viz-swatch base"></span>Qwen3 1.7B, untuned</span>
+            <span class="viz-legend-item"><span class="viz-swatch v2"></span>v2, the previous model</span>
+            <span class="viz-legend-item"><span class="viz-swatch v62"></span>v6.2, in the app now</span>
+          </div>
+          <div class="gbar-list">
+            <div class="gbar-group">
+              <div class="gbar-label">Real Nepali dictations <span class="gbar-n">29</span></div>
+              <div class="gbar" tabindex="0" data-tip-value="35.4" data-tip-label="Qwen3 1.7B, untuned · real Nepali dictations"><span class="gbar-fill base" style="width: 35.4%"></span></div>
+              <div class="gbar" tabindex="0" data-tip-value="40.1" data-tip-label="v2 · real Nepali dictations"><span class="gbar-fill v2" style="width: 40.1%"></span></div>
+              <div class="gbar" tabindex="0" data-tip-value="41.1" data-tip-label="v6.2 · real Nepali dictations"><span class="gbar-fill v62" style="width: 41.1%"></span><span class="gbar-value">41.1</span></div>
+            </div>
+            <div class="gbar-group">
+              <div class="gbar-label">FLORES+ Nepali to English <span class="gbar-n">200</span></div>
+              <div class="gbar" tabindex="0" data-tip-value="40.8" data-tip-label="Qwen3 1.7B, untuned · FLORES+"><span class="gbar-fill base" style="width: 40.8%"></span></div>
+              <div class="gbar" tabindex="0" data-tip-value="40.8" data-tip-label="v2 · FLORES+"><span class="gbar-fill v2" style="width: 40.8%"></span></div>
+              <div class="gbar" tabindex="0" data-tip-value="42.1" data-tip-label="v6.2 · FLORES+"><span class="gbar-fill v62" style="width: 42.1%"></span><span class="gbar-value">42.1</span></div>
+            </div>
+            <div class="gbar-group">
+              <div class="gbar-label">English clean-up <span class="gbar-n">29</span></div>
+              <div class="gbar" tabindex="0" data-tip-value="60.8" data-tip-label="Qwen3 1.7B, untuned · English clean-up"><span class="gbar-fill base" style="width: 60.8%"></span></div>
+              <div class="gbar" tabindex="0" data-tip-value="68.9" data-tip-label="v2 · English clean-up"><span class="gbar-fill v2" style="width: 68.9%"></span></div>
+              <div class="gbar" tabindex="0" data-tip-value="67.5" data-tip-label="v6.2 · English clean-up"><span class="gbar-fill v62" style="width: 67.5%"></span><span class="gbar-value">67.5</span></div>
+            </div>
+            <div class="gbar-group">
+              <div class="gbar-label">Recorded voice, held out <span class="gbar-n">91</span></div>
+              <div class="gbar gbar-missing">not measured</div>
+              <div class="gbar" tabindex="0" data-tip-value="48.9" data-tip-label="v2 · recorded voice, held out"><span class="gbar-fill v2" style="width: 48.9%"></span></div>
+              <div class="gbar" tabindex="0" data-tip-value="56.1" data-tip-label="v6.2 · recorded voice, held out"><span class="gbar-fill v62" style="width: 56.1%"></span><span class="gbar-value">56.1</span></div>
+            </div>
+            <div class="gbar-group">
+              <div class="gbar-label">Lines dictated through the app, held out <span class="gbar-n">10</span></div>
+              <div class="gbar gbar-missing">not measured</div>
+              <div class="gbar" tabindex="0" data-tip-value="64.5" data-tip-label="v2 · app dictations, held out"><span class="gbar-fill v2" style="width: 64.5%"></span></div>
+              <div class="gbar" tabindex="0" data-tip-value="77.5" data-tip-label="v6.2 · app dictations, held out"><span class="gbar-fill v62" style="width: 77.5%"></span><span class="gbar-value">77.5</span></div>
+            </div>
+          </div>
+          <div class="gbar-axis" aria-hidden="true">
+            <span style="left: 0%">0</span><span style="left: 25%">25</span><span style="left: 50%">50</span><span style="left: 75%">75</span><span style="left: 100%">100</span>
+          </div>
+          <details class="viz-table">
+            <summary>Show these scores as a table</summary>
+            <div class="viz-table-scroll">
+              <table>
+                <thead>
+                  <tr><th scope="col">Test (sentences)</th><th scope="col">Untuned</th><th scope="col">v2</th><th scope="col">v6.2</th></tr>
+                </thead>
+                <tbody>
+                  <tr><th scope="row">Real Nepali dictations (29)</th><td>35.4</td><td>40.1</td><td>41.1</td></tr>
+                  <tr><th scope="row">FLORES+ Nepali to English (200)</th><td>40.8</td><td>40.8</td><td>42.1</td></tr>
+                  <tr><th scope="row">English clean-up (29)</th><td>60.8</td><td>68.9</td><td>67.5</td></tr>
+                  <tr><th scope="row">Recorded voice, held out (91)</th><td>–</td><td>48.9</td><td>56.1</td></tr>
+                  <tr><th scope="row">App dictations, held out (10)</th><td>–</td><td>64.5</td><td>77.5</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </details>
+        </figure>
+
+      </div>
+
+      <!-- Behaviour checks -->
+      <div class="model-card model-checks">
+        <h3 class="model-card-title">Behaviour checks on 49 sentences it never saw</h3>
+        <div class="check-grid">
+          <div class="check-item">
+            <div class="check-head"><span class="check-label">Keeps every “not”</span><span class="check-value">13 / 14</span></div>
+            <div class="meter" role="img" aria-label="13 of 14"><span class="meter-fill" style="width: 92.9%"></span></div>
+            <div class="check-prev">v2: 13 / 14</div>
+          </div>
+          <div class="check-item">
+            <div class="check-head"><span class="check-label">Keeps “probably”, “might”, “I think”</span><span class="check-value">5 / 7</span></div>
+            <div class="meter" role="img" aria-label="5 of 7"><span class="meter-fill" style="width: 71.4%"></span></div>
+            <div class="check-prev">v2: 4 / 7</div>
+          </div>
+          <div class="check-item">
+            <div class="check-head"><span class="check-label">Makes a list when you ask</span><span class="check-value">6 / 6</span></div>
+            <div class="meter" role="img" aria-label="6 of 6"><span class="meter-fill" style="width: 100%"></span></div>
+            <div class="check-prev">v2: 0 / 6</div>
+          </div>
+          <div class="check-item">
+            <div class="check-head"><span class="check-label">No list when you didn't</span><span class="check-value">4 / 4</span></div>
+            <div class="meter" role="img" aria-label="4 of 4"><span class="meter-fill" style="width: 100%"></span></div>
+            <div class="check-prev">v2: 4 / 4</div>
+          </div>
+          <div class="check-item">
+            <div class="check-head"><span class="check-label">Drops umm, uhh, hmm</span><span class="check-value">5 / 5</span></div>
+            <div class="meter" role="img" aria-label="5 of 5"><span class="meter-fill" style="width: 100%"></span></div>
+            <div class="check-prev">v2: 3 / 5</div>
+          </div>
+        </div>
+        <p class="model-card-sub check-note">No em dashes or semicolons in any answer. The app also puts back a leading yes, no or okay if the model ever drops one.</p>
+      </div>
+
+      <!-- Real outputs -->
+      <div class="model-card">
+        <h3 class="model-card-title">Real outputs from v6.2</h3>
+        <div class="viz-table-scroll">
+          <table class="examples-table">
+            <thead>
+              <tr><th scope="col">What the speech engine heard</th><th scope="col">What Just Talk types</th></tr>
+            </thead>
+            <tbody>
+              <tr><td lang="ne">हुन्छ, म आउँछु</td><td>Okay, I'll come.</td></tr>
+              <tr><td lang="ne">हामी आज अफिस जाँदैनौ</td><td>We're not going to the office today.</td></tr>
+              <tr><td lang="ne">म आज काठमाडौँ जान्छु होइन होइन पोखरा जान्छु</td><td>I'm going to Pokhara today, not Kathmandu.</td></tr>
+              <tr><td lang="ne">मेरो ल्यापटपको ब्याट्री छिटो सकिन्छ नयाँ चार्जर चाहियो</td><td>My laptop's battery runs out quickly, I need a new charger.</td></tr>
+              <tr><td lang="ne">किनमेलको लिस्ट चामल दाल तेल र नुन</td><td>Shopping list:<br>- Rice<br>- Dal<br>- Oil<br>- Salt</td></tr>
+              <tr><td>umm so I think we should uh push the changes to get and open a poll request</td><td>I think we should push the changes to git and open a pull request.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Every version -->
+      <div class="model-card">
+        <h3 class="model-card-title">Nine versions to get here</h3>
+        <p class="model-card-sub">Score on real Nepali dictations (chrF++) for every model tried, and what each one taught.</p>
+        <div class="viz-legend" aria-hidden="true">
+          <span class="viz-legend-item"><span class="viz-swatch v62"></span>In the app now</span>
+          <span class="viz-legend-item"><span class="viz-swatch muted"></span>Earlier and tried versions</span>
+        </div>
+        <ol class="journey-list">
+          <li class="journey-row">
+            <div class="journey-name">Qwen3 0.6B, untuned</div>
+            <div class="journey-lesson">The starting point. Fast, but too small for Nepali, and it leaked its own instructions into the answer.</div>
+            <div class="journey-bar" tabindex="0" data-tip-value="20.9" data-tip-label="Qwen3 0.6B, untuned · real Nepali dictations"><span class="journey-fill" style="width: 20.9%"></span><span class="journey-value">20.9</span></div>
+          </li>
+          <li class="journey-row">
+            <div class="journey-name">Qwen3 1.7B, untuned <span class="journey-tag">first in the app</span></div>
+            <div class="journey-lesson">Good enough to ship first, but it could loop (“all all all”) and got real Nepali wrong often.</div>
+            <div class="journey-bar" tabindex="0" data-tip-value="35.4" data-tip-label="Qwen3 1.7B, untuned · real Nepali dictations"><span class="journey-fill" style="width: 35.4%"></span><span class="journey-value">35.4</span></div>
+          </li>
+          <li class="journey-row">
+            <div class="journey-name">v1 (0.6B)</div>
+            <div class="journey-lesson">3,700 synthetic speech pairs. Better on its own tests, worse on real Nepali: it needed real Nepali data.</div>
+            <div class="journey-bar" tabindex="0" data-tip-value="20.9" data-tip-label="v1 (0.6B) · real Nepali dictations"><span class="journey-fill" style="width: 20.9%"></span><span class="journey-value">20.9</span></div>
+          </li>
+          <li class="journey-row">
+            <div class="journey-name">v2 (0.6B)</div>
+            <div class="journey-lesson">Real Nepali sentence pairs helped, but 0.6B never caught the untuned 1.7B. Everything after uses 1.7B.</div>
+            <div class="journey-bar" tabindex="0" data-tip-value="27.9" data-tip-label="v2 (0.6B) · real Nepali dictations"><span class="journey-fill" style="width: 27.9%"></span><span class="journey-value">27.9</span></div>
+          </li>
+          <li class="journey-row">
+            <div class="journey-name">v2 (1.7B) <span class="journey-tag">in the app for a long time</span></div>
+            <div class="journey-lesson">The same data on the bigger model. The first real win.</div>
+            <div class="journey-bar" tabindex="0" data-tip-value="40.1" data-tip-label="v2 (1.7B) · real Nepali dictations"><span class="journey-fill" style="width: 40.1%"></span><span class="journey-value">40.1</span></div>
+          </li>
+          <li class="journey-row">
+            <div class="journey-name">v3</div>
+            <div class="journey-lesson">Trained further on top of v2, it memorised the recordings and forgot general Nepali. Since then every version starts from the base model.</div>
+            <div class="journey-bar" tabindex="0" data-tip-value="37.7" data-tip-label="v3 · real Nepali dictations"><span class="journey-fill" style="width: 37.7%"></span><span class="journey-value">37.7</span></div>
+          </li>
+          <li class="journey-row">
+            <div class="journey-name">v4</div>
+            <div class="journey-lesson">190 new sentences: stories, everyday talk, developer chat. English clean-up went up, real Nepali went down.</div>
+            <div class="journey-bar" tabindex="0" data-tip-value="37.8" data-tip-label="v4 · real Nepali dictations"><span class="journey-fill" style="width: 37.8%"></span><span class="journey-value">37.8</span></div>
+          </li>
+          <li class="journey-row">
+            <div class="journey-name">v5</div>
+            <div class="journey-lesson">Started flipping meaning: “I'll go to the office tomorrow” came out as “I will not come”. v4 and v5 were both pulled.</div>
+            <div class="journey-bar" tabindex="0" data-tip-value="36.5" data-tip-label="v5 · real Nepali dictations"><span class="journey-fill" style="width: 36.5%"></span><span class="journey-value">36.5</span></div>
+          </li>
+          <li class="journey-row">
+            <div class="journey-name">v6a</div>
+            <div class="journey-lesson">Back to the v2 recipe plus recordings and hand-written fixes. It learned lists and fillers, but was still a bit behind v2 on Nepali.</div>
+            <div class="journey-bar" tabindex="0" data-tip-value="38.4" data-tip-label="v6a · real Nepali dictations"><span class="journey-fill" style="width: 38.4%"></span><span class="journey-value">38.4</span></div>
+          </li>
+          <li class="journey-row">
+            <div class="journey-name">v6.1</div>
+            <div class="journey-lesson">Many negative sentences without positive ones taught it to lean towards “not”. A model learns the balance of the data, not just the examples.</div>
+            <div class="journey-bar" tabindex="0" data-tip-value="36.1" data-tip-label="v6.1 · real Nepali dictations"><span class="journey-fill" style="width: 36.1%"></span><span class="journey-value">36.1</span></div>
+          </li>
+          <li class="journey-row is-current">
+            <div class="journey-name">v6.2 <span class="journey-tag">in the app now</span></div>
+            <div class="journey-lesson">Every negative paired with its positive, all of the accented English, and lines dictated through the app. The first version better than v2 on real Nepali, general Nepali, the recorded voice and app dictation at once.</div>
+            <div class="journey-bar" tabindex="0" data-tip-value="41.1" data-tip-label="v6.2 · real Nepali dictations"><span class="journey-fill" style="width: 41.1%"></span><span class="journey-value">41.1</span></div>
+          </li>
+        </ol>
+        <details class="viz-table">
+          <summary>Show every score as a table</summary>
+          <div class="viz-table-scroll">
+            <table>
+              <thead>
+                <tr><th scope="col">Version</th><th scope="col">Real Nepali</th><th scope="col">FLORES+</th><th scope="col">English clean-up</th><th scope="col">Voice test (sentences)</th></tr>
+              </thead>
+              <tbody>
+                <tr><th scope="row">Qwen3 0.6B, untuned</th><td>20.9</td><td>24.9</td><td>67.8</td><td>–</td></tr>
+                <tr><th scope="row">Qwen3 1.7B, untuned</th><td>35.4</td><td>40.8</td><td>60.8</td><td>32.8 (31)</td></tr>
+                <tr><th scope="row">v1 (0.6B)</th><td>20.9</td><td>10.9</td><td>64.5</td><td>–</td></tr>
+                <tr><th scope="row">v2 (0.6B)</th><td>27.9</td><td>25.6</td><td>66.3</td><td>–</td></tr>
+                <tr><th scope="row">v2 (1.7B)</th><td>40.1</td><td>40.8</td><td>68.9</td><td>59.9 (31)</td></tr>
+                <tr><th scope="row">v3</th><td>37.7</td><td>36.3</td><td>67.8</td><td>56.5 (31)</td></tr>
+                <tr><th scope="row">v4</th><td>37.8</td><td>39.1</td><td>72.0</td><td>52.4 (63)</td></tr>
+                <tr><th scope="row">v5</th><td>36.5</td><td>39.3</td><td>73.2</td><td>58.7 (79)</td></tr>
+                <tr><th scope="row">v6a</th><td>38.4</td><td>40.0</td><td>72.3</td><td>51.5 (91)</td></tr>
+                <tr><th scope="row">v6.1</th><td>36.1</td><td>38.1</td><td>70.0</td><td>52.5 (91)</td></tr>
+                <tr><th scope="row">v6.2</th><td>41.1</td><td>42.1</td><td>67.5</td><td>56.1 (91)</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="viz-table-note">The voice test grew as more sentences were recorded, so voice scores only compare at the same count. Q8 files for the untuned models, v1 and v6a onwards; Q4 files for v2 to v5, the files the app used at the time.</p>
+        </details>
+      </div>
+
+      <div class="model-footer">
+        <p>
+          <strong>Honest limits.</strong> It sometimes drops होला (probably), doesn't know a few words such as अबेर (late), and very rarely misses a negative. It can't fix a number the speech engine wrote down wrong. It is a small model made for dictation, not for chat or facts.
+        </p>
+        <p>
+          Trained by Sahas Belbase on a MacBook's own GPU with MLX: a LoRA fine-tune of Qwen3-1.7B, no cloud GPUs. The model is open (Apache-2.0) and downloads once, 1.8 GB, from Settings › AI Formatting. Mac only for now.
+          <a href="https://huggingface.co/SahasBelbase/justtalk-qwen3-1.7b-gguf" target="_blank" rel="noopener noreferrer" class="link-white">Model card and files on Hugging Face</a>
+        </p>
+      </div>
+
+    </div>
+  </section>
+
+  <div id="viz-tip" class="viz-tip" role="tooltip" hidden>
+    <div class="viz-tip-value"></div>
+    <div class="viz-tip-label"></div>
+  </div>
+
   <!-- Architectural Comparison Matrix -->
   <section class="comparison-section" id="comparison">
     <div class="section-container">
@@ -592,6 +896,12 @@
               <td class="td-feature">Conversational Nepali & Nepglish</td>
               <td class="td-highlight green">Nepglish, Devanagari &amp; English output</td>
               <td class="td-red">High error rates on slang and code-switching</td>
+              <td class="td-red">Unsupported</td>
+            </tr>
+            <tr>
+              <td class="td-feature">AI cleanup and Nepali translation</td>
+              <td class="td-highlight green">Own model, runs on your Mac offline</td>
+              <td class="td-red">Cloud only, sends your words out</td>
               <td class="td-red">Unsupported</td>
             </tr>
             <tr>
@@ -632,13 +942,13 @@
         <div class="privacy-card">
           <h3 class="privacy-card-title">API keys &amp; settings</h3>
           <p class="privacy-card-desc">
-            API keys for AI formatting are stored only on your computer, in Just Talk's private app-data folder with owner-only permissions, and are sent only to the provider you selected. AI formatting sends text, never audio.
+            API keys for AI formatting are stored only on your computer, in Just Talk's private app-data folder with owner-only permissions, and are sent only to the provider you selected. AI formatting sends text, never audio, and the on-device model sends nothing at all.
           </p>
         </div>
         <div class="privacy-card">
           <h3 class="privacy-card-title">Pure Offline Mode</h3>
           <p class="privacy-card-desc">
-            If you handle sensitive medical records, proprietary code, or confidential legal documents, toggle <strong>Pure Offline Mode</strong>. Just Talk bypasses every cloud service and types on-device transcriptions straight into your app.
+            If you handle sensitive medical records, proprietary code, or confidential legal documents, toggle <strong>Pure Offline Mode</strong>. Just Talk bypasses every cloud service and types on-device transcriptions straight into your app. On a Mac, the on-device AI model keeps cleaning up and translating, all on your computer.
           </p>
         </div>
       </div>
@@ -712,7 +1022,7 @@
             <svg class="faq-arrow" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5"/></svg>
           </summary>
           <div class="faq-answer">
-            <p>Google Gemini, OpenAI, Anthropic Claude, xAI Grok, Groq, OpenRouter, DeepSeek, any OpenAI-compatible API (for example NVIDIA), or Ollama running locally on your computer for completely private, free cleanup. Bring your own API key — it stays on your device.</p>
+            <p>Google Gemini, OpenAI, Anthropic Claude, xAI Grok, Groq, OpenRouter, DeepSeek, any OpenAI-compatible API (for example NVIDIA), or Ollama running locally on your computer for completely private, free cleanup. On a Mac you don't need any of them: Just Talk's own on-device model cleans up and translates with no API key. Bring your own API key — it stays on your device.</p>
           </div>
         </details>
 
@@ -722,7 +1032,7 @@
             <svg class="faq-arrow" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5"/></svg>
           </summary>
           <div class="faq-answer">
-            <p>Yes. Turn on Pure Offline Mode in Settings › Voice &amp; Speech. Speech is transcribed by on-device models and nothing is sent over the network. Offline speech needs a one-time model download, sized to the languages you choose.</p>
+            <p>Yes. Turn on Pure Offline Mode in Settings › Voice &amp; Speech. Speech is transcribed by on-device models and nothing is sent over the network. On a Mac, the on-device AI model still cleans up and translates your words offline. Offline speech needs a one-time model download, sized to the languages you choose.</p>
           </div>
         </details>
 
@@ -753,6 +1063,16 @@
           </summary>
           <div class="faq-answer">
             <p>Any app with a text field: VS Code, Cursor, Slack, Chrome, Word, Notion, Gmail, WhatsApp, terminals and more. If no text field is focused, the text is copied to your clipboard so you can paste it yourself.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary class="faq-question">
+            <span>What is the on-device AI model?</span>
+            <svg class="faq-arrow" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5"/></svg>
+          </summary>
+          <div class="faq-answer">
+            <p>A small language model made for Just Talk: a fine-tune of Qwen3-1.7B trained on 13,592 examples, including Nepali to English sentence pairs and 475 real spoken sentences. It translates Nepali and Nepglish into English and cleans up English dictation on your Mac in about a fifth of a second, with no internet and no API key. Turn it on in Settings › AI Formatting (a one-time 1.8 GB download). It is Mac only for now, and it is open on Hugging Face under Apache-2.0. <a href="#on-device-ai" class="link-white">See how it was trained and tested</a>.</p>
           </div>
         </details>
 
@@ -812,7 +1132,7 @@
             <svg class="faq-arrow" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5"/></svg>
           </summary>
           <div class="faq-answer">
-            <p>macOS 12 or later on Apple Silicon or Intel, or Windows 10/11 (64-bit), plus a microphone. On-device models need 0.5–1.5 GB of disk space, depending on the languages you choose.</p>
+            <p>macOS 12 or later on Apple Silicon or Intel, or Windows 10/11 (64-bit), plus a microphone. Speech models need 0.5–1.5 GB of disk space, depending on the languages you choose, and the on-device AI model (Mac only) needs 1.8 GB more.</p>
           </div>
         </details>
 
@@ -862,7 +1182,7 @@
             <svg class="faq-arrow" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5"/></svg>
           </summary>
           <div class="faq-answer">
-            <p>It is free and open source, works on both macOS and Windows, lets you choose — or run locally — the AI that cleans up your text, has a fully offline mode, and has first-class Nepali and Nepglish support.</p>
+            <p>It is free and open source, works on both macOS and Windows, lets you choose — or run locally — the AI that cleans up your text, has a fully offline mode, and has first-class Nepali and Nepglish support, including its own AI model trained on real Nepali speech.</p>
           </div>
         </details>
       </div>
