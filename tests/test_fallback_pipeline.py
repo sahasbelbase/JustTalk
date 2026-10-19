@@ -221,7 +221,7 @@ def test_two_phase_pipeline_emission_and_polish():
 
 
 
-def _run_pipeline(cfg, heard, app_name="TextEdit", draft_ok=True, local_reply=None):
+def _run_pipeline(cfg, heard, app_name="TextEdit", draft_ok=True, local_reply=None, context="text"):
     """Run one dictation through the real pipeline with the engines faked; returns (inserter, local runs)."""
     from contextlib import ExitStack
     import types
@@ -244,6 +244,9 @@ def _run_pipeline(cfg, heard, app_name="TextEdit", draft_ok=True, local_reply=No
         inserter.insert.return_value = (True, "inserted", app_name)
         inserter.draft_can_be_undone.return_value = draft_ok
         p("CaretLocator.has_active_text_target", return_value=True)
+        # The given context, whatever app is really in front (a terminal there counts as code)
+        from just_talk.system.context_detector import ContextInfo
+        p("detect_context", return_value=ContextInfo(context=context, app_name=app_name))
 
         from just_talk.app.main import JustTalkApp
 
@@ -344,6 +347,5 @@ def test_ai_text_filters_skip_code():
     from just_talk.config import AppConfig
 
     cfg = AppConfig(stt_provider="whisper", two_phase_emission=False, gemini_enabled=False, local_ai=True)
-    with patch("just_talk.app.main.detect_context", return_value=type("C", (), {"context": "python", "app_name": "PyCharm", "recommended_nepali_mode": "english", "file_ext": ".py"})()):
-        inserter, _ = _run_pipeline(cfg, "um equals five", local_reply="um = 5")
+    inserter, _ = _run_pipeline(cfg, "um equals five", app_name="PyCharm", local_reply="um = 5", context="python")
     assert inserter.insert.call_args.args[0] == "um = 5"
