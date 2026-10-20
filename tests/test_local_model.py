@@ -366,3 +366,50 @@ def test_macs_get_the_model_once_on_their_own_and_turning_it_off_sticks(tmp_path
     assert plan(on=True, done=True) == ""
     monkeypatch.setattr(lm, "runtime_available", lambda: False)
     assert plan() == ""                             # Windows: no on-device runtime yet
+
+
+class _FakeLlm:
+    """Answers in order and records each call's prompt and sampling."""
+
+    def __init__(self, *answers):
+        self.answers, self.calls = list(answers), []
+
+    def tokenize(self, data, add_bos=False):
+        return data.split()
+
+    def create_completion(self, prompt, **kw):
+        self.calls.append({"prompt": prompt, **kw})
+        return {"choices": [{"text": self.answers.pop(0)}]}
+
+
+def _model_with(tmp_path, llm):
+    model = LocalModel(tmp_path)
+    model._llm = llm
+    return model
+
+
+def test_a_lost_not_is_retried_with_a_changed_prompt_and_sampling(tmp_path):
+    from just_talk.ai.local_model import KEEP_NOT
+
+    llm = _FakeLlm("He has asked for the budget.", "He hasn't asked for the budget.")
+    text, ok, _ = _model_with(tmp_path, llm).run("translate", "उहाँले बजेट माग्नुभएको छैन।")
+    assert ok and text == "He hasn't asked for the budget."
+    first, retry = llm.calls
+    assert KEEP_NOT not in first["prompt"] and first["temperature"] == 0.0
+    assert KEEP_NOT in retry["prompt"] and retry["temperature"] == 0.3 and retry["seed"] == 7
+
+
+def test_a_not_still_lost_after_the_retry_keeps_the_words_as_said(tmp_path):
+    src = "उहाँले बजेट माग्नुभएको छैन।"
+    llm = _FakeLlm("He has asked for the budget.", "He asked for the budget.")
+    text, ok, msg = _model_with(tmp_path, llm).run("translate", src)
+    assert not ok and text == src and '"not"' in msg
+
+
+def test_a_kept_not_is_not_retried(tmp_path):
+    llm = _FakeLlm("He hasn't asked for the budget.")
+    text, ok, _ = _model_with(tmp_path, llm).run("translate", "उहाँले बजेट माग्नुभएको छैन।")
+    assert ok and len(llm.calls) == 1
+    llm = _FakeLlm("Send it now, not later.")  # cleanup is never checked for "not"
+    _model_with(tmp_path, llm).run("cleanup", "send it now not later")
+    assert len(llm.calls) == 1
