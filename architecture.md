@@ -1,4 +1,4 @@
-# Just Talk — System Architecture & Technical Specifications (v3.0.0)
+# Just Talk — System Architecture & Technical Specifications (v3.0.1)
 
 > **High-performance, privacy-first, on-device voice keyboard for macOS and Windows.**  
 > Think → Speak → Done.

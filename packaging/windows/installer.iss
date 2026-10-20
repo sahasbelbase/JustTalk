@@ -4,7 +4,7 @@
 ; ==============================================================================
 
 #define MyAppName "Just Talk"
-#define MyAppVersion "3.0.0"
+#define MyAppVersion "3.0.1"
 #define MyAppPublisher "Just Talk"
 #define MyAppURL "https://github.com/sahasbelbase/JustTalk"
 #define MyAppExeName "JustTalk.exe"
