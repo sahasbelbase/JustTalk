@@ -1,4 +1,4 @@
-# Just Talk (v3.0.0)
+# Just Talk (v3.0.1)
 
 > **A fast, quiet voice keyboard for macOS and Windows.**  
 > Think → Speak → Done.
@@ -31,6 +31,10 @@ Download the latest version of Just Talk directly for your operating system:
 > **Looking for all releases or release notes?** Visit the [Just Talk Releases Page](https://github.com/sahasbelbase/JustTalk/releases/latest).
 
 ---
+
+## What's New in Version 3.0.1
+
+* **No more lost "not" in translations (Mac, on-device AI):** the on-device model sometimes dropped the "not" from a Nepali sentence, so "म आज अफिस जान्नँ" could come out as "I'm going to the office today". Just Talk now checks every translation for this. If the "not" is lost or added, it tries once more, and if it is still wrong it keeps your words as heard (or asks your cloud AI, if you set one up) instead of typing the opposite of what you said. On 40 test sentence pairs, flips went from 13 to 0, with no false alarms. A sentence that needs the second try takes about 0.2 seconds longer.
 
 ## What's New in Version 3.0.0
 

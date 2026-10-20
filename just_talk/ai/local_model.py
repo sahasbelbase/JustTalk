@@ -22,6 +22,11 @@ import threading
 from pathlib import Path
 from typing import Callable, Optional, Tuple
 
+try:
+    from .negation import flipped
+except ImportError:  # loaded on its own by the training scripts, which score the model without the check
+    flipped = None
+
 # The model the app downloads: Just Talk's fine-tune of Qwen3-1.7B, hosted on Hugging Face.
 MODEL_REPO = "SahasBelbase/justtalk-qwen3-1.7b-gguf"
 MODEL_FILE = "justtalk-qwen3-1.7b-v6.2-Q8_0.gguf"
@@ -51,6 +56,11 @@ SYSTEM = {
         "Output only the edited text."
     ),
 }
+# Added to the translate prompt when the first answer lost or added a "not" (negation.flipped). Together
+# with temperature 0.3 and a fixed seed it fixed 5 of v6.2's 16 flips on Just Notes'
+# lab/translate_bench (retry.py).
+KEEP_NOT = 'Keep every "not": if the Nepali says not, the English must say not.'
+RETRY_SEED = 7
 
 
 def model_path(models_dir: Path) -> Path:
@@ -125,10 +135,10 @@ def download_model(models_dir: Path, progress: Optional[Callable[[float], None]]
         return False, f"Couldn't download the on-device model: {e}"
 
 
-def build_prompt(task: str, text: str, speaker_context: str = "") -> str:
+def build_prompt(task: str, text: str, speaker_context: str = "", keep_not: bool = False) -> str:
     """Qwen3 chat prompt with thinking turned off. The system turn changes only when the
     speaker context does, so consecutive calls share a cached prefix."""
-    system = SYSTEM[task] + (f"\n{speaker_context}" if speaker_context else "")
+    system = SYSTEM[task] + (f" {KEEP_NOT}" if keep_not else "") + (f"\n{speaker_context}" if speaker_context else "")
     return (
         f"<|im_start|>system\n{system}<|im_end|>\n"
         f"<|im_start|>user\n{text}<|im_end|>\n"
@@ -273,14 +283,25 @@ class LocalModel:
                 n_in = len(llm.tokenize(text.encode("utf-8"), add_bos=False))
                 max_tokens = min(512, max(128, int(1.8 * n_in) + 32)) if task in ("generate", "edit", "action") else min(512, int(1.6 * n_in) + 24)
                 temp = 0.2 if task in ("generate", "edit", "action") else 0.0
-                result = llm.create_completion(
-                    build_prompt(task, text, speaker_context),
-                    max_tokens=max_tokens,
-                    temperature=temp,
-                    repeat_penalty=1.1,
-                    stop=["<|im_end|>"],
-                )
-                out = result["choices"][0]["text"].strip().strip('"').strip()
+
+                def complete(keep_not=False, temperature=temp, **seed):
+                    result = llm.create_completion(
+                        build_prompt(task, text, speaker_context, keep_not),
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        repeat_penalty=1.1,
+                        stop=["<|im_end|>"],
+                        **seed,
+                    )
+                    return result["choices"][0]["text"].strip().strip('"').strip()
+
+                out = complete()
+                if task == "translate" and flipped and flipped(text, out):
+                    # Temperature 0 would give the same answer again, so the retry changes the prompt and the
+                    # sampling. Still flipped means the speaker's own words are kept: a flipped "not" is worse.
+                    out = complete(keep_not=True, temperature=0.3, seed=RETRY_SEED)
+                    if flipped(text, out):
+                        return text, False, 'On-device answer rejected (lost or added a "not").'
             except Exception as e:
                 return text, False, f"On-device model error: {e}"
         problem = check_output(task, text, out)
